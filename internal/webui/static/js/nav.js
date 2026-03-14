@@ -13,6 +13,7 @@
             { id: 'logs', label: 'Logs', icon: '▤', path: '/logs', title: 'Logs' },
             { type: 'divider' },
             { id: 'config', label: 'Configuration', icon: '⚙', path: '/config', title: 'Configuration' },
+            { id: 'cluster', label: 'Cluster', icon: '⊕', path: '/cluster', title: 'Cluster' },
             { id: 'certs', label: 'Certificates', icon: '🔒', path: '/certs', title: 'Certificates' }
         ],
 
