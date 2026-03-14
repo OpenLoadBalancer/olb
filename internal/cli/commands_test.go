@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -1009,6 +1010,11 @@ func TestReloadCommand_WithSignal(t *testing.T) {
 		t.Skip("Skipping Unix-specific test on Windows")
 	}
 
+	// Ignore SIGHUP so the test process doesn't die
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGHUP)
+	defer signal.Stop(sigCh)
+
 	// Create a temporary PID file with current process PID
 	tmpDir := t.TempDir()
 	pidFile := filepath.Join(tmpDir, "olb.pid")
@@ -1018,7 +1024,7 @@ func TestReloadCommand_WithSignal(t *testing.T) {
 	}
 
 	cmd := &ReloadCommand{}
-	// Send SIGHUP to current process (it will be ignored but the signal will be sent)
+	// Send SIGHUP to current process (it will be caught by our handler above)
 	err := cmd.Run([]string{"--pid-file", pidFile})
 	// Should succeed because signal was sent
 	if err != nil {
