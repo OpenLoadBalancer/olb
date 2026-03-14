@@ -6,6 +6,8 @@
     <title>OpenLoadBalancer</title>
     <link rel="stylesheet" href="/static/css/design.css">
     <link rel="stylesheet" href="/static/css/components.css">
+    <link rel="stylesheet" href="/static/css/responsive.css">
+    <link rel="stylesheet" href="/static/css/accessibility.css">
     <style>
         .connection-status {
             display: flex;
@@ -33,43 +35,49 @@
     </style>
 </head>
 <body>
+    <!-- Skip to content link for keyboard navigation -->
+    <a href="#app-content" class="skip-link">Skip to main content</a>
+
     <div class="app-layout">
         <!-- Mobile Header -->
-        <div class="mobile-header">
-            <button id="sidebar-toggle" class="btn btn-ghost btn-icon">☰</button>
+        <div class="mobile-header" role="banner">
+            <button id="sidebar-toggle" class="btn btn-ghost btn-icon" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">☰</button>
             <span class="font-semibold">OpenLoadBalancer</span>
-            <div id="mobile-status"></div>
+            <div id="mobile-status" role="status" aria-label="Connection status"></div>
         </div>
 
+        <!-- Sidebar overlay (closes sidebar on mobile) -->
+        <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
+
         <!-- Sidebar -->
-        <aside id="sidebar" class="sidebar">
+        <aside id="sidebar" class="sidebar" role="complementary" aria-label="Sidebar navigation">
             <!-- Navigation rendered by nav.js -->
         </aside>
 
         <!-- Main Content -->
-        <main class="main-content">
+        <main class="main-content" role="main">
             <!-- Page Header -->
-            <header class="page-header">
-                <div id="breadcrumbs">
+            <header class="page-header" role="banner">
+                <nav id="breadcrumbs" aria-label="Breadcrumb">
                     <!-- Breadcrumbs rendered by nav.js -->
-                </div>
+                </nav>
                 <div class="flex items-center gap-4">
-                    <div id="connection-status"></div>
+                    <div id="connection-status" role="status" aria-label="Connection status" aria-live="polite"></div>
                     <div class="dropdown">
-                        <button class="btn btn-ghost btn-icon">👤</button>
+                        <button class="btn btn-ghost btn-icon" aria-label="User menu" aria-haspopup="true">👤</button>
                     </div>
                 </div>
             </header>
 
             <!-- Page Content -->
-            <div id="app-content" class="page-content">
+            <div id="app-content" class="page-content" role="region" aria-label="Page content" aria-live="polite">
                 <!-- Dynamic content rendered by SPA router -->
             </div>
         </main>
     </div>
 
     <!-- Toast Container -->
-    <div id="toast-container" class="toast-container"></div>
+    <div id="toast-container" class="toast-container" role="alert" aria-live="assertive" aria-atomic="true"></div>
 
     <!-- Scripts -->
     <script src="/static/js/spa.js"></script>
@@ -198,6 +206,52 @@
             window.addEventListener('error', function(e) {
                 console.error('Global error:', e);
                 Components.Toast.error('An error occurred', e.message || 'Unknown error');
+            });
+
+            // Sidebar toggle with overlay for mobile
+            var sidebarToggle = document.getElementById('sidebar-toggle');
+            var sidebarEl = document.getElementById('sidebar');
+            var sidebarOverlay = document.getElementById('sidebar-overlay');
+
+            function openSidebar() {
+                if (sidebarEl) sidebarEl.classList.add('open');
+                if (sidebarOverlay) {
+                    sidebarOverlay.classList.add('active');
+                    sidebarOverlay.setAttribute('aria-hidden', 'false');
+                }
+                if (sidebarToggle) sidebarToggle.setAttribute('aria-expanded', 'true');
+            }
+
+            function closeSidebar() {
+                if (sidebarEl) sidebarEl.classList.remove('open');
+                if (sidebarOverlay) {
+                    sidebarOverlay.classList.remove('active');
+                    sidebarOverlay.setAttribute('aria-hidden', 'true');
+                }
+                if (sidebarToggle) sidebarToggle.setAttribute('aria-expanded', 'false');
+            }
+
+            if (sidebarToggle) {
+                sidebarToggle.addEventListener('click', function() {
+                    var isOpen = sidebarEl && sidebarEl.classList.contains('open');
+                    if (isOpen) {
+                        closeSidebar();
+                    } else {
+                        openSidebar();
+                    }
+                });
+            }
+
+            if (sidebarOverlay) {
+                sidebarOverlay.addEventListener('click', closeSidebar);
+            }
+
+            // Close sidebar on Escape key
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && sidebarEl && sidebarEl.classList.contains('open')) {
+                    closeSidebar();
+                    if (sidebarToggle) sidebarToggle.focus();
+                }
             });
 
             // Expose globals for debugging

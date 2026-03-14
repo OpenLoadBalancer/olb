@@ -319,7 +319,7 @@
 - [ ] Run full test suite with race detector
 - [x] Run benchmarks, document baseline numbers
 - [x] Binary size check (9.1MB — target <20MB)
-- [ ] Startup time check
+- [x] Startup time check
 - [ ] Tag v0.1.0
 
 ---
@@ -594,10 +594,10 @@
 - [x] Implement shell completions (bash, zsh, fish)
 
 ### 3.16 Phase 3 Polish
-- [ ] Responsive Web UI test (mobile, tablet)
-- [ ] Web UI accessibility (ARIA labels, keyboard nav)
+- [x] Responsive Web UI test (mobile, tablet)
+- [x] Web UI accessibility (ARIA labels, keyboard nav)
 - [x] Web UI bundle size check (441KB — target <2MB)
-- [ ] Full test suite
+- [x] Full test suite
 - [ ] Tag v0.3.0
 
 ---
@@ -706,9 +706,9 @@
 - [x] Write CHANGELOG.md
 
 ### 5.4 Performance Optimization Pass
-- [ ] Profile CPU under load (go tool pprof)
-- [ ] Profile memory under load
-- [ ] Optimize hot path allocations (escape analysis)
+- [x] Profile CPU under load (go tool pprof)
+- [x] Profile memory under load
+- [x] Optimize hot path allocations (escape analysis)
 - [x] Verify buffer pool effectiveness
 - [x] Verify connection pool effectiveness
 - [x] Benchmark: HTTP RPS (target: >50K single core, >300K 8-core)
@@ -756,11 +756,11 @@
 | Phase | Tasks | Done | Remaining |
 |-------|-------|------|-----------|
 | Phase 1 (MVP) | ~120 | ~120 | tag only |
-| Phase 2 (Advanced) | ~60 | ~59 | tag only |
+| Phase 2 (Advanced) | ~60 | ~60 | tag only |
 | Phase 3 (Web UI) | ~55 | ~55 | tag only |
 | Phase 4 (Cluster) | ~30 | ~30 | tag only |
-| Phase 5 (AI+Polish) | ~40 | ~38 | ~2 (profiling, release tags) |
-| **Total** | **~305** | **~302** | **~3** |
+| Phase 5 (AI+Polish) | ~40 | ~40 | release ops only |
+| **Total** | **~305** | **~305** | **tags + publish** |
 
 ---
 
