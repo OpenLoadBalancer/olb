@@ -320,7 +320,7 @@
 - [x] Run benchmarks, document baseline numbers
 - [x] Binary size check (9.1MB — target <20MB)
 - [x] Startup time check
-- [ ] Tag v0.1.0
+- [x] Tag v0.1.0
 
 ---
 
@@ -467,7 +467,7 @@
 - [x] Write example configs in TOML and HCL
 - [x] Update documentation
 - [x] Full test suite + benchmarks
-- [ ] Tag v0.2.0
+- [x] Tag v0.2.0
 
 ---
 
@@ -598,7 +598,7 @@
 - [x] Web UI accessibility (ARIA labels, keyboard nav)
 - [x] Web UI bundle size check (441KB — target <2MB)
 - [x] Full test suite
-- [ ] Tag v0.3.0
+- [x] Tag v0.3.0
 
 ---
 
@@ -662,7 +662,7 @@
 - [x] 5-node integration test
 - [x] Network partition simulation
 - [x] Split-brain protection verification
-- [ ] Tag v0.4.0
+- [x] Tag v0.4.0
 
 ---
 
