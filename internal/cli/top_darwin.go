@@ -10,12 +10,6 @@ import (
 	"unsafe"
 )
 
-// Terminal manages raw terminal mode on macOS/Darwin.
-type Terminal struct {
-	fd       int
-	oldState syscall.Termios
-}
-
 func newTerminal() (*Terminal, error) {
 	fd := int(os.Stdin.Fd())
 	var oldState syscall.Termios
@@ -26,7 +20,7 @@ func newTerminal() (*Terminal, error) {
 		return nil, fmt.Errorf("failed to get terminal attributes: %v", errno)
 	}
 
-	t := &Terminal{fd: fd, oldState: oldState}
+	t := &Terminal{originalState: oldState}
 
 	// Set raw mode
 	newState := oldState
@@ -45,7 +39,12 @@ func newTerminal() (*Terminal, error) {
 }
 
 func (t *Terminal) restore() error {
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(t.fd), uintptr(0x80487414), uintptr(unsafe.Pointer(&t.oldState)))
+	oldState, ok := t.originalState.(syscall.Termios)
+	if !ok {
+		return fmt.Errorf("invalid terminal state")
+	}
+	fd := int(os.Stdin.Fd())
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), uintptr(0x80487414), uintptr(unsafe.Pointer(&oldState)))
 	if errno != 0 {
 		return fmt.Errorf("failed to restore terminal: %v", errno)
 	}
