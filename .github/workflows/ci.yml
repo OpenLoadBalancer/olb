@@ -8,7 +8,7 @@ on:
     branches: [main, master, develop]
 
 env:
-  GO_VERSION: '1.24'
+  GO_VERSION: '1.25'
 
 jobs:
   # Job 1: Lint and Format Check
@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ['1.24', '1.25']
+        go-version: ['1.25']
     steps:
       - name: Checkout
         uses: actions/checkout@v4
