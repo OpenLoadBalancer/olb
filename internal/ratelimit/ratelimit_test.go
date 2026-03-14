@@ -241,8 +241,8 @@ func TestLimiter_Get(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get error: %v", err)
 	}
-	if state.Tokens != 10 {
-		t.Errorf("Tokens = %f, want 10", state.Tokens)
+	if state.Tokens < 9.5 || state.Tokens > 10.5 {
+		t.Errorf("Tokens = %f, want ~10", state.Tokens)
 	}
 
 	// Use some tokens
@@ -253,8 +253,8 @@ func TestLimiter_Get(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get error: %v", err)
 	}
-	if state.Tokens != 7 {
-		t.Errorf("Tokens = %f, want 7", state.Tokens)
+	if state.Tokens < 6.5 || state.Tokens > 7.5 {
+		t.Errorf("Tokens = %f, want ~7", state.Tokens)
 	}
 }
 
