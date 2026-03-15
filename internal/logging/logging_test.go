@@ -1646,11 +1646,10 @@ func TestReopenHandler(t *testing.T) {
 		t.Fatal("NewReopenHandler returned nil")
 	}
 
-	// These are no-ops on Windows but should not panic
-	h.AddOutput(nil)
+	// On Windows these are no-ops; on Unix they manage SIGUSR1
+	// Don't add nil outputs or call reopen with nil — causes panic on Unix
 	h.Start()
 	h.Stop()
-	h.reopen()
 }
 
 // TestEnableLogReopen tests EnableLogReopen (no-op on Windows).

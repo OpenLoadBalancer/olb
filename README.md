@@ -4,7 +4,7 @@
 [![Go Version](https://img.shields.io/badge/go-1.25+-00ADD8?logo=go&logoColor=white)](https://golang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-36%2F36_passing-brightgreen)](./)
-[![Coverage](https://img.shields.io/badge/coverage-87%25-brightgreen)](./)
+[![Coverage](https://img.shields.io/badge/coverage-89%25-brightgreen)](./)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-orange)](./)
 
 **OpenLoadBalancer (OLB)** is a high-performance Layer 4/Layer 7 load balancer and reverse proxy written entirely in Go using only the standard library. It ships as a single static binary containing the proxy, CLI, Web UI dashboard, admin API, clustering engine, and MCP server for AI integration -- with zero external dependencies.

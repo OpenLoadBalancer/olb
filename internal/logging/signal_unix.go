@@ -56,7 +56,9 @@ func (h *ReopenHandler) Stop() {
 // reopen reopens all registered outputs.
 func (h *ReopenHandler) reopen() {
 	for _, out := range h.outputs {
-		_ = out.Reopen()
+		if out != nil {
+			_ = out.Reopen()
+		}
 	}
 }
 
