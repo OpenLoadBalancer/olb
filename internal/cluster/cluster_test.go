@@ -507,3 +507,38 @@ func TestCluster_getLastLogIndex(t *testing.T) {
 		t.Errorf("Last log index = %d, want 2", cluster.getLastLogIndex())
 	}
 }
+
+func TestCluster_sendHeartbeats(t *testing.T) {
+	// Test sendHeartbeats indirectly by becoming a leader with peers.
+	config := &Config{
+		NodeID:        "leader1",
+		BindAddr:      "127.0.0.1",
+		BindPort:      7946,
+		Peers:         []string{"127.0.0.1:7947", "127.0.0.1:7948"},
+		ElectionTick:  2 * time.Second,
+		HeartbeatTick: 500 * time.Millisecond,
+	}
+	sm := newMockStateMachine()
+	cluster, err := New(config, sm)
+	if err != nil {
+		t.Fatalf("New error: %v", err)
+	}
+
+	// Set term so heartbeats have a valid term
+	cluster.currentTerm.Store(3)
+
+	// Become leader to set up the necessary state
+	cluster.setState(StateLeader)
+
+	// Call sendHeartbeats directly - this exercises the function even though
+	// the actual RPC is a TODO/no-op. It should not panic.
+	cluster.sendHeartbeats()
+
+	// Verify we're still leader and term is correct
+	if cluster.GetState() != StateLeader {
+		t.Error("Should still be leader after sending heartbeats")
+	}
+	if cluster.GetTerm() != 3 {
+		t.Errorf("Term = %d, want 3", cluster.GetTerm())
+	}
+}

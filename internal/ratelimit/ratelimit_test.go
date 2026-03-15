@@ -485,6 +485,36 @@ func TestKeyFunc(t *testing.T) {
 	}
 }
 
+func TestMemoryStore_Name(t *testing.T) {
+	config := DefaultConfig()
+	store := newMemoryStore(config)
+	defer store.Close()
+
+	name := store.Name()
+	if name != "memory" {
+		t.Errorf("Name() = %q, want 'memory'", name)
+	}
+}
+
+func TestMemoryStore_ClosedStore(t *testing.T) {
+	config := DefaultConfig()
+	store := newMemoryStore(config)
+
+	// Close the store
+	store.Close()
+
+	// Operations on closed store should fail
+	_, err := store.Allow("key", 1)
+	if err == nil {
+		t.Error("Expected error when calling Allow on closed store")
+	}
+
+	_, err = store.AllowN("key", 1)
+	if err == nil {
+		t.Error("Expected error when calling AllowN on closed store")
+	}
+}
+
 func BenchmarkLimiter_Allow(b *testing.B) {
 	config := &Config{
 		Algorithm: TokenBucket,

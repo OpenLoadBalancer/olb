@@ -525,6 +525,82 @@ func TestCluster_HandleInstallSnapshot_OlderTerm(t *testing.T) {
 	}
 }
 
+func TestCluster_BuildInstallSnapshotRequest(t *testing.T) {
+	sm := newKVStateMachine()
+	c := newTestCluster(t, sm)
+
+	// Apply some data via the state machine.
+	sm.Apply([]byte("host=server1"))
+	sm.Apply([]byte("port=8080"))
+
+	// Populate log entries.
+	c.logMu.Lock()
+	c.log = []*LogEntry{
+		{Index: 1, Term: 1, Command: []byte("host=server1")},
+		{Index: 2, Term: 1, Command: []byte("port=8080")},
+		{Index: 3, Term: 2, Command: []byte("mode=active")},
+	}
+	c.logMu.Unlock()
+
+	// Set a term for the leader
+	c.currentTerm.Store(2)
+
+	req, err := c.BuildInstallSnapshotRequest()
+	if err != nil {
+		t.Fatalf("BuildInstallSnapshotRequest: %v", err)
+	}
+
+	if req == nil {
+		t.Fatal("Expected non-nil request")
+	}
+
+	if req.Term != 2 {
+		t.Errorf("Term = %d, want 2", req.Term)
+	}
+	if req.LeaderID != "node1" {
+		t.Errorf("LeaderID = %q, want node1", req.LeaderID)
+	}
+	if req.LastIncludedIndex != 3 {
+		t.Errorf("LastIncludedIndex = %d, want 3", req.LastIncludedIndex)
+	}
+	if req.LastIncludedTerm != 2 {
+		t.Errorf("LastIncludedTerm = %d, want 2", req.LastIncludedTerm)
+	}
+	if len(req.Data) == 0 {
+		t.Error("Expected non-empty snapshot data")
+	}
+
+	// Verify the snapshot data contains the state machine data.
+	var data map[string]string
+	if err := json.Unmarshal(req.Data, &data); err != nil {
+		t.Fatalf("Failed to unmarshal snapshot data: %v", err)
+	}
+	if data["host"] != "server1" {
+		t.Errorf("data[host] = %q, want server1", data["host"])
+	}
+	if data["port"] != "8080" {
+		t.Errorf("data[port] = %q, want 8080", data["port"])
+	}
+}
+
+func TestCluster_BuildInstallSnapshotRequest_EmptyLog(t *testing.T) {
+	sm := newKVStateMachine()
+	c := newTestCluster(t, sm)
+
+	// With an empty log, CreateSnapshot should still work (index/term = 0)
+	req, err := c.BuildInstallSnapshotRequest()
+	if err != nil {
+		t.Fatalf("BuildInstallSnapshotRequest: %v", err)
+	}
+
+	if req.LastIncludedIndex != 0 {
+		t.Errorf("LastIncludedIndex = %d, want 0", req.LastIncludedIndex)
+	}
+	if req.LastIncludedTerm != 0 {
+		t.Errorf("LastIncludedTerm = %d, want 0", req.LastIncludedTerm)
+	}
+}
+
 func TestCluster_ShouldSendSnapshot(t *testing.T) {
 	sm := newKVStateMachine()
 	c := newTestCluster(t, sm)

@@ -718,6 +718,139 @@ func TestContainsAny(t *testing.T) {
 	}
 }
 
+func TestTCPProxy_DialBackend(t *testing.T) {
+	// Create a TCP listener to act as a backend
+	backendListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to create listener: %v", err)
+	}
+	defer backendListener.Close()
+
+	go func() {
+		conn, _ := backendListener.Accept()
+		if conn != nil {
+			conn.Close()
+		}
+	}()
+
+	pool := backend.NewPool("test-pool", "round_robin")
+	balancer := NewSimpleBalancer()
+	proxy := NewTCPProxy(pool, balancer, nil)
+
+	be := backend.NewBackend("backend-1", backendListener.Addr().String())
+
+	conn, err := proxy.dialBackend(be)
+	if err != nil {
+		t.Fatalf("dialBackend error: %v", err)
+	}
+	if conn == nil {
+		t.Fatal("dialBackend returned nil connection")
+	}
+	conn.Close()
+}
+
+func TestTCPProxy_DialBackend_ConnectionRefused(t *testing.T) {
+	pool := backend.NewPool("test-pool", "round_robin")
+	balancer := NewSimpleBalancer()
+	config := &TCPProxyConfig{
+		DialTimeout:    500 * time.Millisecond,
+		IdleTimeout:    1 * time.Second,
+		BufferSize:     1024,
+		MaxConnections: 0,
+	}
+	proxy := NewTCPProxy(pool, balancer, config)
+
+	be := backend.NewBackend("backend-1", "127.0.0.1:1") // Almost certainly nothing listening
+
+	_, err := proxy.dialBackend(be)
+	if err == nil {
+		t.Error("Expected error when dialing unreachable backend")
+	}
+}
+
+func TestTCPProxy_ProxyConnections(t *testing.T) {
+	pool := backend.NewPool("test-pool", "round_robin")
+	balancer := NewSimpleBalancer()
+	config := &TCPProxyConfig{
+		DialTimeout: 1 * time.Second,
+		IdleTimeout: 500 * time.Millisecond,
+		BufferSize:  1024,
+	}
+	proxy := NewTCPProxy(pool, balancer, config)
+
+	// Create two pipe pairs
+	client1, server1 := net.Pipe()
+	client2, server2 := net.Pipe()
+
+	// Write from client1 and read on server2
+	go func() {
+		client1.Write([]byte("hello"))
+		time.Sleep(100 * time.Millisecond)
+		client1.Close()
+	}()
+
+	go func() {
+		buf := make([]byte, 100)
+		n, _ := server2.Read(buf)
+		if n > 0 && string(buf[:n]) == "hello" {
+			server2.Write([]byte("world"))
+		}
+		time.Sleep(100 * time.Millisecond)
+		server2.Close()
+	}()
+
+	// proxyConnections copies bidirectionally
+	proxy.proxyConnections(server1, client2)
+	// Should complete without panic
+}
+
+func TestTCPListener_NameAddressStartError(t *testing.T) {
+	pool := backend.NewPool("test-pool", "round_robin")
+	balancer := NewSimpleBalancer()
+	proxy := NewTCPProxy(pool, balancer, nil)
+
+	listener, err := NewTCPListener(&TCPListenerOptions{
+		Name:    "my-tcp-listener",
+		Address: "127.0.0.1:0",
+		Proxy:   proxy,
+	})
+	if err != nil {
+		t.Fatalf("NewTCPListener error: %v", err)
+	}
+
+	// Name()
+	if listener.Name() != "my-tcp-listener" {
+		t.Errorf("Name() = %q, want my-tcp-listener", listener.Name())
+	}
+
+	// Address() before start returns configured address
+	if listener.Address() != "127.0.0.1:0" {
+		t.Errorf("Address() = %q, want 127.0.0.1:0", listener.Address())
+	}
+
+	// StartError() before start
+	if listener.StartError() != nil {
+		t.Error("StartError() should be nil before start")
+	}
+
+	// Start to get actual address
+	if err := listener.Start(); err != nil {
+		t.Fatalf("Start error: %v", err)
+	}
+	defer listener.Stop(context.Background())
+
+	// Address() after start should return the actual bound address
+	addr := listener.Address()
+	if addr == "" || addr == "127.0.0.1:0" {
+		t.Error("Address() should return actual bound address after start")
+	}
+
+	// StartError() after successful start
+	if listener.StartError() != nil {
+		t.Errorf("StartError() = %v, want nil after successful start", listener.StartError())
+	}
+}
+
 func TestCopyWithBuffer(t *testing.T) {
 	// Create two pipes: one for source, one for destination
 	// In a real scenario, src and dst are different connections

@@ -426,6 +426,54 @@ func TestNodeAuthMiddleware_AllowedNodes(t *testing.T) {
 	}
 }
 
+func TestNodeAuthMiddleware_Close(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to create listener: %v", err)
+	}
+
+	secret := []byte("test-secret")
+	authListener := NewNodeAuthMiddleware(listener, secret, nil)
+
+	// Close the auth listener
+	err = authListener.Close()
+	if err != nil {
+		t.Errorf("Close() error = %v", err)
+	}
+
+	// After close, the underlying listener should be closed too.
+	// Trying to accept should fail.
+	_, err = listener.Accept()
+	if err == nil {
+		t.Error("Accept() should fail after Close()")
+	}
+}
+
+func TestNodeAuthMiddleware_Addr(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to create listener: %v", err)
+	}
+	defer listener.Close()
+
+	secret := []byte("test-secret")
+	authListener := NewNodeAuthMiddleware(listener, secret, nil)
+
+	// Addr() should return the same address as the underlying listener
+	addr := authListener.Addr()
+	if addr == nil {
+		t.Fatal("Addr() returned nil")
+	}
+
+	if addr.String() != listener.Addr().String() {
+		t.Errorf("Addr() = %q, want %q", addr.String(), listener.Addr().String())
+	}
+
+	if addr.Network() != "tcp" {
+		t.Errorf("Addr().Network() = %q, want tcp", addr.Network())
+	}
+}
+
 func TestNodeAuthMiddleware_AddRemoveAllowedNode(t *testing.T) {
 	secret := []byte("test-secret")
 	middleware := NewNodeAuthMiddleware(nil, secret, []string{"node1"})

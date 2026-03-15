@@ -119,6 +119,21 @@ func TestRandomUpdate(t *testing.T) {
 
 	// Update is a no-op for Random, but should not panic
 	r.Update(b1)
+
+	// Also test with a backend that was previously added
+	r.Add(b1)
+	b1.Weight = 10
+	r.Update(b1)
+
+	// Balancer should still function after Update
+	backends := []*backend.Backend{b1}
+	result := r.Next(backends)
+	if result == nil {
+		t.Error("Next() returned nil after Update")
+	}
+	if result.ID != "backend-1" {
+		t.Errorf("Next() = %s, want backend-1", result.ID)
+	}
 }
 
 // TestRandomConcurrent tests concurrent access.

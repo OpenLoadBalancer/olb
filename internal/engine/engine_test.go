@@ -2463,3 +2463,86 @@ func TestSignalHandlersWindows(t *testing.T) {
 		t.Errorf("Shutdown() error = %v", err)
 	}
 }
+
+// ============================================================================
+// Tests for 0% coverage getters and adapters
+// ============================================================================
+
+func TestEngineGetMCPServer(t *testing.T) {
+	cfg := createTestConfig()
+	configPath := createTempConfigFile(t, cfg)
+
+	engine, err := New(cfg, configPath)
+	if err != nil {
+		t.Fatalf("Failed to create engine: %v", err)
+	}
+
+	// GetMCPServer returns the mcp server (may be nil if not configured)
+	mcpServer := engine.GetMCPServer()
+	// Just verifying the getter works without panic. The mcpServer may be
+	// non-nil if the engine sets it up during New().
+	_ = mcpServer
+}
+
+func TestEngineGetPluginManager(t *testing.T) {
+	cfg := createTestConfig()
+	configPath := createTempConfigFile(t, cfg)
+
+	engine, err := New(cfg, configPath)
+	if err != nil {
+		t.Fatalf("Failed to create engine: %v", err)
+	}
+
+	pluginMgr := engine.GetPluginManager()
+	// Verify the getter does not panic. PluginManager may or may not be set.
+	_ = pluginMgr
+}
+
+func TestEngineGetClusterManager(t *testing.T) {
+	cfg := createTestConfig()
+	configPath := createTempConfigFile(t, cfg)
+
+	engine, err := New(cfg, configPath)
+	if err != nil {
+		t.Fatalf("Failed to create engine: %v", err)
+	}
+
+	// ClusterManager is nil when clustering is not configured
+	clusterMgr := engine.GetClusterManager()
+	if clusterMgr != nil {
+		t.Error("GetClusterManager() should be nil when clustering is not configured")
+	}
+}
+
+func TestEngineGetDiscoveryManager(t *testing.T) {
+	cfg := createTestConfig()
+	configPath := createTempConfigFile(t, cfg)
+
+	engine, err := New(cfg, configPath)
+	if err != nil {
+		t.Fatalf("Failed to create engine: %v", err)
+	}
+
+	discoveryMgr := engine.GetDiscoveryManager()
+	// Verify the getter does not panic. DiscoveryManager may or may not be set.
+	_ = discoveryMgr
+}
+
+func TestEngineCertLister_ListCertificates(t *testing.T) {
+	cfg := createTestConfig()
+	configPath := createTempConfigFile(t, cfg)
+
+	engine, err := New(cfg, configPath)
+	if err != nil {
+		t.Fatalf("Failed to create engine: %v", err)
+	}
+
+	// Create the cert lister adapter using the engine's TLS manager
+	lister := &engineCertLister{tlsMgr: engine.tlsManager}
+
+	// With no certificates loaded, should return empty list
+	certs := lister.ListCertificates()
+	if len(certs) != 0 {
+		t.Errorf("ListCertificates() returned %d certs, want 0", len(certs))
+	}
+}

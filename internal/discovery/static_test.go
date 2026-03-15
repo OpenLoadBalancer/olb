@@ -432,6 +432,64 @@ func TestStaticProvider_Stop(t *testing.T) {
 	}
 }
 
+func TestStaticFileProvider_WatchFile(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "services.json")
+
+	// Initial content with 1 service
+	config1 := `{"services": [{"id": "svc-1", "address": "192.168.1.1", "port": 8080}]}`
+	err := os.WriteFile(configPath, []byte(config1), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	config := &ProviderConfig{
+		Type:    ProviderTypeStatic,
+		Name:    "watch-test",
+		Refresh: 200 * time.Millisecond, // Short interval for testing
+		Options: map[string]string{"file": configPath, "format": "json"},
+	}
+
+	provider, err := NewStaticFileProvider(config)
+	if err != nil {
+		t.Fatalf("NewStaticFileProvider error: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = provider.Start(ctx)
+	if err != nil {
+		t.Fatalf("Start error: %v", err)
+	}
+	defer provider.Stop()
+
+	if len(provider.Services()) != 1 {
+		t.Fatalf("Expected 1 service initially, got %d", len(provider.Services()))
+	}
+
+	// Update the file with 2 services
+	config2 := `{"services": [{"id": "svc-1", "address": "192.168.1.1", "port": 8080}, {"id": "svc-2", "address": "192.168.1.2", "port": 9090}]}`
+	err = os.WriteFile(configPath, []byte(config2), 0644)
+	if err != nil {
+		t.Fatalf("Failed to update config: %v", err)
+	}
+
+	// Wait for the file watcher to detect the change
+	deadline := time.After(3 * time.Second)
+	for {
+		if len(provider.Services()) == 2 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("Timed out waiting for file watcher to detect change; got %d services", len(provider.Services()))
+		default:
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+}
+
 func TestStaticProvider_ServiceRemoval(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "services.json")

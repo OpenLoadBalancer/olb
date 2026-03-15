@@ -1813,3 +1813,110 @@ func TestGauge_Infinity(t *testing.T) {
 		t.Error("Should be able to set -Inf")
 	}
 }
+
+// ==================== validateValues Tests ====================
+
+func TestCounterVec_ValidateValues(t *testing.T) {
+	cv := NewCounterVec("test", "test", []string{"method", "status"})
+
+	// Correct number of values
+	if err := cv.validateValues([]string{"GET", "200"}); err != nil {
+		t.Errorf("validateValues with correct count returned error: %v", err)
+	}
+
+	// Too few values
+	if err := cv.validateValues([]string{"GET"}); err == nil {
+		t.Error("validateValues with too few values should return error")
+	}
+
+	// Too many values
+	if err := cv.validateValues([]string{"GET", "200", "extra"}); err == nil {
+		t.Error("validateValues with too many values should return error")
+	}
+
+	// Empty values when labels exist
+	if err := cv.validateValues([]string{}); err == nil {
+		t.Error("validateValues with empty values and non-empty labels should return error")
+	}
+
+	// No labels, no values
+	cvEmpty := NewCounterVec("empty", "test", []string{})
+	if err := cvEmpty.validateValues([]string{}); err != nil {
+		t.Errorf("validateValues with no labels and no values returned error: %v", err)
+	}
+
+	// No labels, but values provided
+	if err := cvEmpty.validateValues([]string{"extra"}); err == nil {
+		t.Error("validateValues with no labels but values provided should return error")
+	}
+}
+
+func TestGaugeVec_ValidateValues(t *testing.T) {
+	gv := NewGaugeVec("test", "test", []string{"pool", "backend"})
+
+	// Correct number of values
+	if err := gv.validateValues([]string{"web", "b1"}); err != nil {
+		t.Errorf("validateValues with correct count returned error: %v", err)
+	}
+
+	// Too few values
+	if err := gv.validateValues([]string{"web"}); err == nil {
+		t.Error("validateValues with too few values should return error")
+	}
+
+	// Too many values
+	if err := gv.validateValues([]string{"web", "b1", "extra"}); err == nil {
+		t.Error("validateValues with too many values should return error")
+	}
+
+	// Empty values when labels exist
+	if err := gv.validateValues([]string{}); err == nil {
+		t.Error("validateValues with empty values and non-empty labels should return error")
+	}
+
+	// No labels, no values
+	gvEmpty := NewGaugeVec("empty", "test", []string{})
+	if err := gvEmpty.validateValues([]string{}); err != nil {
+		t.Errorf("validateValues with no labels and no values returned error: %v", err)
+	}
+
+	// No labels, but values provided
+	if err := gvEmpty.validateValues([]string{"extra"}); err == nil {
+		t.Error("validateValues with no labels but values provided should return error")
+	}
+}
+
+func TestHistogramVec_ValidateValues(t *testing.T) {
+	hv := NewHistogramVec("test", "test", []string{"method", "path"})
+
+	// Correct number of values
+	if err := hv.validateValues([]string{"GET", "/api"}); err != nil {
+		t.Errorf("validateValues with correct count returned error: %v", err)
+	}
+
+	// Too few values
+	if err := hv.validateValues([]string{"GET"}); err == nil {
+		t.Error("validateValues with too few values should return error")
+	}
+
+	// Too many values
+	if err := hv.validateValues([]string{"GET", "/api", "extra"}); err == nil {
+		t.Error("validateValues with too many values should return error")
+	}
+
+	// Empty values when labels exist
+	if err := hv.validateValues([]string{}); err == nil {
+		t.Error("validateValues with empty values and non-empty labels should return error")
+	}
+
+	// No labels, no values
+	hvEmpty := NewHistogramVec("empty", "test", []string{})
+	if err := hvEmpty.validateValues([]string{}); err != nil {
+		t.Errorf("validateValues with no labels and no values returned error: %v", err)
+	}
+
+	// No labels, but values provided
+	if err := hvEmpty.validateValues([]string{"extra"}); err == nil {
+		t.Error("validateValues with no labels but values provided should return error")
+	}
+}

@@ -222,11 +222,32 @@ func TestPoolSetBalancer(t *testing.T) {
 	p := NewPool("test-pool", "roundrobin")
 
 	// Create a mock balancer
-	mockBalancer := &mockBalancer{name: "mock"}
-	p.SetBalancer(mockBalancer)
+	mb := &mockBalancer{name: "mock"}
+	p.SetBalancer(mb)
 
 	// The balancer should be set (we can't easily verify without exporting the field)
 	// This test mainly ensures it doesn't panic
+}
+
+func TestPoolGetBalancer(t *testing.T) {
+	p := NewPool("test-pool", "roundrobin")
+
+	// Initially no balancer is set
+	if got := p.GetBalancer(); got != nil {
+		t.Errorf("GetBalancer() on new pool = %v, want nil", got)
+	}
+
+	// Set a balancer and retrieve it
+	mb := &mockBalancer{name: "test-balancer"}
+	p.SetBalancer(mb)
+
+	got := p.GetBalancer()
+	if got == nil {
+		t.Fatal("GetBalancer() returned nil after SetBalancer")
+	}
+	if got.Name() != "test-balancer" {
+		t.Errorf("GetBalancer().Name() = %v, want test-balancer", got.Name())
+	}
 }
 
 func TestPoolNextBackend_NoBalancer(t *testing.T) {

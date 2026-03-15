@@ -922,3 +922,33 @@ func TestDiscardResponseWriter(t *testing.T) {
 	// WriteHeader should not panic
 	d.WriteHeader(http.StatusOK)
 }
+
+func TestDiscardResponseWriter_WriteHeader_MultipleStatusCodes(t *testing.T) {
+	d := &discardResponseWriter{header: make(http.Header)}
+
+	// WriteHeader should not panic with various status codes
+	d.WriteHeader(http.StatusCreated)
+	d.WriteHeader(http.StatusNotFound)
+	d.WriteHeader(http.StatusInternalServerError)
+
+	// Headers should still be accessible after WriteHeader calls
+	d.Header().Set("X-After", "write-header")
+	if d.Header().Get("X-After") != "write-header" {
+		t.Error("Header should be settable after WriteHeader")
+	}
+}
+
+func TestDiscardResponseWriter_WriteAfterWriteHeader(t *testing.T) {
+	d := &discardResponseWriter{header: make(http.Header)}
+
+	d.WriteHeader(http.StatusOK)
+
+	// Write should still succeed after WriteHeader
+	n, err := d.Write([]byte("after header"))
+	if err != nil {
+		t.Errorf("Write error = %v", err)
+	}
+	if n != 12 {
+		t.Errorf("Write returned %d, want 12", n)
+	}
+}

@@ -819,5 +819,107 @@ func TestParseWeight(t *testing.T) {
 	}
 }
 
+// ---- DNS Provider Tests ----
+
+func TestNewDNSProvider_ValidConfig(t *testing.T) {
+	config := &ProviderConfig{
+		Type:    ProviderTypeDNS,
+		Name:    "test-dns",
+		Refresh: 5 * time.Second,
+		Options: map[string]string{
+			"domain": "_http._tcp.example.com",
+		},
+	}
+
+	provider, err := NewDNSProvider(config)
+	if err != nil {
+		t.Fatalf("NewDNSProvider error: %v", err)
+	}
+
+	if provider.Name() != "test-dns" {
+		t.Errorf("Name() = %q, want test-dns", provider.Name())
+	}
+	if provider.Type() != ProviderTypeDNS {
+		t.Errorf("Type() = %q, want dns", provider.Type())
+	}
+	if provider.domain != "_http._tcp.example.com" {
+		t.Errorf("domain = %q, want _http._tcp.example.com", provider.domain)
+	}
+	if provider.resolver == nil {
+		t.Error("resolver should not be nil")
+	}
+}
+
+func TestNewDNSProvider_MissingDomain(t *testing.T) {
+	config := &ProviderConfig{
+		Type:    ProviderTypeDNS,
+		Name:    "test-dns",
+		Refresh: 5 * time.Second,
+		Options: map[string]string{},
+	}
+
+	_, err := NewDNSProvider(config)
+	if err == nil {
+		t.Error("Expected error for missing domain option")
+	}
+}
+
+func TestNewDNSProvider_WithNameserver(t *testing.T) {
+	config := &ProviderConfig{
+		Type:    ProviderTypeDNS,
+		Name:    "test-dns",
+		Refresh: 5 * time.Second,
+		Options: map[string]string{
+			"domain":     "_http._tcp.example.com",
+			"nameserver": "8.8.8.8:53",
+		},
+	}
+
+	provider, err := NewDNSProvider(config)
+	if err != nil {
+		t.Fatalf("NewDNSProvider error: %v", err)
+	}
+
+	if provider.nameserver != "8.8.8.8:53" {
+		t.Errorf("nameserver = %q, want 8.8.8.8:53", provider.nameserver)
+	}
+	if provider.resolver.Dial == nil {
+		t.Error("resolver should have custom Dial when nameserver is set")
+	}
+}
+
+func TestDNSProvider_StartStop(t *testing.T) {
+	config := &ProviderConfig{
+		Type:    ProviderTypeDNS,
+		Name:    "test-dns",
+		Refresh: 100 * time.Millisecond,
+		Options: map[string]string{
+			"domain": "_http._tcp.invalid.example.com",
+		},
+	}
+
+	provider, err := NewDNSProvider(config)
+	if err != nil {
+		t.Fatalf("NewDNSProvider error: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	// Start should succeed even if DNS lookup fails (it logs but continues)
+	err = provider.Start(ctx)
+	if err != nil {
+		t.Fatalf("Start error: %v", err)
+	}
+
+	// Let the refresh loop run once
+	time.Sleep(200 * time.Millisecond)
+
+	err = provider.Stop()
+	if err != nil {
+		t.Fatalf("Stop error: %v", err)
+	}
+}
+
 // Ensure unused imports are consumed.
 var _ = json.Marshal

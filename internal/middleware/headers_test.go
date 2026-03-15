@@ -489,6 +489,40 @@ func TestHeadersMiddleware_CaseInsensitiveHeaderMatching(t *testing.T) {
 	}
 }
 
+func TestHeaderResponseWriter_Unwrap(t *testing.T) {
+	m := NewHeadersMiddleware(HeadersConfig{
+		ResponseAdd: map[string]string{
+			"X-Added": "value",
+		},
+	})
+
+	var wrappedWriter http.ResponseWriter
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wrappedWriter = w
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	inner := httptest.NewRecorder()
+
+	m.Wrap(next).ServeHTTP(inner, req)
+
+	// The handler receives a headerResponseWriter
+	hw, ok := wrappedWriter.(*headerResponseWriter)
+	if !ok {
+		t.Fatal("expected wrappedWriter to be *headerResponseWriter")
+	}
+
+	// Unwrap should return the original inner ResponseWriter
+	unwrapped := hw.Unwrap()
+	if unwrapped == nil {
+		t.Fatal("Unwrap() returned nil")
+	}
+	if unwrapped != inner {
+		t.Error("Unwrap() did not return the original ResponseWriter")
+	}
+}
+
 // --- Tests for helper functions ---
 
 func TestHasHeader(t *testing.T) {

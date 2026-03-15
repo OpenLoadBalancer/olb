@@ -203,6 +203,88 @@ pools:
 	}
 }
 
+func TestLoad(t *testing.T) {
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "test.yaml")
+
+	configContent := `
+version: "1"
+listeners:
+  - name: http
+    address: ":80"
+    routes:
+      - path: /
+        pool: backend
+
+pools:
+  - name: backend
+    backends:
+      - address: "10.0.1.10:8080"
+`
+
+	if err := os.WriteFile(configFile, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
+
+	cfg, err := Load(configFile)
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	if cfg.Version != "1" {
+		t.Errorf("Version = %q, want %q", cfg.Version, "1")
+	}
+	if len(cfg.Listeners) != 1 {
+		t.Errorf("len(Listeners) = %d, want 1", len(cfg.Listeners))
+	}
+	if cfg.Listeners[0].Name != "http" {
+		t.Errorf("Listeners[0].Name = %q, want %q", cfg.Listeners[0].Name, "http")
+	}
+}
+
+func TestLoad_NonExistentFile(t *testing.T) {
+	_, err := Load("/nonexistent/path/config.yaml")
+	if err == nil {
+		t.Error("Load() should fail for non-existent file")
+	}
+}
+
+func TestLoad_WithEnvVars(t *testing.T) {
+	os.Setenv("OLB_TEST_ADDR", ":9999")
+	defer os.Unsetenv("OLB_TEST_ADDR")
+
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "test.yaml")
+
+	configContent := `
+version: "1"
+listeners:
+  - name: http
+    address: "${OLB_TEST_ADDR}"
+    routes:
+      - path: /
+        pool: backend
+
+pools:
+  - name: backend
+    backends:
+      - address: "10.0.1.10:8080"
+`
+
+	if err := os.WriteFile(configFile, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
+
+	cfg, err := Load(configFile)
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	if cfg.Listeners[0].Address != ":9999" {
+		t.Errorf("Address = %q, want %q", cfg.Listeners[0].Address, ":9999")
+	}
+}
+
 func TestConfig_HealthCheck(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "test.yaml")

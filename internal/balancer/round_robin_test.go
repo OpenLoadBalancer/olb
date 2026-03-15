@@ -160,6 +160,52 @@ func BenchmarkRoundRobin_Next(b *testing.B) {
 	}
 }
 
+func TestRoundRobin_Add_NoOp(t *testing.T) {
+	rr := NewRoundRobin()
+	b1 := backend.NewBackend("b1", "127.0.0.1:8080")
+
+	// Add should be a no-op and not panic
+	rr.Add(b1)
+
+	// Verify balancer still works after Add
+	backends := []*backend.Backend{b1}
+	result := rr.Next(backends)
+	if result != b1 {
+		t.Errorf("Next() after Add = %v, want %v", result, b1)
+	}
+}
+
+func TestRoundRobin_Remove_NoOp(t *testing.T) {
+	rr := NewRoundRobin()
+	b1 := backend.NewBackend("b1", "127.0.0.1:8080")
+
+	// Remove should be a no-op and not panic
+	rr.Remove("b1")
+	rr.Remove("nonexistent")
+
+	// Verify balancer still works after Remove
+	backends := []*backend.Backend{b1}
+	result := rr.Next(backends)
+	if result != b1 {
+		t.Errorf("Next() after Remove = %v, want %v", result, b1)
+	}
+}
+
+func TestRoundRobin_Update_NoOp(t *testing.T) {
+	rr := NewRoundRobin()
+	b1 := backend.NewBackend("b1", "127.0.0.1:8080")
+
+	// Update should be a no-op and not panic
+	rr.Update(b1)
+
+	// Verify balancer still works after Update
+	backends := []*backend.Backend{b1}
+	result := rr.Next(backends)
+	if result != b1 {
+		t.Errorf("Next() after Update = %v, want %v", result, b1)
+	}
+}
+
 func BenchmarkRoundRobin_Next_SingleBackend(b *testing.B) {
 	rr := NewRoundRobin()
 

@@ -564,6 +564,92 @@ func TestDefaultRules(t *testing.T) {
 	}
 }
 
+func TestWAF_SetLogger(t *testing.T) {
+	waf, err := New(nil)
+	if err != nil {
+		t.Fatalf("New error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	customLogger := &JSONLogger{Writer: &buf}
+
+	waf.SetLogger(customLogger)
+
+	// Verify the logger is set by processing a request that triggers a match
+	req := httptest.NewRequest("GET", "http://example.com/?id=1'+OR+'1'='1", nil)
+	req.URL.RawQuery = "id=1'+OR+'1'='1"
+
+	_, err = waf.Process(req)
+	if err != nil {
+		t.Fatalf("Process error: %v", err)
+	}
+
+	// The custom logger should have received log entries
+	if buf.Len() == 0 {
+		t.Error("Expected log output from custom logger")
+	}
+	if !strings.Contains(buf.String(), "sqli-001") {
+		t.Error("Log output should contain SQL injection rule ID")
+	}
+}
+
+func TestJSONLogger_Log(t *testing.T) {
+	var buf bytes.Buffer
+	logger := &JSONLogger{Writer: &buf}
+
+	match := &Match{
+		RuleID:       "test-rule",
+		RuleName:     "Test Rule",
+		Target:       "args",
+		Pattern:      "test-pattern",
+		MatchedValue: "matched-value",
+		Action:       ActionBlock,
+		Severity:     SeverityCritical,
+		Score:        10,
+	}
+
+	req := httptest.NewRequest("POST", "http://example.com/api?key=value", nil)
+	req.RemoteAddr = "192.168.1.100:12345"
+	req.Header.Set("User-Agent", "SecurityScanner/1.0")
+
+	logger.Log(match, req)
+
+	output := buf.String()
+
+	// Verify all expected fields are present in the JSON output
+	if !strings.Contains(output, `"rule_id":"test-rule"`) {
+		t.Error("Log output should contain rule_id")
+	}
+	if !strings.Contains(output, `"remote_addr":"192.168.1.100:12345"`) {
+		t.Error("Log output should contain remote_addr")
+	}
+	if !strings.Contains(output, `"method":"POST"`) {
+		t.Error("Log output should contain method")
+	}
+	if !strings.Contains(output, `"user_agent":"SecurityScanner/1.0"`) {
+		t.Error("Log output should contain user_agent")
+	}
+	if !strings.Contains(output, `"severity":"critical"`) {
+		t.Error("Log output should contain severity")
+	}
+	// Output should end with newline
+	if output[len(output)-1] != '\n' {
+		t.Error("Log output should end with newline")
+	}
+}
+
+func TestDefaultLogger_Log(t *testing.T) {
+	// Default logger is a no-op, should not panic
+	logger := &defaultLogger{}
+	match := &Match{
+		RuleID: "test",
+	}
+	req := httptest.NewRequest("GET", "http://example.com/", nil)
+
+	// Should not panic
+	logger.Log(match, req)
+}
+
 func BenchmarkWAF_Process(b *testing.B) {
 	waf, _ := New(nil)
 	req := httptest.NewRequest("GET", "http://example.com/?q=hello", nil)

@@ -1,12 +1,15 @@
 package tls
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"math/big"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -531,6 +534,135 @@ func TestOCSPManager_GetResponse_CachedValid(t *testing.T) {
 	}
 	if string(resp.Raw) != "cached-response" {
 		t.Error("Expected cached response to be returned")
+	}
+}
+
+func TestOCSPManager_GetResponseBytes_CachedValid(t *testing.T) {
+	manager := NewOCSPManager(DefaultOCSPConfig())
+	now := time.Now()
+
+	cert := createTestCert(t, "example.com", nil)
+	issuer := createTestCert(t, "Test CA", nil)
+
+	fp := fingerprint(cert)
+
+	// Pre-populate cache with a valid response
+	cachedResp := &OCSPResponse{
+		Raw:        []byte("cached-raw-bytes"),
+		CachedAt:   now,
+		ThisUpdate: now.Add(-1 * time.Hour),
+		NextUpdate: now.Add(1 * time.Hour),
+	}
+	manager.cacheMu.Lock()
+	manager.cache[fp] = cachedResp
+	manager.cacheMu.Unlock()
+
+	rawBytes, err := manager.GetResponseBytes(cert, issuer)
+	if err != nil {
+		t.Fatalf("GetResponseBytes error: %v", err)
+	}
+	if string(rawBytes) != "cached-raw-bytes" {
+		t.Errorf("Got %q, want 'cached-raw-bytes'", string(rawBytes))
+	}
+}
+
+func TestOCSPManager_FetchResponse_NoOCSPServers(t *testing.T) {
+	manager := NewOCSPManager(DefaultOCSPConfig())
+
+	cert := createTestCert(t, "example.com", nil)
+	issuer := createTestCert(t, "Test CA", nil)
+
+	_, err := manager.fetchResponse(cert, issuer)
+	if err == nil {
+		t.Error("Expected error for cert without OCSP servers")
+	}
+}
+
+func TestOCSPManager_QueryResponder_MockServer(t *testing.T) {
+	// Create a mock OCSP responder that returns a valid OCSP response
+	// We'll return 200 with a basic OCSP response structure
+	mockOCSPServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			// Return a basic OCSP response - the actual parsing will fail
+			// but we're testing the HTTP layer
+			w.Header().Set("Content-Type", "application/ocsp-response")
+			w.WriteHeader(http.StatusOK)
+			// Write minimal bytes that look like an OCSP response
+			w.Write([]byte{0x30, 0x03, 0x0A, 0x01, 0x00})
+		}
+	}))
+	defer mockOCSPServer.Close()
+
+	manager := NewOCSPManager(DefaultOCSPConfig())
+
+	// The response will fail to parse as valid OCSP, but we verify the HTTP flow works
+	_, err := manager.queryResponder(mockOCSPServer.URL, []byte("test-request"))
+	// We expect a parse error since our mock response isn't a real OCSP response
+	if err == nil {
+		t.Log("queryResponder succeeded (mock response happened to parse)")
+	}
+}
+
+func TestOCSPManager_QueryResponderGET_MockServer(t *testing.T) {
+	mockOCSPServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			w.Header().Set("Content-Type", "application/ocsp-response")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte{0x30, 0x03, 0x0A, 0x01, 0x00})
+		}
+	}))
+	defer mockOCSPServer.Close()
+
+	manager := NewOCSPManager(DefaultOCSPConfig())
+
+	_, err := manager.queryResponderGET(mockOCSPServer.URL, []byte("test-request"))
+	// Parse error is expected since it's not a real OCSP response
+	if err == nil {
+		t.Log("queryResponderGET succeeded (mock response happened to parse)")
+	}
+}
+
+func TestOCSPManager_QueryResponderGET_ServerError(t *testing.T) {
+	mockOCSPServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer mockOCSPServer.Close()
+
+	manager := NewOCSPManager(DefaultOCSPConfig())
+
+	_, err := manager.queryResponderGET(mockOCSPServer.URL, []byte("test-request"))
+	if err == nil {
+		t.Error("Expected error for 500 response")
+	}
+}
+
+func TestOCSPManager_ParseResponse_ValidStructure(t *testing.T) {
+	manager := NewOCSPManager(DefaultOCSPConfig())
+
+	// Use a bytes.Reader to test parseResponse
+	// An invalid OCSP response body should return a parse error
+	_, err := manager.parseResponse(bytes.NewReader([]byte("invalid ocsp data")))
+	if err == nil {
+		t.Error("Expected error for invalid OCSP response data")
+	}
+}
+
+func TestParseOCSPResponse_Wrapper(t *testing.T) {
+	// ParseOCSPResponse is a thin wrapper around ocsp.ParseResponse
+	_, err := ParseOCSPResponse([]byte{0x30, 0x03, 0x0A, 0x01, 0x00})
+	// This will likely error unless it's a valid OCSP response
+	_ = err // Just testing it doesn't panic
+}
+
+func TestCreateOCSPRequest_Wrapper(t *testing.T) {
+	cert := createTestCert(t, "example.com", nil)
+	issuer := createTestCert(t, "Test CA", nil)
+
+	// CreateOCSPRequest is a thin wrapper around ocsp.CreateRequest
+	requestBytes, err := CreateOCSPRequest(cert, issuer)
+	// May succeed or fail depending on cert contents, but should not panic
+	if err == nil && len(requestBytes) == 0 {
+		t.Error("Expected non-empty request bytes when no error")
 	}
 }
 

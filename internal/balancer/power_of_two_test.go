@@ -197,12 +197,30 @@ func TestPowerOfTwo_Remove(t *testing.T) {
 	p2c.Remove("nonexistent")
 }
 
-func TestPowerOfTwo_Update(t *testing.T) {
+func TestPowerOfTwo_Update_NoOp(t *testing.T) {
 	p2c := NewPowerOfTwo()
 	b1 := backend.NewBackend("b1", "127.0.0.1:8080")
+	b2 := backend.NewBackend("b2", "127.0.0.1:8081")
+
+	p2c.Add(b1)
+	p2c.Add(b2)
 
 	// Update is a no-op for PowerOfTwo, but should not panic
 	p2c.Update(b1)
+
+	// Verify backends are still tracked after Update
+	p2c.mu.RLock()
+	if len(p2c.backends) != 2 {
+		t.Errorf("expected 2 backends after Update, got %d", len(p2c.backends))
+	}
+	p2c.mu.RUnlock()
+
+	// Balancer should still function after Update
+	backends := []*backend.Backend{b1, b2}
+	result := p2c.Next(backends)
+	if result == nil {
+		t.Error("Next() returned nil after Update")
+	}
 }
 
 func TestPowerOfTwo_ConcurrentAccess(t *testing.T) {

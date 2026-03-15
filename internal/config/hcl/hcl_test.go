@@ -3,6 +3,7 @@ package hcl
 import (
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -1030,6 +1031,170 @@ func TestDecodeNilPointerError(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Benchmarks
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Test: TokenType.String() coverage
+// ---------------------------------------------------------------------------
+
+func TestTokenTypeString(t *testing.T) {
+	tests := []struct {
+		tt   TokenType
+		want string
+	}{
+		{TokenEOF, "EOF"},
+		{TokenNewline, "NEWLINE"},
+		{TokenIdent, "IDENT"},
+		{TokenString, "STRING"},
+		{TokenHeredoc, "HEREDOC"},
+		{TokenNumber, "NUMBER"},
+		{TokenBool, "BOOL"},
+		{TokenEquals, "EQUALS"},
+		{TokenLBrace, "LBRACE"},
+		{TokenRBrace, "RBRACE"},
+		{TokenLBracket, "LBRACKET"},
+		{TokenRBracket, "RBRACKET"},
+		{TokenComma, "COMMA"},
+		{TokenDot, "DOT"},
+		{TokenInterpolation, "INTERPOLATION"},
+		{TokenComment, "COMMENT"},
+		{TokenType(99), "TOKEN(99)"},
+	}
+
+	for _, tt := range tests {
+		got := tt.tt.String()
+		if got != tt.want {
+			t.Errorf("TokenType(%d).String() = %q, want %q", tt.tt, got, tt.want)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Test: Token.String() coverage
+// ---------------------------------------------------------------------------
+
+func TestTokenString(t *testing.T) {
+	tok := Token{
+		Type:  TokenIdent,
+		Value: "name",
+		Line:  1,
+		Col:   5,
+	}
+
+	s := tok.String()
+	if s == "" {
+		t.Error("Token.String() should not be empty")
+	}
+	// Should contain the type, value, and position
+	if !strings.Contains(s, "IDENT") {
+		t.Errorf("Token.String() = %q, should contain IDENT", s)
+	}
+	if !strings.Contains(s, "name") {
+		t.Errorf("Token.String() = %q, should contain name", s)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Test: Lexer.peekAt (tested indirectly through parsing)
+// ---------------------------------------------------------------------------
+
+func TestLexerPeekAt(t *testing.T) {
+	// peekAt is used internally by the lexer for multi-character lookahead
+	// (e.g., detecting <<EOF heredocs, //, /* comments).
+	// We test it indirectly by parsing content that requires multi-char lookahead.
+	input := `
+description = <<EOF
+line1
+line2
+EOF
+comment_test = "after_heredoc"
+`
+	m, err := Parse([]byte(input))
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	if m["description"] != "line1\nline2" {
+		t.Errorf("description = %q, want %q", m["description"], "line1\nline2")
+	}
+	if m["comment_test"] != "after_heredoc" {
+		t.Errorf("comment_test = %v, want %q", m["comment_test"], "after_heredoc")
+	}
+
+	// Also test with // comments to exercise peekAt for / followed by /
+	input2 := `
+// double slash comment
+value = 42
+`
+	m2, err := Parse([]byte(input2))
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	if m2["value"] != int64(42) {
+		t.Errorf("value = %v, want 42", m2["value"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Test: NodeType.String() coverage
+// ---------------------------------------------------------------------------
+
+func TestNodeTypeString(t *testing.T) {
+	tests := []struct {
+		nt   NodeType
+		want string
+	}{
+		{NodeBody, "BODY"},
+		{NodeAttribute, "ATTRIBUTE"},
+		{NodeBlock, "BLOCK"},
+		{NodeLiteral, "LITERAL"},
+		{NodeList, "LIST"},
+		{NodeObject, "OBJECT"},
+		{NodeType(99), "NODE(99)"},
+	}
+
+	for _, tt := range tests {
+		got := tt.nt.String()
+		if got != tt.want {
+			t.Errorf("NodeType(%d).String() = %q, want %q", tt.nt, got, tt.want)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Test: Parser.peek and Parser.peekN coverage
+// ---------------------------------------------------------------------------
+
+func TestParserPeekAndPeekN(t *testing.T) {
+	// Test peek and peekN indirectly through parsing an attribute
+	// which requires the parser to look ahead to determine if an
+	// identifier is a key (followed by =) or a block type.
+	input := `
+block_label "label1" "label2" {
+  key = "value"
+}
+
+simple_key = 123
+`
+	m, err := Parse([]byte(input))
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	// The parser uses peek/peekN to distinguish blocks from attributes.
+	if m["simple_key"] != int64(123) {
+		t.Errorf("simple_key = %v, want 123", m["simple_key"])
+	}
+
+	blocks := m["block_label"].([]interface{})
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(blocks))
+	}
+	block := blocks[0].(map[string]interface{})
+	labels := block["__labels__"].([]string)
+	if len(labels) != 2 || labels[0] != "label1" || labels[1] != "label2" {
+		t.Errorf("labels = %v, want [label1 label2]", labels)
+	}
+}
 
 func BenchmarkParse(b *testing.B) {
 	input := []byte(`

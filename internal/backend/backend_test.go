@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"net"
 	"sync"
 	"testing"
 	"time"
@@ -287,6 +288,44 @@ func TestBackendString(t *testing.T) {
 	expected := "backend1@127.0.0.1:8080"
 	if got := b.String(); got != expected {
 		t.Errorf("Backend.String() = %v, want %v", got, expected)
+	}
+}
+
+func TestBackendDial(t *testing.T) {
+	// Start a real TCP listener
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to start listener: %v", err)
+	}
+	defer ln.Close()
+
+	addr := ln.Addr().String()
+	b := NewBackend("test-dial", addr)
+
+	// Accept connections in background
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		conn.Close()
+	}()
+
+	// Dial should succeed
+	conn, err := b.Dial(2 * time.Second)
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	conn.Close()
+}
+
+func TestBackendDial_ConnectionRefused(t *testing.T) {
+	// Use a port that is not listening
+	b := NewBackend("test-dial-fail", "127.0.0.1:1")
+
+	_, err := b.Dial(100 * time.Millisecond)
+	if err == nil {
+		t.Error("Dial() should return error for refused connection")
 	}
 }
 

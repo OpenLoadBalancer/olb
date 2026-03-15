@@ -1352,6 +1352,92 @@ func TestDockerProvider_CustomLabelPrefix(t *testing.T) {
 	}
 }
 
+func TestDockerProvider_SetHTTPClient(t *testing.T) {
+	config := &ProviderConfig{
+		Type:    ProviderTypeDocker,
+		Name:    "test",
+		Options: map[string]string{},
+	}
+	p, _ := NewDockerProvider(config)
+
+	customClient := &http.Client{Timeout: 99 * time.Second}
+	p.SetHTTPClient(customClient)
+
+	if p.client != customClient {
+		t.Error("SetHTTPClient did not set the custom client")
+	}
+	if p.client.Timeout != 99*time.Second {
+		t.Errorf("Timeout = %v, want 99s", p.client.Timeout)
+	}
+}
+
+func TestDockerProvider_InspectContainer_MockServer(t *testing.T) {
+	mock := newMockDockerServer(t)
+	defer mock.close()
+
+	mock.setContainers([]dockerContainer{
+		makeContainer("abc123def456abcd", "web-app", "172.17.0.2", map[string]string{
+			"olb.enable": "true",
+			"olb.port":   "8080",
+		}),
+	})
+
+	p := newTestDockerProvider(t, mock, nil)
+	p.ctx, p.cancel = context.WithCancel(context.Background())
+	defer p.cancel()
+
+	inspect, err := p.inspectContainer("abc123def456abcd")
+	if err != nil {
+		t.Fatalf("inspectContainer error: %v", err)
+	}
+
+	if inspect.ID != "abc123def456abcd" {
+		t.Errorf("ID = %q, want abc123def456abcd", inspect.ID)
+	}
+	if inspect.Labels["olb.enable"] != "true" {
+		t.Errorf("Labels[olb.enable] = %q, want true", inspect.Labels["olb.enable"])
+	}
+}
+
+func TestDockerProvider_InspectContainer_NotFound(t *testing.T) {
+	mock := newMockDockerServer(t)
+	defer mock.close()
+
+	mock.setContainers([]dockerContainer{})
+
+	p := newTestDockerProvider(t, mock, nil)
+	p.ctx, p.cancel = context.WithCancel(context.Background())
+	defer p.cancel()
+
+	_, err := p.inspectContainer("nonexistent")
+	if err == nil {
+		t.Error("Expected error for nonexistent container")
+	}
+}
+
+func TestDockerProvider_DockerConfigMethod(t *testing.T) {
+	config := &ProviderConfig{
+		Type:    ProviderTypeDocker,
+		Name:    "test",
+		Options: map[string]string{},
+	}
+	p, _ := NewDockerProvider(config)
+
+	dc := p.DockerConfig()
+	if dc == nil {
+		t.Fatal("DockerConfig() returned nil")
+	}
+	if dc.SocketPath != "/var/run/docker.sock" {
+		t.Errorf("SocketPath = %q, want /var/run/docker.sock", dc.SocketPath)
+	}
+	if dc.LabelPrefix != "olb." {
+		t.Errorf("LabelPrefix = %q, want olb.", dc.LabelPrefix)
+	}
+	if dc != p.dockerConfig {
+		t.Error("DockerConfig() should return the same config instance")
+	}
+}
+
 func TestDockerProvider_AddRemoveEvents(t *testing.T) {
 	mock := newMockDockerServer(t)
 	defer mock.close()

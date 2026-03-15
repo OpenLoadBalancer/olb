@@ -243,6 +243,71 @@ func TestMaglev_LookupTableSize(t *testing.T) {
 	}
 }
 
+func TestMaglev_FindNextAvailable_AllUnavailable(t *testing.T) {
+	m := NewMaglev()
+
+	// Add backends and mark them all as unavailable
+	be1 := backend.NewBackend("backend-1", "10.0.0.1:8080")
+	be1.SetState(backend.StateDown)
+	be2 := backend.NewBackend("backend-2", "10.0.0.2:8080")
+	be2.SetState(backend.StateDown)
+
+	m.Add(be1)
+	m.Add(be2)
+
+	// All backends are unavailable, so Next should return nil
+	backends := []*backend.Backend{be1, be2}
+	result := m.Next(backends)
+	if result != nil {
+		t.Errorf("Next() with all unavailable backends should return nil, got %v", result.ID)
+	}
+}
+
+func TestMaglev_FindNextAvailable_OneAvailable(t *testing.T) {
+	m := NewMaglev()
+
+	// Add multiple backends, only one available
+	be1 := backend.NewBackend("backend-1", "10.0.0.1:8080")
+	be1.SetState(backend.StateDown)
+	be2 := backend.NewBackend("backend-2", "10.0.0.2:8080")
+	be2.SetState(backend.StateUp)
+	be3 := backend.NewBackend("backend-3", "10.0.0.3:8080")
+	be3.SetState(backend.StateDown)
+
+	m.Add(be1)
+	m.Add(be2)
+	m.Add(be3)
+
+	// Only backend-2 is available; findNextAvailable should find it
+	backends := []*backend.Backend{be1, be2, be3}
+
+	// Run several times to exercise findNextAvailable on different positions
+	for i := 0; i < 20; i++ {
+		result := m.Next(backends)
+		if result == nil {
+			t.Fatalf("Next() returned nil at iteration %d, want backend-2", i)
+		}
+		if result.ID != "backend-2" {
+			t.Errorf("Next() = %v at iteration %d, want backend-2", result.ID, i)
+		}
+	}
+}
+
+func TestMaglev_FindNextAvailable_EmptyBackends(t *testing.T) {
+	m := NewMaglev()
+
+	// Add a backend to populate the lookup table, then query with empty available list
+	be1 := backend.NewBackend("backend-1", "10.0.0.1:8080")
+	be1.SetState(backend.StateUp)
+	m.Add(be1)
+
+	// No backends provided to Next
+	result := m.Next([]*backend.Backend{})
+	if result != nil {
+		t.Errorf("Next() with empty backends should return nil, got %v", result.ID)
+	}
+}
+
 func BenchmarkMaglev_Next(b *testing.B) {
 	m := NewMaglev()
 

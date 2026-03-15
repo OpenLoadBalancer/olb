@@ -1346,6 +1346,36 @@ unknown_field = "ignored"
 }
 
 // ---------------------------------------------------------------------------
+// 41. skipWhitespace coverage (tested indirectly)
+// ---------------------------------------------------------------------------
+
+func TestSkipWhitespace(t *testing.T) {
+	// skipWhitespace is a no-op in the current TOML parser (whitespace is
+	// handled by the lexer), but we still exercise the code path by parsing
+	// TOML with various whitespace around = signs and values.
+	input := `
+key1   =    "value1"
+key2=    "value2"
+key3   ="value3"
+key4="value4"
+`
+	m := mustParse(t, input)
+
+	if m["key1"] != "value1" {
+		t.Errorf("key1 = %v, want value1", m["key1"])
+	}
+	if m["key2"] != "value2" {
+		t.Errorf("key2 = %v, want value2", m["key2"])
+	}
+	if m["key3"] != "value3" {
+		t.Errorf("key3 = %v, want value3", m["key3"])
+	}
+	if m["key4"] != "value4" {
+		t.Errorf("key4 = %v, want value4", m["key4"])
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Benchmark
 // ---------------------------------------------------------------------------
 

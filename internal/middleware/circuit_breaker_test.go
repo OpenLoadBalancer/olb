@@ -843,6 +843,74 @@ func TestCircuitBreaker_ImplementsMiddlewareInterface(t *testing.T) {
 	var _ Middleware = (*CircuitBreakerMiddleware)(nil)
 }
 
+func TestStatusRecorder_Write_SetsStatusOK(t *testing.T) {
+	inner := httptest.NewRecorder()
+	sr := &statusRecorder{ResponseWriter: inner, statusCode: http.StatusOK}
+
+	// Write without calling WriteHeader first should trigger implicit 200
+	n, err := sr.Write([]byte("hello"))
+	if err != nil {
+		t.Errorf("Write error = %v", err)
+	}
+	if n != 5 {
+		t.Errorf("Write returned %d, want 5", n)
+	}
+	if !sr.wroteHeader {
+		t.Error("wroteHeader should be true after Write")
+	}
+	if sr.statusCode != http.StatusOK {
+		t.Errorf("statusCode = %d, want %d", sr.statusCode, http.StatusOK)
+	}
+}
+
+func TestStatusRecorder_Write_WithExplicitHeader(t *testing.T) {
+	inner := httptest.NewRecorder()
+	sr := &statusRecorder{ResponseWriter: inner, statusCode: http.StatusOK}
+
+	sr.WriteHeader(http.StatusCreated)
+	n, err := sr.Write([]byte("data"))
+	if err != nil {
+		t.Errorf("Write error = %v", err)
+	}
+	if n != 4 {
+		t.Errorf("Write returned %d, want 4", n)
+	}
+	if sr.statusCode != http.StatusCreated {
+		t.Errorf("statusCode = %d, want %d", sr.statusCode, http.StatusCreated)
+	}
+}
+
+func TestStatusRecorder_Flush(t *testing.T) {
+	// httptest.ResponseRecorder implements http.Flusher
+	inner := httptest.NewRecorder()
+	sr := &statusRecorder{ResponseWriter: inner, statusCode: http.StatusOK}
+
+	// Flush should not panic and should delegate to the underlying writer
+	sr.Flush()
+
+	if !inner.Flushed {
+		t.Error("Flush should have been called on inner ResponseWriter")
+	}
+}
+
+func TestStatusRecorder_Flush_NonFlusher(t *testing.T) {
+	// Use a minimal ResponseWriter that does NOT implement http.Flusher
+	inner := &minimalResponseWriter{header: make(http.Header)}
+	sr := &statusRecorder{ResponseWriter: inner, statusCode: http.StatusOK}
+
+	// Flush should not panic even if inner writer doesn't support it
+	sr.Flush()
+}
+
+// minimalResponseWriter is a basic http.ResponseWriter that does NOT implement http.Flusher.
+type minimalResponseWriter struct {
+	header http.Header
+}
+
+func (m *minimalResponseWriter) Header() http.Header         { return m.header }
+func (m *minimalResponseWriter) Write(b []byte) (int, error) { return len(b), nil }
+func (m *minimalResponseWriter) WriteHeader(_ int)           {}
+
 func TestCircuitBreaker_FullLifecycle(t *testing.T) {
 	// End-to-end test: Closed -> Open -> HalfOpen -> Open -> HalfOpen -> Closed
 	cb := NewCircuitBreaker(CircuitBreakerConfig{

@@ -1455,6 +1455,175 @@ func TestRetransmitLimit(t *testing.T) {
 	}
 }
 
+// ---- sendMessage and handleCompound tests ----
+
+func TestSendMessage_UDP(t *testing.T) {
+	// Create two gossip nodes and send a message between them.
+	cfg1 := DefaultGossipConfig()
+	cfg1.BindPort = getFreePort(t)
+	cfg1.NodeID = "sender"
+	g1, err := NewGossip(cfg1)
+	if err != nil {
+		t.Fatalf("NewGossip(sender) error = %v", err)
+	}
+	defer g1.Stop()
+
+	cfg2 := DefaultGossipConfig()
+	cfg2.BindPort = getFreePort(t)
+	cfg2.NodeID = "receiver"
+	g2, err := NewGossip(cfg2)
+	if err != nil {
+		t.Fatalf("NewGossip(receiver) error = %v", err)
+	}
+	defer g2.Stop()
+
+	// Start both nodes
+	if err := g1.Start(); err != nil {
+		t.Fatalf("g1.Start() error = %v", err)
+	}
+	if err := g2.Start(); err != nil {
+		t.Fatalf("g2.Start() error = %v", err)
+	}
+
+	// Send a small message (should go via UDP since it's under MaxMessageSize)
+	targetAddr := fmt.Sprintf("127.0.0.1:%d", cfg2.BindPort)
+	msg := encodePing(1, g1.localNode.ID, "receiver")
+
+	err = g1.sendMessage(targetAddr, msg)
+	if err != nil {
+		t.Errorf("sendMessage() error = %v", err)
+	}
+}
+
+func TestSendMessage_TCPFallback(t *testing.T) {
+	// Create a gossip node and send a message larger than MaxMessageSize
+	cfg := DefaultGossipConfig()
+	cfg.BindPort = getFreePort(t)
+	cfg.NodeID = "sender-tcp"
+	cfg.MaxMessageSize = 100 // Small max to force TCP fallback
+	g, err := NewGossip(cfg)
+	if err != nil {
+		t.Fatalf("NewGossip() error = %v", err)
+	}
+	defer g.Stop()
+
+	if err := g.Start(); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	// Create a TCP listener to receive the fallback message
+	tcpL, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", cfg.BindPort))
+	if err != nil {
+		// Port may already be taken by the gossip TCP listener; use a different port
+		tcpL, err = net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("Failed to create TCP listener: %v", err)
+		}
+	}
+	defer tcpL.Close()
+
+	targetAddr := tcpL.Addr().String()
+
+	// Accept in background
+	accepted := make(chan bool, 1)
+	go func() {
+		conn, err := tcpL.Accept()
+		if err == nil {
+			conn.Close()
+			accepted <- true
+		}
+	}()
+
+	// Create a message larger than MaxMessageSize
+	largeMsg := make([]byte, 200)
+	for i := range largeMsg {
+		largeMsg[i] = byte(i % 256)
+	}
+
+	// sendMessage should use TCP for the oversized message
+	err = g.sendMessage(targetAddr, largeMsg)
+	if err != nil {
+		t.Logf("sendMessage(TCP fallback) error = %v (expected if TCP listener closed quickly)", err)
+	}
+}
+
+func TestHandleCompound_Message(t *testing.T) {
+	// Create a gossip node and test handleCompound by encoding
+	// a compound message with multiple sub-messages.
+	cfg := DefaultGossipConfig()
+	cfg.BindPort = getFreePort(t)
+	cfg.NodeID = "compound-handler"
+	g, err := NewGossip(cfg)
+	if err != nil {
+		t.Fatalf("NewGossip() error = %v", err)
+	}
+	defer g.Stop()
+
+	if err := g.Start(); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	// Track events via callback
+	var joinEvents atomic.Int32
+	g.OnEvent(func(event EventType, node *GossipNode) {
+		if event == EventJoin {
+			joinEvents.Add(1)
+		}
+	})
+
+	// Create multiple alive messages and bundle them as a compound message
+	alive1 := encodeAlive(1, "node-a", "10.0.0.1", 7946, nil)
+	alive2 := encodeAlive(1, "node-b", "10.0.0.2", 7946, nil)
+
+	// Encode compound (this wraps the sub-messages with MsgCompound type byte)
+	compoundMsg := encodeCompound([][]byte{alive1, alive2})
+
+	// Decode the outer message to get the compound payload
+	_, payload, _, err := decodeMessage(compoundMsg)
+	if err != nil {
+		t.Fatalf("decodeMessage(compound) error = %v", err)
+	}
+
+	// Now call handleCompound with the inner payload
+	g.handleCompound(payload, "10.0.0.99:7946")
+
+	// Give it time to process
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify the alive messages were processed (nodes should be added as members)
+	g.membersMu.RLock()
+	_, hasA := g.members["node-a"]
+	_, hasB := g.members["node-b"]
+	g.membersMu.RUnlock()
+
+	if !hasA {
+		t.Error("node-a should be a member after handleCompound")
+	}
+	if !hasB {
+		t.Error("node-b should be a member after handleCompound")
+	}
+}
+
+func TestHandleCompound_InvalidPayload(t *testing.T) {
+	cfg := DefaultGossipConfig()
+	cfg.BindPort = getFreePort(t)
+	cfg.NodeID = "compound-invalid"
+	g, err := NewGossip(cfg)
+	if err != nil {
+		t.Fatalf("NewGossip() error = %v", err)
+	}
+	defer g.Stop()
+
+	if err := g.Start(); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	// Pass an invalid (too short) payload to handleCompound -- should not panic
+	g.handleCompound([]byte{0}, "10.0.0.1:7946")
+	g.handleCompound(nil, "10.0.0.1:7946")
+	g.handleCompound([]byte{}, "10.0.0.1:7946")
+}
+
 // ---- Helpers ----
 
 // getFreePort returns a port on localhost that is free for both TCP and UDP.

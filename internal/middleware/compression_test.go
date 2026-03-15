@@ -525,6 +525,82 @@ func TestCompressionMiddleware_StatusCodePreserved(t *testing.T) {
 	}
 }
 
+func TestCompressionMiddleware_IsCompressibleContentType(t *testing.T) {
+	mw, _ := NewCompressionMiddleware(CompressionConfig{
+		ContentTypes: []string{"text/", "application/json", "image/svg+xml"},
+	})
+
+	tests := []struct {
+		contentType string
+		expected    bool
+	}{
+		{"", false},
+		{"text/html", true},
+		{"text/plain", true},
+		{"text/css", true},
+		{"application/json", true},
+		{"image/svg+xml", true},
+		{"image/png", false},
+		{"application/octet-stream", false},
+		{"video/mp4", false},
+		{"TEXT/HTML", true},        // case insensitive
+		{"Application/JSON", true}, // case insensitive
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.contentType, func(t *testing.T) {
+			result := mw.isCompressibleContentType(tt.contentType)
+			if result != tt.expected {
+				t.Errorf("isCompressibleContentType(%q) = %v, want %v", tt.contentType, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestCompressionMiddleware_Flush(t *testing.T) {
+	mw, _ := NewCompressionMiddleware(CompressionConfig{
+		MinSize:      10,
+		ContentTypes: []string{"text/plain"},
+	})
+
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		// Write enough to trigger compression
+		w.Write([]byte(strings.Repeat("Hello, World! ", 100)))
+		// Call Flush via the http.Flusher interface
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	// Verify the response is still valid gzip after flush
+	if rr.Header().Get("Content-Encoding") != "gzip" {
+		t.Errorf("Content-Encoding = %v, want gzip", rr.Header().Get("Content-Encoding"))
+	}
+
+	body := rr.Body.Bytes()
+	if len(body) == 0 {
+		t.Fatal("Response body is empty")
+	}
+
+	reader, err := gzip.NewReader(bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("Failed to create gzip reader: %v", err)
+	}
+	defer reader.Close()
+
+	_, err = io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("Failed to decompress after flush: %v", err)
+	}
+}
+
 func TestCompressionMiddleware_NoContentLengthHeader(t *testing.T) {
 	mw, _ := NewCompressionMiddleware(CompressionConfig{
 		MinSize:      10,

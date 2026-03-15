@@ -814,6 +814,56 @@ func TestALPNNegotiator_NegotiatedProtocol(t *testing.T) {
 	}
 }
 
+func TestNewHTTP2BackendTransport_WithConfig(t *testing.T) {
+	config := &HTTP2Config{
+		EnableHTTP2:          true,
+		EnableH2C:            true,
+		MaxConcurrentStreams: 100,
+		IdleTimeout:          30 * time.Second,
+	}
+	transport := NewHTTP2BackendTransport(config)
+
+	if transport == nil {
+		t.Fatal("NewHTTP2BackendTransport returned nil")
+	}
+	if transport.config != config {
+		t.Error("Config mismatch")
+	}
+	if transport.config.MaxConcurrentStreams != 100 {
+		t.Errorf("MaxConcurrentStreams = %d, want 100", transport.config.MaxConcurrentStreams)
+	}
+	if transport.transport == nil {
+		t.Error("Internal transport should not be nil")
+	}
+}
+
+func TestHTTP2BackendTransport_RoundTrip(t *testing.T) {
+	// Create an h2c test server
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Test", "ok")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("h2c response"))
+	})
+
+	h2s := &http2.Server{}
+	server := httptest.NewServer(h2c.NewHandler(handler, h2s))
+	defer server.Close()
+
+	transport := NewHTTP2BackendTransport(DefaultHTTP2Config())
+
+	req, _ := http.NewRequest("GET", server.URL, nil)
+	resp, err := transport.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("RoundTrip error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != "h2c response" {
+		t.Errorf("Body = %q, want 'h2c response'", string(body))
+	}
+}
+
 // Test with real HTTP/2 server using h2c
 func TestHTTP2Handler_Integration(t *testing.T) {
 	// Create a simple handler

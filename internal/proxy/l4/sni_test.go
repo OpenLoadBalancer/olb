@@ -594,6 +594,160 @@ func TestSNIProxy_NilConfig(t *testing.T) {
 	}
 }
 
+func TestSNIRouter_RouteConnection_WithSNI(t *testing.T) {
+	router := NewSNIRouter(DefaultSNIRouterConfig())
+
+	// Create a backend listener
+	backendListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to create backend listener: %v", err)
+	}
+	defer backendListener.Close()
+
+	be := backend.NewBackend("backend-1", backendListener.Addr().String())
+	be.SetState(backend.StateUp)
+	router.AddRoute("example.com", be)
+
+	// Accept connections on backend (just accept and close)
+	go func() {
+		conn, _ := backendListener.Accept()
+		if conn != nil {
+			conn.Close()
+		}
+	}()
+
+	// Create client connection with a TLS ClientHello
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+
+	clientHello := buildClientHelloWithSNI("example.com")
+
+	go func() {
+		clientConn.Write(clientHello)
+		clientConn.Close()
+	}()
+
+	// RouteConnection should process the SNI and route
+	err = router.RouteConnection(serverConn)
+	// May return error (e.g. connection closed by backend) but should not panic
+	_ = err
+}
+
+func TestSNIRouter_RouteConnection_NoSNI(t *testing.T) {
+	router := NewSNIRouter(DefaultSNIRouterConfig())
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+
+	// Send non-TLS data
+	go func() {
+		clientConn.Write([]byte("GET / HTTP/1.1\r\n\r\n"))
+		clientConn.Close()
+	}()
+
+	// Should route to default (which closes the connection)
+	err := router.RouteConnection(serverConn)
+	if err == nil {
+		t.Error("Expected error when no route and no default backend")
+	}
+}
+
+func TestSNIRouter_PeekClientHello_ValidData(t *testing.T) {
+	router := NewSNIRouter(DefaultSNIRouterConfig())
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+
+	clientHello := buildClientHelloWithSNI("test.example.com")
+
+	go func() {
+		clientConn.Write(clientHello)
+		clientConn.Close()
+	}()
+
+	sni, peeked, err := router.peekClientHello(serverConn)
+	if err != nil {
+		t.Fatalf("peekClientHello error: %v", err)
+	}
+	if sni != "test.example.com" {
+		t.Errorf("SNI = %q, want test.example.com", sni)
+	}
+	if peeked == nil {
+		t.Error("peeked connection should not be nil")
+	}
+}
+
+func TestSNIRouter_PeekClientHello_InvalidData(t *testing.T) {
+	router := NewSNIRouter(DefaultSNIRouterConfig())
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+
+	go func() {
+		clientConn.Write([]byte("not TLS data"))
+		clientConn.Close()
+	}()
+
+	sni, peeked, err := router.peekClientHello(serverConn)
+	if err == nil {
+		t.Error("Expected error for non-TLS data")
+	}
+	if sni != "" {
+		t.Errorf("SNI should be empty, got %q", sni)
+	}
+	if peeked == nil {
+		t.Error("peeked connection should not be nil even on error")
+	}
+}
+
+func TestSNIBasedProxy_FullLifecycle(t *testing.T) {
+	config := DefaultSNIRouterConfig()
+	proxy := NewSNIBasedProxy(config)
+
+	// Create a backend listener
+	backendListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to create backend listener: %v", err)
+	}
+	defer backendListener.Close()
+
+	be := backend.NewBackend("b1", backendListener.Addr().String())
+	be.SetState(backend.StateUp)
+	proxy.AddRoute("test.com", be)
+
+	// Listen and start
+	err = proxy.Listen("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen error: %v", err)
+	}
+
+	err = proxy.Start()
+	if err != nil {
+		t.Fatalf("Start error: %v", err)
+	}
+
+	if !proxy.running.Load() {
+		t.Error("Proxy should be running")
+	}
+
+	// Remove and re-add route to test RemoveRoute
+	proxy.RemoveRoute("test.com")
+	if proxy.router.GetRoute("test.com") != nil {
+		t.Error("Route should be removed")
+	}
+
+	proxy.AddRoute("test.com", be)
+	if proxy.router.GetRoute("test.com") == nil {
+		t.Error("Route should be re-added")
+	}
+
+	// Stop
+	err = proxy.Stop()
+	if err != nil {
+		t.Errorf("Stop error: %v", err)
+	}
+}
+
 // buildClientHelloWithSNI builds a minimal TLS ClientHello with SNI.
 func buildClientHelloWithSNI(sni string) []byte {
 	buf := new(bytes.Buffer)

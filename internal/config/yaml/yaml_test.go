@@ -3065,3 +3065,52 @@ enabled: true
 		t.Errorf("Round trip failed:\noriginal: %+v\nparsed: %+v", original, parsed)
 	}
 }
+
+// ============================================================================
+// Parser.skip() coverage
+// ============================================================================
+
+func TestParser_Skip(t *testing.T) {
+	// The parser's skip() method is used internally to skip specific token
+	// types (e.g., skipping newlines and indents). We test it indirectly by
+	// parsing YAML that has various combinations of whitespace, newlines, and
+	// indentation that require the parser to use skip().
+
+	// Test with extra blank lines between items
+	input := `
+
+key1: value1
+
+
+key2: value2
+
+
+
+key3: value3
+`
+	var result map[string]string
+	if err := UnmarshalString(input, &result); err != nil {
+		t.Fatalf("Unmarshal failed: %v", err)
+	}
+
+	if result["key1"] != "value1" {
+		t.Errorf("key1 = %q, want value1", result["key1"])
+	}
+	if result["key2"] != "value2" {
+		t.Errorf("key2 = %q, want value2", result["key2"])
+	}
+	if result["key3"] != "value3" {
+		t.Errorf("key3 = %q, want value3", result["key3"])
+	}
+
+	// Test with inline flow sequences which generate bracket/comma tokens
+	// that can interact with skip logic
+	input2 := `items: [a, b, c]`
+	var result2 map[string][]string
+	if err := UnmarshalString(input2, &result2); err != nil {
+		t.Fatalf("Unmarshal failed: %v", err)
+	}
+	if len(result2["items"]) != 3 {
+		t.Errorf("items length = %d, want 3", len(result2["items"]))
+	}
+}

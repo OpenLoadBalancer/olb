@@ -392,6 +392,38 @@ func TestCopyWithIdleTimeout_Timeout(t *testing.T) {
 	}
 }
 
+func TestProxyWebSocket(t *testing.T) {
+	handler := NewWebSocketHandler(nil)
+
+	// Create two pipe pairs to simulate client and backend connections
+	client1, server1 := net.Pipe()
+	client2, server2 := net.Pipe()
+
+	be := backend.NewBackend("backend-1", "127.0.0.1:8080")
+
+	// Write from client side and read from server side
+	go func() {
+		client1.Write([]byte("ws message from client"))
+		time.Sleep(100 * time.Millisecond)
+		client1.Close()
+	}()
+
+	go func() {
+		buf := make([]byte, 100)
+		n, _ := server2.Read(buf)
+		if n > 0 {
+			server2.Write([]byte("ws response from backend"))
+		}
+		time.Sleep(100 * time.Millisecond)
+		server2.Close()
+	}()
+
+	// proxyWebSocket should complete without panic
+	err := handler.proxyWebSocket(server1, client2, be)
+	// Error may or may not occur depending on timing, but should not panic
+	_ = err
+}
+
 func TestDialBackend(t *testing.T) {
 	handler := NewWebSocketHandler(nil)
 

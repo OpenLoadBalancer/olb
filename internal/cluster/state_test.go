@@ -603,6 +603,105 @@ func TestDistributedState_HealthCount(t *testing.T) {
 	}
 }
 
+func TestDistributedState_BroadcastFullState(t *testing.T) {
+	config := &DistributedStateConfig{NodeID: "node1"}
+	ds := NewDistributedState(config)
+	mockSync := newMockStateSync()
+	ds.SetSync(mockSync)
+
+	// Add some health data
+	ds.healthMu.Lock()
+	ds.healthState["10.0.0.1:8080"] = &HealthStatus{
+		BackendAddr: "10.0.0.1:8080",
+		Healthy:     true,
+		Timestamp:   time.Now(),
+	}
+	ds.healthMu.Unlock()
+
+	// Add some session data
+	ds.sessionMu.Lock()
+	ds.sessionState["sess-full"] = &SessionEntry{
+		Key:         "sess-full",
+		BackendAddr: "10.0.0.2:8080",
+		Expires:     time.Now().Add(10 * time.Minute),
+		Timestamp:   time.Now(),
+	}
+	ds.sessionMu.Unlock()
+
+	// Call broadcastFullState directly
+	ds.broadcastFullState()
+
+	// Verify broadcast was sent
+	if mockSync.getBroadcastCount() != 1 {
+		t.Errorf("Expected 1 broadcast, got %d", mockSync.getBroadcastCount())
+	}
+
+	// Verify the broadcast is a full state message
+	mockSync.mu.Lock()
+	data := mockSync.broadcasts[0]
+	mockSync.mu.Unlock()
+
+	var msg StateMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		t.Fatalf("Failed to unmarshal broadcast: %v", err)
+	}
+
+	if msg.Type != StateMessageFull {
+		t.Errorf("Type = %q, want %q", msg.Type, StateMessageFull)
+	}
+	if msg.SenderID != "node1" {
+		t.Errorf("SenderID = %q, want node1", msg.SenderID)
+	}
+	if len(msg.Health) != 1 {
+		t.Errorf("Health entries = %d, want 1", len(msg.Health))
+	}
+	if len(msg.Sessions) != 1 {
+		t.Errorf("Session entries = %d, want 1", len(msg.Sessions))
+	}
+}
+
+func TestDistributedState_BroadcastFullState_NoSync(t *testing.T) {
+	config := &DistributedStateConfig{NodeID: "node1"}
+	ds := NewDistributedState(config)
+
+	// broadcastFullState without sync should not panic
+	ds.broadcastFullState()
+}
+
+func TestDistributedState_SyncLoop(t *testing.T) {
+	config := &DistributedStateConfig{
+		NodeID:       "node1",
+		SyncInterval: 50 * time.Millisecond, // Short interval for test
+	}
+	ds := NewDistributedState(config)
+	mockSync := newMockStateSync()
+	ds.SetSync(mockSync)
+
+	// Add some health data so broadcasts are non-empty
+	ds.healthMu.Lock()
+	ds.healthState["10.0.0.1:8080"] = &HealthStatus{
+		BackendAddr: "10.0.0.1:8080",
+		Healthy:     true,
+		Timestamp:   time.Now(),
+	}
+	ds.healthMu.Unlock()
+
+	// Start the distributed state (which starts syncLoop and cleanupLoop)
+	ds.Start()
+
+	// Wait for at least two sync intervals
+	time.Sleep(150 * time.Millisecond)
+
+	// Stop the distributed state
+	ds.Stop()
+
+	// Verify that broadcastFullState was called at least once via syncLoop
+	count := mockSync.getBroadcastCount()
+	if count < 1 {
+		t.Errorf("Expected at least 1 broadcast from syncLoop, got %d", count)
+	}
+}
+
 func TestDistributedState_NoBroadcastWithoutSync(t *testing.T) {
 	config := &DistributedStateConfig{NodeID: "node1"}
 	ds := NewDistributedState(config)

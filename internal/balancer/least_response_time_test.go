@@ -400,6 +400,47 @@ func TestLeastResponseTime_DefaultWindowSize(t *testing.T) {
 	}
 }
 
+func TestWeightedLeastResponseTime_Remove(t *testing.T) {
+	w := NewWeightedLeastResponseTime()
+
+	be := backend.NewBackend("backend-1", "10.0.0.1:8080")
+	w.Add(be)
+
+	// Verify backend was added
+	if _, ok := w.backends["backend-1"]; !ok {
+		t.Fatal("Add() did not add backend to backends map")
+	}
+
+	w.Remove("backend-1")
+
+	if _, ok := w.backends["backend-1"]; ok {
+		t.Error("Remove() did not remove backend from backends map")
+	}
+
+	// Remove non-existent should not panic
+	w.Remove("nonexistent")
+}
+
+func TestWeightedLeastResponseTime_Update(t *testing.T) {
+	w := NewWeightedLeastResponseTime()
+
+	be := backend.NewBackend("backend-1", "10.0.0.1:8080")
+	be.Weight = 1
+	w.Add(be)
+
+	updated := backend.NewBackend("backend-1", "10.0.0.1:8080")
+	updated.Weight = 10
+	w.Update(updated)
+
+	bs := w.backends["backend-1"]
+	if bs.backend.Weight != 10 {
+		t.Errorf("Update() did not update weight: got %d, want 10", bs.backend.Weight)
+	}
+
+	// Update non-existent should not panic
+	w.Update(backend.NewBackend("nonexistent", "10.0.0.1:8080"))
+}
+
 func TestLeastResponseTime_InvalidWindowSize(t *testing.T) {
 	l := NewLeastResponseTimeWithWindow(0)
 	if l.windowSize != DefaultResponseTimeWindowSize {

@@ -9,6 +9,10 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/openloadbalancer/olb/internal/config"
+	"github.com/openloadbalancer/olb/internal/logging"
+	"github.com/openloadbalancer/olb/internal/metrics"
 )
 
 // --------------------------------------------------------------------------
@@ -937,6 +941,78 @@ func TestMultiplePlugins_FullIntegration(t *testing.T) {
 // --------------------------------------------------------------------------
 // Tests: Concurrent access safety
 // --------------------------------------------------------------------------
+
+func TestPluginManager_SetLogger(t *testing.T) {
+	pm := NewPluginManager(DefaultPluginManagerConfig())
+
+	// The default logger is set during NewPluginManager
+	if pm.logger == nil {
+		t.Fatal("logger should not be nil after creation")
+	}
+
+	// Create a new logger and set it
+	newLogger := logging.NewWithDefaults()
+	pm.SetLogger(newLogger)
+
+	if pm.logger != newLogger {
+		t.Error("SetLogger did not update the logger")
+	}
+}
+
+func TestPluginManager_SetMetrics(t *testing.T) {
+	pm := NewPluginManager(DefaultPluginManagerConfig())
+
+	if pm.metrics == nil {
+		t.Fatal("metrics should not be nil after creation")
+	}
+
+	newRegistry := metrics.NewRegistry()
+	pm.SetMetrics(newRegistry)
+
+	if pm.metrics != newRegistry {
+		t.Error("SetMetrics did not update the metrics registry")
+	}
+}
+
+func TestPluginManager_SetConfig(t *testing.T) {
+	pm := NewPluginManager(DefaultPluginManagerConfig())
+
+	if pm.config == nil {
+		t.Fatal("config should not be nil after creation")
+	}
+
+	newConfig := &config.Config{}
+	pm.SetConfig(newConfig)
+
+	if pm.config != newConfig {
+		t.Error("SetConfig did not update the config")
+	}
+}
+
+func TestPluginManager_LoadPlugin_NonExistentFile(t *testing.T) {
+	pm := NewPluginManager(DefaultPluginManagerConfig())
+
+	err := pm.LoadPlugin("/nonexistent/path/plugin.so")
+	if err == nil {
+		t.Error("LoadPlugin should return error for non-existent .so file")
+	}
+}
+
+func TestPluginManager_LoadPlugin_InvalidFile(t *testing.T) {
+	// Create a temp file that is not a valid .so
+	dir := t.TempDir()
+	path := filepath.Join(dir, "fake.so")
+	if err := os.WriteFile(path, []byte("not a plugin"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	pm := NewPluginManager(DefaultPluginManagerConfig())
+
+	err := pm.LoadPlugin(path)
+	if err == nil {
+		t.Error("LoadPlugin should return error for invalid .so file")
+	}
+}
 
 func TestPluginManager_ConcurrentAccess(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
