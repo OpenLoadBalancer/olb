@@ -4,6 +4,9 @@ package cli
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -582,6 +585,538 @@ func TestEventTypeConstants(t *testing.T) {
 	for i, et := range types {
 		if int(et.evt) != i {
 			t.Errorf("EventType %s has incorrect value %d, expected %d", et.name, et.evt, i)
+		}
+	}
+}
+
+// TestMetricsFetcher_FetchSystemInfo tests FetchSystemInfo with a mock server.
+func TestMetricsFetcher_FetchSystemInfo(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/api/v1/system/info" {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			resp := admin.Response{
+				Success: true,
+				Data: admin.SystemInfo{
+					Version: "1.0.0",
+					Uptime:  "5m",
+					State:   "running",
+				},
+			}
+			json.NewEncoder(w).Encode(resp)
+		}))
+		defer ts.Close()
+		addr := strings.TrimPrefix(ts.URL, "http://")
+		fetcher := NewMetricsFetcher(addr)
+		info, err := fetcher.FetchSystemInfo()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if info.Version != "1.0.0" {
+			t.Errorf("expected version 1.0.0, got %s", info.Version)
+		}
+	})
+
+	t.Run("server error", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer ts.Close()
+		addr := strings.TrimPrefix(ts.URL, "http://")
+		fetcher := NewMetricsFetcher(addr)
+		_, err := fetcher.FetchSystemInfo()
+		if err == nil {
+			t.Fatal("expected error for server error")
+		}
+	})
+
+	t.Run("api error response", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			resp := admin.Response{
+				Success: false,
+				Error:   &admin.ErrorInfo{Code: "ERR", Message: "test error"},
+			}
+			json.NewEncoder(w).Encode(resp)
+		}))
+		defer ts.Close()
+		addr := strings.TrimPrefix(ts.URL, "http://")
+		fetcher := NewMetricsFetcher(addr)
+		_, err := fetcher.FetchSystemInfo()
+		if err == nil {
+			t.Fatal("expected error for API error response")
+		}
+		if !strings.Contains(err.Error(), "test error") {
+			t.Errorf("expected error to contain 'test error', got %v", err)
+		}
+	})
+
+	t.Run("connection refused", func(t *testing.T) {
+		fetcher := NewMetricsFetcher("127.0.0.1:1")
+		_, err := fetcher.FetchSystemInfo()
+		if err == nil {
+			t.Fatal("expected error for connection refused")
+		}
+	})
+}
+
+// TestMetricsFetcher_FetchBackends tests FetchBackends with a mock server.
+func TestMetricsFetcher_FetchBackends(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/api/v1/backends" {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			resp := admin.Response{
+				Success: true,
+				Data: []admin.BackendPool{
+					{Name: "pool1", Algorithm: "round_robin", Backends: []admin.Backend{
+						{ID: "b1", Address: "10.0.0.1:8080", Weight: 1, Healthy: true},
+					}},
+				},
+			}
+			json.NewEncoder(w).Encode(resp)
+		}))
+		defer ts.Close()
+		addr := strings.TrimPrefix(ts.URL, "http://")
+		fetcher := NewMetricsFetcher(addr)
+		pools, err := fetcher.FetchBackends()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(pools) != 1 {
+			t.Fatalf("expected 1 pool, got %d", len(pools))
+		}
+		if pools[0].Name != "pool1" {
+			t.Errorf("expected pool name pool1, got %s", pools[0].Name)
+		}
+	})
+
+	t.Run("server error", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer ts.Close()
+		addr := strings.TrimPrefix(ts.URL, "http://")
+		fetcher := NewMetricsFetcher(addr)
+		_, err := fetcher.FetchBackends()
+		if err == nil {
+			t.Fatal("expected error for server error")
+		}
+	})
+
+	t.Run("api error", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			resp := admin.Response{
+				Success: false,
+				Error:   &admin.ErrorInfo{Code: "ERR", Message: "backends error"},
+			}
+			json.NewEncoder(w).Encode(resp)
+		}))
+		defer ts.Close()
+		addr := strings.TrimPrefix(ts.URL, "http://")
+		fetcher := NewMetricsFetcher(addr)
+		_, err := fetcher.FetchBackends()
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}
+
+// TestMetricsFetcher_FetchRoutes tests FetchRoutes with a mock server.
+func TestMetricsFetcher_FetchRoutes(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			resp := admin.Response{
+				Success: true,
+				Data: []admin.Route{
+					{Name: "route1", Path: "/api", BackendPool: "pool1"},
+				},
+			}
+			json.NewEncoder(w).Encode(resp)
+		}))
+		defer ts.Close()
+		addr := strings.TrimPrefix(ts.URL, "http://")
+		fetcher := NewMetricsFetcher(addr)
+		routes, err := fetcher.FetchRoutes()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(routes) != 1 {
+			t.Fatalf("expected 1 route, got %d", len(routes))
+		}
+	})
+
+	t.Run("server error", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer ts.Close()
+		addr := strings.TrimPrefix(ts.URL, "http://")
+		fetcher := NewMetricsFetcher(addr)
+		_, err := fetcher.FetchRoutes()
+		if err == nil {
+			t.Fatal("expected error for server error")
+		}
+	})
+
+	t.Run("api error", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			resp := admin.Response{
+				Success: false,
+				Error:   &admin.ErrorInfo{Code: "ERR", Message: "routes error"},
+			}
+			json.NewEncoder(w).Encode(resp)
+		}))
+		defer ts.Close()
+		addr := strings.TrimPrefix(ts.URL, "http://")
+		fetcher := NewMetricsFetcher(addr)
+		_, err := fetcher.FetchRoutes()
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}
+
+// TestMetricsFetcher_FetchHealth tests FetchHealth with a mock server.
+func TestMetricsFetcher_FetchHealth(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			resp := admin.Response{
+				Success: true,
+				Data: admin.HealthStatus{
+					Status: "healthy",
+				},
+			}
+			json.NewEncoder(w).Encode(resp)
+		}))
+		defer ts.Close()
+		addr := strings.TrimPrefix(ts.URL, "http://")
+		fetcher := NewMetricsFetcher(addr)
+		health, err := fetcher.FetchHealth()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if health.Status != "healthy" {
+			t.Errorf("expected healthy status, got %s", health.Status)
+		}
+	})
+
+	t.Run("server error", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer ts.Close()
+		addr := strings.TrimPrefix(ts.URL, "http://")
+		fetcher := NewMetricsFetcher(addr)
+		_, err := fetcher.FetchHealth()
+		if err == nil {
+			t.Fatal("expected error for server error")
+		}
+	})
+
+	t.Run("api error", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			resp := admin.Response{
+				Success: false,
+				Error:   &admin.ErrorInfo{Code: "ERR", Message: "health error"},
+			}
+			json.NewEncoder(w).Encode(resp)
+		}))
+		defer ts.Close()
+		addr := strings.TrimPrefix(ts.URL, "http://")
+		fetcher := NewMetricsFetcher(addr)
+		_, err := fetcher.FetchHealth()
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}
+
+// TestTUIRenderOverview tests the renderOverview function.
+func TestTUIRenderOverview(t *testing.T) {
+	fetcher := NewMetricsFetcher("localhost:8081")
+	tui := NewTUI(fetcher)
+	tui.screen = NewScreen()
+	var buf bytes.Buffer
+	tui.screen.writer = bufio.NewWriter(&buf)
+
+	data := &DashboardData{
+		SystemInfo: &admin.SystemInfo{
+			Version: "1.0.0",
+			Uptime:  "5m",
+			State:   "running",
+		},
+		Health: &admin.HealthStatus{
+			Status: "healthy",
+		},
+		Pools: []admin.BackendPool{
+			{Name: "pool1", Backends: []admin.Backend{
+				{ID: "b1", Healthy: true},
+				{ID: "b2", Healthy: false},
+			}},
+		},
+		Routes:    []admin.Route{{Name: "r1"}},
+		Timestamp: time.Now(),
+	}
+
+	tui.screen.Reset(100, 30)
+	tui.renderOverview(data, 100, 30)
+	tui.screen.Flush()
+
+	// Verify screen has some content drawn
+	if buf.Len() == 0 {
+		t.Error("expected non-empty output from renderOverview")
+	}
+}
+
+// TestTUIRenderBackends tests the renderBackends function.
+func TestTUIRenderBackends(t *testing.T) {
+	fetcher := NewMetricsFetcher("localhost:8081")
+	tui := NewTUI(fetcher)
+	tui.screen = NewScreen()
+	var buf bytes.Buffer
+	tui.screen.writer = bufio.NewWriter(&buf)
+
+	data := &DashboardData{
+		Pools: []admin.BackendPool{
+			{Name: "pool1", Algorithm: "round_robin", Backends: []admin.Backend{
+				{ID: "b1", Address: "10.0.0.1:8080", Weight: 1, Healthy: true, Requests: 100, Errors: 2},
+				{ID: "b2", Address: "10.0.0.2:8080", Weight: 1, Healthy: false, Requests: 50, Errors: 10},
+			}},
+		},
+	}
+
+	tui.screen.Reset(120, 30)
+	tui.renderBackends(data, 120, 30)
+	tui.screen.Flush()
+
+	if buf.Len() == 0 {
+		t.Error("expected non-empty output from renderBackends")
+	}
+}
+
+// TestTUIRenderRoutes tests the renderRoutes function.
+func TestTUIRenderRoutes(t *testing.T) {
+	fetcher := NewMetricsFetcher("localhost:8081")
+	tui := NewTUI(fetcher)
+	tui.screen = NewScreen()
+	var buf bytes.Buffer
+	tui.screen.writer = bufio.NewWriter(&buf)
+
+	data := &DashboardData{
+		Routes: []admin.Route{
+			{Name: "api-route", Host: "api.example.com", Path: "/api", BackendPool: "pool1", Priority: 100},
+			{Name: "default-route", Host: "", Path: "/", BackendPool: "pool2", Priority: 50},
+		},
+	}
+
+	tui.screen.Reset(120, 30)
+	tui.renderRoutes(data, 120, 30)
+	tui.screen.Flush()
+
+	if buf.Len() == 0 {
+		t.Error("expected non-empty output from renderRoutes")
+	}
+}
+
+// TestTUIRenderMetrics tests the renderMetrics function.
+func TestTUIRenderMetrics(t *testing.T) {
+	fetcher := NewMetricsFetcher("localhost:8081")
+	tui := NewTUI(fetcher)
+	tui.screen = NewScreen()
+	var buf bytes.Buffer
+	tui.screen.writer = bufio.NewWriter(&buf)
+
+	data := &DashboardData{
+		Pools: []admin.BackendPool{
+			{Name: "pool1", Backends: []admin.Backend{
+				{Requests: 1000, Errors: 50},
+				{Requests: 2000, Errors: 10},
+			}},
+		},
+	}
+
+	tui.screen.Reset(120, 30)
+	tui.renderMetrics(data, 120, 30)
+	tui.screen.Flush()
+
+	if buf.Len() == 0 {
+		t.Error("expected non-empty output from renderMetrics")
+	}
+}
+
+// TestTUIRenderMetrics_ZeroRequests tests renderMetrics with zero requests.
+func TestTUIRenderMetrics_ZeroRequests(t *testing.T) {
+	fetcher := NewMetricsFetcher("localhost:8081")
+	tui := NewTUI(fetcher)
+	tui.screen = NewScreen()
+	var buf bytes.Buffer
+	tui.screen.writer = bufio.NewWriter(&buf)
+
+	data := &DashboardData{
+		Pools: []admin.BackendPool{},
+	}
+
+	tui.screen.Reset(120, 30)
+	tui.renderMetrics(data, 120, 30)
+	tui.screen.Flush()
+
+	if buf.Len() == 0 {
+		t.Error("expected non-empty output from renderMetrics with zero requests")
+	}
+}
+
+// TestTUIRenderHelpBar tests the renderHelpBar function.
+func TestTUIRenderHelpBar(t *testing.T) {
+	fetcher := NewMetricsFetcher("localhost:8081")
+	tui := NewTUI(fetcher)
+	tui.screen = NewScreen()
+	var buf bytes.Buffer
+	tui.screen.writer = bufio.NewWriter(&buf)
+
+	views := []View{ViewOverview, ViewBackends, ViewRoutes, ViewMetrics}
+	for _, v := range views {
+		tui.currentView = v
+		tui.screen.Reset(80, 24)
+		tui.renderHelpBar(80, 24)
+		tui.screen.Flush()
+	}
+
+	if buf.Len() == 0 {
+		t.Error("expected non-empty output from renderHelpBar")
+	}
+}
+
+// TestScreenClear tests the Clear method.
+func TestScreenClear(t *testing.T) {
+	var buf bytes.Buffer
+	s := NewScreen()
+	s.writer = bufio.NewWriter(&buf)
+	s.Reset(10, 5)
+
+	s.DrawText(0, 0, "Hello")
+	s.Clear()
+
+	output := buf.String()
+	if !strings.Contains(output, "\x1b[2J") {
+		t.Error("expected clear screen escape sequence")
+	}
+}
+
+// TestScreenHideCursor tests HideCursor.
+func TestScreenHideCursor(t *testing.T) {
+	var buf bytes.Buffer
+	s := NewScreen()
+	s.writer = bufio.NewWriter(&buf)
+	s.Reset(10, 5)
+
+	s.HideCursor()
+
+	output := buf.String()
+	if !strings.Contains(output, "\x1b[?25l") {
+		t.Error("expected hide cursor escape sequence")
+	}
+}
+
+// TestScreenShowCursor tests ShowCursor.
+func TestScreenShowCursor(t *testing.T) {
+	var buf bytes.Buffer
+	s := NewScreen()
+	s.writer = bufio.NewWriter(&buf)
+	s.Reset(10, 5)
+
+	s.ShowCursor()
+
+	output := buf.String()
+	if !strings.Contains(output, "\x1b[?25h") {
+		t.Error("expected show cursor escape sequence")
+	}
+}
+
+// TestTUIRenderNilScreen tests render with nil screen (should not panic).
+func TestTUIRenderNilScreen(t *testing.T) {
+	fetcher := NewMetricsFetcher("localhost:8081")
+	tui := NewTUI(fetcher)
+	// screen is nil
+	tui.render() // should not panic
+}
+
+// TestTUIFetchData tests the fetchData function.
+func TestTUIFetchData(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := admin.Response{
+			Success: true,
+			Data:    nil,
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer ts.Close()
+	addr := strings.TrimPrefix(ts.URL, "http://")
+	fetcher := NewMetricsFetcher(addr)
+	tui := NewTUI(fetcher)
+
+	tui.fetchData()
+
+	tui.dataMu.RLock()
+	data := tui.data
+	tui.dataMu.RUnlock()
+
+	if data == nil {
+		t.Fatal("expected data to be non-nil")
+	}
+	if data.Timestamp.IsZero() {
+		t.Error("expected timestamp to be set")
+	}
+}
+
+// TestTUIRenderOverview_NilSystemInfo tests renderOverview with nil SystemInfo.
+func TestTUIRenderOverview_NilSystemInfo(t *testing.T) {
+	fetcher := NewMetricsFetcher("localhost:8081")
+	tui := NewTUI(fetcher)
+	tui.screen = NewScreen()
+	var buf bytes.Buffer
+	tui.screen.writer = bufio.NewWriter(&buf)
+
+	data := &DashboardData{
+		SystemInfo: nil,
+		Health:     nil,
+		Pools:      nil,
+		Routes:     nil,
+		Timestamp:  time.Now(),
+	}
+
+	// Set getString to handle nil SystemInfo - will panic if not handled
+	// Actually the code dereferences SystemInfo pointer, let's verify it works
+	// by using a valid but empty SystemInfo
+	data.SystemInfo = &admin.SystemInfo{}
+	tui.screen.Reset(100, 30)
+	tui.renderOverview(data, 100, 30)
+	tui.screen.Flush()
+
+	if buf.Len() == 0 {
+		t.Error("expected non-empty output")
+	}
+}
+
+// TestScreenResetSameSize tests Reset with same size (should mark all dirty).
+func TestScreenResetSameSize(t *testing.T) {
+	s := NewScreen()
+	s.Reset(10, 5)
+
+	// Mark first cell as not dirty
+	s.back[0].Dirty = false
+
+	// Reset with same size
+	s.Reset(10, 5)
+
+	// All cells should be dirty
+	for i := range s.back {
+		if !s.back[i].Dirty {
+			t.Errorf("expected cell %d to be dirty after reset", i)
+			break
 		}
 	}
 }

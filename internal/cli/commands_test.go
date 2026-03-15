@@ -1366,3 +1366,204 @@ func TestStatusCommand_SuccessfulWithHealthError(t *testing.T) {
 		t.Errorf("Expected success, got: %v", err)
 	}
 }
+
+// TestSendSignal_CurrentProcess tests sendSignal to the current process.
+func TestSendSignal_CurrentProcess(t *testing.T) {
+	pid := os.Getpid()
+	// On Windows, signal sending is limited, so we just test that the function
+	// runs without panicking. The error on Windows is expected.
+	err := sendSignal(pid, syscall.Signal(0))
+	if runtime.GOOS == "windows" {
+		// Windows does not support signal 0, so an error is expected
+		if err == nil {
+			t.Error("expected error on Windows for signal 0")
+		}
+	} else {
+		if err != nil {
+			t.Errorf("sendSignal to current process with signal 0 should succeed: %v", err)
+		}
+	}
+}
+
+// TestSendSignal_NonExistentProcess tests sendSignal to a non-existent process.
+func TestSendSignal_NonExistentProcess(t *testing.T) {
+	// Use a very large PID that won't exist
+	err := sendSignal(999999999, syscall.SIGTERM)
+	// On all platforms, this should error (FindProcess may succeed on Unix, but Signal will fail)
+	// We mainly verify it doesn't panic
+	_ = err
+}
+
+// TestWaitForProcessExit_CurrentProcess tests waitForProcessExit with the current process.
+func TestWaitForProcessExit_CurrentProcess(t *testing.T) {
+	pid := os.Getpid()
+	// Current process won't exit, so this should timeout
+	err := waitForProcessExit(pid, 200*time.Millisecond)
+	if err == nil {
+		t.Error("expected timeout error for current process")
+	}
+	if !strings.Contains(err.Error(), "timeout") {
+		t.Errorf("expected timeout error, got: %v", err)
+	}
+}
+
+// TestWritePIDFile_Success tests writePIDFile creates the file correctly.
+func TestWritePIDFile_CreateDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	nestedDir := filepath.Join(tmpDir, "nested", "dir")
+	pidFile := filepath.Join(nestedDir, "test.pid")
+
+	err := writePIDFile(pidFile, 12345)
+	if err != nil {
+		t.Fatalf("writePIDFile failed: %v", err)
+	}
+
+	// Verify the PID file content
+	pid, err := readPIDFile(pidFile)
+	if err != nil {
+		t.Fatalf("readPIDFile failed: %v", err)
+	}
+	if pid != 12345 {
+		t.Errorf("expected PID 12345, got %d", pid)
+	}
+
+	// Clean up
+	removePIDFile(pidFile)
+}
+
+// TestReadPIDFile_InvalidContent tests readPIDFile with invalid content.
+func TestReadPIDFile_InvalidContent(t *testing.T) {
+	tmpDir := t.TempDir()
+	pidFile := filepath.Join(tmpDir, "test.pid")
+
+	// Write invalid PID content
+	os.WriteFile(pidFile, []byte("not-a-number\n"), 0644)
+
+	_, err := readPIDFile(pidFile)
+	if err == nil {
+		t.Error("expected error for invalid PID content")
+	}
+}
+
+// TestReloadCommand_SuccessfulSignal tests reload command when PID file exists and signal works.
+func TestReloadCommand_SuccessfulAPI(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/system/reload" && r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	apiAddr := strings.TrimPrefix(server.URL, "http://")
+
+	// Use a non-existent PID file so it falls through to the API
+	cmd := &ReloadCommand{}
+	err := cmd.Run([]string{"--pid-file", "/tmp/nonexistent-pid-file-test-12345.pid", "--api-addr", apiAddr})
+	if err != nil {
+		t.Errorf("Expected success, got: %v", err)
+	}
+}
+
+// TestReloadCommand_APIReturnsNon200 tests reload command when API returns error.
+func TestReloadCommand_APIReturnsNon200(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	apiAddr := strings.TrimPrefix(server.URL, "http://")
+
+	cmd := &ReloadCommand{}
+	err := cmd.Run([]string{"--pid-file", "/tmp/nonexistent-pid-file-test-12345.pid", "--api-addr", apiAddr})
+	if err == nil {
+		t.Error("Expected error for API error response")
+	}
+}
+
+// TestStatusCommand_HealthEndpointNon200 tests status when health returns non-200.
+func TestStatusCommand_HealthEndpointNon200(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/system/info" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"version": "1.0.0",
+				"uptime":  "1h",
+			})
+			return
+		}
+		if r.URL.Path == "/api/v1/system/health" {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	apiAddr := strings.TrimPrefix(server.URL, "http://")
+	cmd := &StatusCommand{}
+	err := cmd.Run([]string{"--api-addr", apiAddr, "--format", "table"})
+	if err != nil {
+		t.Errorf("Expected success (health degraded but still show), got: %v", err)
+	}
+}
+
+// TestBackendCommand_List_JSONFormat tests backend list with JSON format.
+func TestBackendCommand_List_JSONFormat_WithMockServer(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]map[string]interface{}{
+			{"id": "b1", "address": "10.0.0.1:8080", "weight": float64(1), "status": "healthy"},
+		})
+	}))
+	defer server.Close()
+
+	apiAddr := strings.TrimPrefix(server.URL, "http://")
+	cmd := &BackendCommand{}
+	err := cmd.Run([]string{"list", "--api-addr", apiAddr, "--format", "json"})
+	if err != nil {
+		t.Errorf("Expected success, got: %v", err)
+	}
+}
+
+// TestHealthCommand_Show_JSONFormat tests health show with JSON format.
+func TestHealthCommand_Show_JSONFormat_WithMockServer(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "healthy",
+			"checks": map[string]interface{}{
+				"backend": map[string]interface{}{"status": "ok"},
+			},
+			"message": "all systems operational",
+		})
+	}))
+	defer server.Close()
+
+	apiAddr := strings.TrimPrefix(server.URL, "http://")
+	cmd := &HealthCommand{}
+	err := cmd.Run([]string{"show", "--api-addr", apiAddr, "--format", "json"})
+	if err != nil {
+		t.Errorf("Expected success, got: %v", err)
+	}
+}
+
+// TestForkDaemon_ReturnsError tests that forkDaemon currently returns error.
+func TestForkDaemon_ReturnsError(t *testing.T) {
+	err := forkDaemon("config.yaml", "/tmp/test.pid")
+	if err == nil {
+		t.Error("expected error from forkDaemon")
+	}
+	if !strings.Contains(err.Error(), "not yet implemented") {
+		t.Errorf("expected 'not yet implemented' error, got: %v", err)
+	}
+}
+
+// TestRemovePIDFile_NonExistent tests removePIDFile with non-existent file.
+func TestRemovePIDFile_NonExistent(t *testing.T) {
+	err := removePIDFile("/tmp/nonexistent-pid-file-test-12345.pid")
+	if err == nil {
+		t.Error("expected error for non-existent PID file")
+	}
+}

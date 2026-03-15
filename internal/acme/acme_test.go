@@ -969,3 +969,254 @@ func TestClient_parseError_InvalidJSON(t *testing.T) {
 		t.Errorf("Expected error to contain status code 400, got: %v", parsedErr)
 	}
 }
+
+// TestClient_getNonce_NilDirectory tests getNonce with nil directory.
+func TestClient_getNonce_NilDirectory(t *testing.T) {
+	key, err := GeneratePrivateKey()
+	if err != nil {
+		t.Fatalf("GeneratePrivateKey error: %v", err)
+	}
+
+	client := &Client{
+		accountKey: key,
+		directory:  nil, // no directory
+		httpClient: &http.Client{},
+	}
+
+	_, err = client.getNonce()
+	if err == nil {
+		t.Fatal("expected error for nil directory")
+	}
+	if !strings.Contains(err.Error(), "directory not fetched") {
+		t.Errorf("expected 'directory not fetched' error, got: %v", err)
+	}
+}
+
+// TestClient_getNonce_CachedNonce tests getNonce when a nonce is cached.
+func TestClient_getNonce_CachedNonce(t *testing.T) {
+	key, err := GeneratePrivateKey()
+	if err != nil {
+		t.Fatalf("GeneratePrivateKey error: %v", err)
+	}
+
+	client := &Client{
+		accountKey: key,
+		nonce:      "cached-nonce-123",
+		httpClient: &http.Client{},
+	}
+
+	nonce, err := client.getNonce()
+	if err != nil {
+		t.Fatalf("getNonce error: %v", err)
+	}
+	if nonce != "cached-nonce-123" {
+		t.Errorf("expected cached nonce, got %q", nonce)
+	}
+	// After retrieval, the cached nonce should be cleared
+	if client.nonce != "" {
+		t.Error("expected cached nonce to be cleared after retrieval")
+	}
+}
+
+// TestClient_GetAuthorization_Error tests GetAuthorization with server error.
+func TestClient_GetAuthorization_Error(t *testing.T) {
+	mock := &mockACMEServer{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Replay-Nonce", mock.nextNonce())
+		switch {
+		case r.URL.Path == "/directory":
+			mock.handleDirectory(w, r)
+		case r.URL.Path == "/new-nonce":
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == "/new-account":
+			mock.handleNewAccount(w, r)
+		case r.URL.Path == "/authz-error":
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"type":   "urn:ietf:params:acme:error:unauthorized",
+				"detail": "forbidden",
+				"status": 403,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := createTestClient(t, server)
+	_, authzErr := client.GetAuthorization(server.URL + "/authz-error")
+	if authzErr == nil {
+		t.Fatal("expected error for forbidden authorization")
+	}
+}
+
+// TestClient_ValidateChallenge_Error tests ValidateChallenge with server error.
+func TestClient_ValidateChallenge_Error(t *testing.T) {
+	mock := &mockACMEServer{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Replay-Nonce", mock.nextNonce())
+		switch {
+		case r.URL.Path == "/directory":
+			mock.handleDirectory(w, r)
+		case r.URL.Path == "/new-nonce":
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == "/new-account":
+			mock.handleNewAccount(w, r)
+		case r.URL.Path == "/chall-error":
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"type":   "urn:ietf:params:acme:error:unauthorized",
+				"detail": "challenge validation failed",
+				"status": 403,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := createTestClient(t, server)
+	challenge := &Challenge{
+		Type: "http-01",
+		URL:  server.URL + "/chall-error",
+	}
+	challErr := client.ValidateChallenge(challenge)
+	if challErr == nil {
+		t.Fatal("expected error for failed challenge validation")
+	}
+}
+
+// TestClient_getNonce_ServerError tests getNonce when HEAD request fails.
+func TestClient_getNonce_ServerError(t *testing.T) {
+	key, err := GeneratePrivateKey()
+	if err != nil {
+		t.Fatalf("GeneratePrivateKey error: %v", err)
+	}
+
+	// Use an invalid URL so the HTTP client fails
+	client := &Client{
+		accountKey: key,
+		directory: &Directory{
+			NewNonce: "http://127.0.0.1:1/new-nonce", // connection refused
+		},
+		httpClient: &http.Client{},
+	}
+
+	_, err = client.getNonce()
+	if err == nil {
+		t.Fatal("expected error for failed HTTP request")
+	}
+}
+
+// TestClient_getNonce_NoHeader tests getNonce when server returns no nonce header.
+func TestClient_getNonce_NoHeader(t *testing.T) {
+	key, err := GeneratePrivateKey()
+	if err != nil {
+		t.Fatalf("GeneratePrivateKey error: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/new-nonce" {
+			// Return 200 but no Replay-Nonce header
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+	}))
+	defer server.Close()
+
+	client := &Client{
+		accountKey: key,
+		directory: &Directory{
+			NewNonce: server.URL + "/new-nonce",
+		},
+		httpClient: &http.Client{},
+	}
+
+	nonce, err := client.getNonce()
+	if err != nil {
+		t.Fatalf("getNonce should not error, got: %v", err)
+	}
+	// When no header is present, nonce is empty string
+	if nonce != "" {
+		t.Errorf("expected empty nonce for missing header, got %q", nonce)
+	}
+}
+
+// TestClient_FinalizeOrder_Error tests FinalizeOrder with server error.
+func TestClient_FinalizeOrder_Error(t *testing.T) {
+	mock := &mockACMEServer{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Replay-Nonce", mock.nextNonce())
+		switch {
+		case r.URL.Path == "/directory":
+			mock.handleDirectory(w, r)
+		case r.URL.Path == "/new-nonce":
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == "/new-account":
+			mock.handleNewAccount(w, r)
+		case r.URL.Path == "/finalize-error":
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"type":   "urn:ietf:params:acme:error:unauthorized",
+				"detail": "finalize failed",
+				"status": 403,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := createTestClient(t, server)
+	order := &Order{
+		Finalize: server.URL + "/finalize-error",
+	}
+
+	key2, _ := GeneratePrivateKey()
+	csr, _ := GenerateCSR([]string{"example.com"}, key2)
+
+	finErr := client.FinalizeOrder(order, csr)
+	if finErr == nil {
+		t.Fatal("expected error for failed finalize")
+	}
+}
+
+// TestClient_CreateOrder_ServerError tests CreateOrder with non-201 response.
+func TestClient_CreateOrder_ServerError(t *testing.T) {
+	mock := &mockACMEServer{}
+	// Use a mux that serves an error for order creation
+	mux := http.NewServeMux()
+	var srv *httptest.Server
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Replay-Nonce", mock.nextNonce())
+		switch {
+		case r.URL.Path == "/directory":
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"newNonce":   srv.URL + "/new-nonce",
+				"newAccount": srv.URL + "/new-account",
+				"newOrder":   srv.URL + "/new-order-fail",
+			})
+		case r.URL.Path == "/new-nonce":
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == "/new-account":
+			mock.handleNewAccount(w, r)
+		case r.URL.Path == "/new-order-fail":
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"type":   "urn:ietf:params:acme:error:rateLimited",
+				"detail": "rate limited",
+				"status": 403,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	srv = httptest.NewServer(mux)
+	defer srv.Close()
+
+	client := createTestClient(t, srv)
+	_, orderErr := client.CreateOrder([]string{"example.com"})
+	if orderErr == nil {
+		t.Fatal("expected error for rate limited order creation")
+	}
+}

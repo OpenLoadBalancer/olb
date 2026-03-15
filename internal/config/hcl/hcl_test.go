@@ -1614,6 +1614,80 @@ pool "web-pool" {
 	}
 }
 
+// TestDecodeScalar_BoolToInt tests that bool to int returns error.
+func TestDecodeScalar_BoolToInt(t *testing.T) {
+	input := `count = true`
+	type Cfg struct {
+		Count int `hcl:"count"`
+	}
+	var cfg Cfg
+	err := Decode([]byte(input), &cfg)
+	if err == nil {
+		t.Fatal("expected error decoding bool into int")
+	}
+}
+
+// TestDecodeScalar_BoolToUint tests that bool to uint returns error.
+func TestDecodeScalar_BoolToUint(t *testing.T) {
+	input := `count = true`
+	type Cfg struct {
+		Count uint `hcl:"count"`
+	}
+	var cfg Cfg
+	err := Decode([]byte(input), &cfg)
+	if err == nil {
+		t.Fatal("expected error decoding bool into uint")
+	}
+}
+
+// TestDecodeScalar_BoolToFloat tests that bool to float returns error.
+func TestDecodeScalar_BoolToFloat(t *testing.T) {
+	input := `rate = true`
+	type Cfg struct {
+		Rate float64 `hcl:"rate"`
+	}
+	var cfg Cfg
+	err := Decode([]byte(input), &cfg)
+	if err == nil {
+		t.Fatal("expected error decoding bool into float")
+	}
+}
+
+// TestDecodeFile_NotFoundHCL tests DecodeFile with non-existent file.
+func TestDecodeFile_NotFoundHCL(t *testing.T) {
+	type Cfg struct{}
+	var cfg Cfg
+	err := DecodeFile("/tmp/nonexistent-hcl-file-test-12345.hcl", &cfg)
+	if err == nil {
+		t.Fatal("expected error for non-existent file")
+	}
+}
+
+// TestDecode_NonPointer tests Decode with non-pointer target.
+func TestDecode_NonPointer(t *testing.T) {
+	type Cfg struct{}
+	var cfg Cfg
+	err := Decode([]byte(`name = "test"`), cfg)
+	if err == nil {
+		t.Fatal("expected error for non-pointer target")
+	}
+}
+
+// TestDecodeScalar_StringToFloat tests string to float conversion.
+func TestDecodeScalar_StringToFloat_Valid(t *testing.T) {
+	input := `rate = "3.14"`
+	type Cfg struct {
+		Rate float64 `hcl:"rate"`
+	}
+	var cfg Cfg
+	if err := Decode([]byte(input), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Rate != 3.14 {
+		t.Errorf("expected 3.14, got %f", cfg.Rate)
+	}
+}
+
 func BenchmarkTokenize(b *testing.B) {
 	input := `name = "hello" port = 8080 enabled = true tags = ["a", "b", "c"]`
 	b.ResetTimer()

@@ -1638,3 +1638,29 @@ func TestLogger_WithRace(t *testing.T) {
 		t.Errorf("Expected 1000 lines, got %d", len(lines))
 	}
 }
+
+// TestReopenHandler tests the ReopenHandler (platform-specific).
+func TestReopenHandler(t *testing.T) {
+	h := NewReopenHandler()
+	if h == nil {
+		t.Fatal("NewReopenHandler returned nil")
+	}
+
+	// These are no-ops on Windows but should not panic
+	h.AddOutput(nil)
+	h.Start()
+	h.Stop()
+	h.reopen()
+}
+
+// TestEnableLogReopen tests EnableLogReopen (no-op on Windows).
+func TestEnableLogReopen(t *testing.T) {
+	// Should not panic
+	EnableLogReopen()
+}
+
+// TestStopLogReopen tests StopLogReopen (no-op on Windows).
+func TestStopLogReopen(t *testing.T) {
+	// Should not panic
+	StopLogReopen()
+}

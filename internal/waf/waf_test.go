@@ -660,6 +660,126 @@ func BenchmarkWAF_Process(b *testing.B) {
 	}
 }
 
+// TestGetTargetValue tests all target extraction cases.
+func TestGetTargetValue(t *testing.T) {
+	rule := &Rule{}
+	body := []byte("post body content")
+
+	req := httptest.NewRequest("POST", "http://example.com/path?name=value&foo=bar", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "TestAgent/1.0")
+	req.Header.Set("Referer", "http://example.com/ref")
+	req.Header.Set("X-Custom", "custom-value")
+	req.AddCookie(&http.Cookie{Name: "session", Value: "abc123"})
+	req.RemoteAddr = "192.168.1.1:12345"
+	req.Host = "example.com"
+
+	tests := []struct {
+		target   string
+		expected string
+	}{
+		{"uri", "http://example.com/path?name=value&foo=bar"},
+		{"url", "http://example.com/path?name=value&foo=bar"},
+		{"path", "/path"},
+		{"query", "name=value&foo=bar"},
+		{"args", "name=value&foo=bar"},
+		{"method", "POST"},
+		{"user_agent", "TestAgent/1.0"},
+		{"user-agent", "TestAgent/1.0"},
+		{"referer", "http://example.com/ref"},
+		{"body", "post body content"},
+		{"post_args", "post body content"},
+		{"remote_ip", "192.168.1.1:12345"},
+		{"remote_addr", "192.168.1.1:12345"},
+		{"host", "example.com"},
+		{"content_type", "application/json"},
+		{"content-type", "application/json"},
+		{"arg_name", "value"},
+		{"arg_foo", "bar"},
+		{"arg_missing", ""},
+		{"header_X-Custom", "custom-value"},
+		{"header_Missing", ""},
+		{"cookie_session", "abc123"},
+		{"cookie_missing", ""},
+		{"unknown_target", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.target, func(t *testing.T) {
+			got := rule.getTargetValue(req, body, tt.target)
+			if tt.target == "headers" {
+				// Headers order is not deterministic, just check it's non-empty
+				if got == "" {
+					t.Error("expected non-empty headers value")
+				}
+				return
+			}
+			if got != tt.expected {
+				t.Errorf("getTargetValue(%q) = %q, want %q", tt.target, got, tt.expected)
+			}
+		})
+	}
+
+	// Test headers target separately
+	t.Run("headers", func(t *testing.T) {
+		got := rule.getTargetValue(req, body, "headers")
+		if got == "" {
+			t.Error("expected non-empty headers value")
+		}
+		if !strings.Contains(got, "Content-Type: application/json") {
+			t.Error("expected headers to contain Content-Type")
+		}
+	})
+}
+
+// TestJSONLogger_LogFields tests the JSONLogger includes all expected fields.
+func TestJSONLogger_LogFields(t *testing.T) {
+	var buf bytes.Buffer
+	logger := &JSONLogger{Writer: &buf}
+
+	match := &Match{
+		RuleID:       "1001",
+		RuleName:     "sql-injection",
+		MatchedValue: "1' OR '1'='1",
+		Action:       ActionBlock,
+		Severity:     SeverityCritical,
+		Score:        10,
+	}
+
+	req := httptest.NewRequest("GET", "http://example.com/?id=1'+OR+'1'='1", nil)
+	req.RemoteAddr = "192.168.1.1:12345"
+	req.Header.Set("User-Agent", "TestBot/1.0")
+
+	logger.Log(match, req)
+
+	output := buf.String()
+	if output == "" {
+		t.Fatal("expected non-empty log output")
+	}
+	if !strings.Contains(output, "sql-injection") {
+		t.Error("expected log to contain rule name")
+	}
+	if !strings.Contains(output, "192.168.1.1") {
+		t.Error("expected log to contain remote addr")
+	}
+	if !strings.Contains(output, "TestBot/1.0") {
+		t.Error("expected log to contain user agent")
+	}
+	if !strings.HasSuffix(output, "\n") {
+		t.Error("expected log line to end with newline")
+	}
+}
+
+// TestDefaultLogger_NoOp tests that the defaultLogger is a no-op.
+func TestDefaultLogger_NoOp(t *testing.T) {
+	logger := &defaultLogger{}
+	match := &Match{RuleID: "1"}
+	req := httptest.NewRequest("GET", "http://example.com/", nil)
+
+	// Should not panic
+	logger.Log(match, req)
+}
+
 func BenchmarkWAF_Process_SQLi(b *testing.B) {
 	waf, _ := New(nil)
 	req := httptest.NewRequest("GET", "http://example.com/?id=1' OR '1'='1", nil)

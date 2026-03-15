@@ -5,7 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 )
 
 // ---------------------------------------------------------------------------
@@ -1699,6 +1701,365 @@ i64 = -8000000000000000000
 	}
 	if cfg.I64 != -8000000000000000000 {
 		t.Errorf("I64 = %d, want -8000000000000000000", cfg.I64)
+	}
+}
+
+// TestDecodeFloat_ToInterface tests decodeFloat to interface{}.
+func TestDecodeFloat_ToInterface(t *testing.T) {
+	input := `val = 3.14`
+	type Cfg struct {
+		Val interface{} `toml:"val"`
+	}
+	var cfg Cfg
+	if err := Decode([]byte(input), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	f, ok := cfg.Val.(float64)
+	if !ok {
+		t.Fatalf("expected float64, got %T", cfg.Val)
+	}
+	if f != 3.14 {
+		t.Errorf("expected 3.14, got %f", f)
+	}
+}
+
+// TestDecodeFloat_ToBool tests that decodeFloat to bool returns error.
+func TestDecodeFloat_ToBool(t *testing.T) {
+	input := `val = 3.14`
+	type Cfg struct {
+		Val bool `toml:"val"`
+	}
+	var cfg Cfg
+	err := Decode([]byte(input), &cfg)
+	if err == nil {
+		t.Fatal("expected error decoding float into bool")
+	}
+	if !strings.Contains(err.Error(), "cannot decode float") {
+		t.Errorf("expected 'cannot decode float' error, got: %v", err)
+	}
+}
+
+// TestDecodeBool_ToInterface tests decodeBool to interface{}.
+func TestDecodeBool_ToInterface(t *testing.T) {
+	input := `val = true`
+	type Cfg struct {
+		Val interface{} `toml:"val"`
+	}
+	var cfg Cfg
+	if err := Decode([]byte(input), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	b, ok := cfg.Val.(bool)
+	if !ok {
+		t.Fatalf("expected bool, got %T", cfg.Val)
+	}
+	if !b {
+		t.Errorf("expected true, got false")
+	}
+}
+
+// TestDecodeBool_ToInt tests that decodeBool to int returns error.
+func TestDecodeBool_ToInt(t *testing.T) {
+	input := `val = true`
+	type Cfg struct {
+		Val int `toml:"val"`
+	}
+	var cfg Cfg
+	err := Decode([]byte(input), &cfg)
+	if err == nil {
+		t.Fatal("expected error decoding bool into int")
+	}
+	if !strings.Contains(err.Error(), "cannot decode bool") {
+		t.Errorf("expected 'cannot decode bool' error, got: %v", err)
+	}
+}
+
+// TestDecodeScalar_Duration tests decoding a string into time.Duration.
+func TestDecodeScalar_Duration(t *testing.T) {
+	input := `val = "5s"`
+	type Cfg struct {
+		Val time.Duration `toml:"val"`
+	}
+	var cfg Cfg
+	if err := Decode([]byte(input), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Val != 5*time.Second {
+		t.Errorf("expected 5s, got %v", cfg.Val)
+	}
+}
+
+// TestDecodeScalar_InvalidDuration tests invalid duration string.
+func TestDecodeScalar_InvalidDuration(t *testing.T) {
+	input := `val = "not-a-duration"`
+	type Cfg struct {
+		Val time.Duration `toml:"val"`
+	}
+	var cfg Cfg
+	err := Decode([]byte(input), &cfg)
+	if err == nil {
+		t.Fatal("expected error for invalid duration string")
+	}
+}
+
+// TestDecodeScalar_Uint tests decoding a string into uint.
+func TestDecodeScalar_Uint(t *testing.T) {
+	input := `val = "42"`
+	type Cfg struct {
+		Val uint `toml:"val"`
+	}
+	var cfg Cfg
+	if err := Decode([]byte(input), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Val != 42 {
+		t.Errorf("expected 42, got %d", cfg.Val)
+	}
+}
+
+// TestDecodeScalar_Float tests decoding a string into float.
+func TestDecodeScalar_Float(t *testing.T) {
+	input := `val = "3.14"`
+	type Cfg struct {
+		Val float64 `toml:"val"`
+	}
+	var cfg Cfg
+	if err := Decode([]byte(input), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Val != 3.14 {
+		t.Errorf("expected 3.14, got %f", cfg.Val)
+	}
+}
+
+// TestDecodeScalar_Bool tests decoding a string into bool.
+func TestDecodeScalar_Bool(t *testing.T) {
+	input := `val = "true"`
+	type Cfg struct {
+		Val bool `toml:"val"`
+	}
+	var cfg Cfg
+	if err := Decode([]byte(input), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Val {
+		t.Errorf("expected true, got false")
+	}
+}
+
+// TestDecodeScalar_InvalidBool tests decoding invalid bool string.
+func TestDecodeScalar_InvalidBool(t *testing.T) {
+	input := `val = "not-a-bool"`
+	type Cfg struct {
+		Val bool `toml:"val"`
+	}
+	var cfg Cfg
+	err := Decode([]byte(input), &cfg)
+	if err == nil {
+		t.Fatal("expected error for invalid bool string")
+	}
+}
+
+// TestDecodeScalar_InvalidInt tests decoding invalid int string.
+func TestDecodeScalar_InvalidInt(t *testing.T) {
+	input := `val = "not-a-number"`
+	type Cfg struct {
+		Val int `toml:"val"`
+	}
+	var cfg Cfg
+	err := Decode([]byte(input), &cfg)
+	if err == nil {
+		t.Fatal("expected error for invalid int string")
+	}
+}
+
+// TestDecodeScalar_InvalidUint tests decoding invalid uint string.
+func TestDecodeScalar_InvalidUint(t *testing.T) {
+	input := `val = "not-a-number"`
+	type Cfg struct {
+		Val uint `toml:"val"`
+	}
+	var cfg Cfg
+	err := Decode([]byte(input), &cfg)
+	if err == nil {
+		t.Fatal("expected error for invalid uint string")
+	}
+}
+
+// TestDecodeScalar_InvalidFloat tests decoding invalid float string.
+func TestDecodeScalar_InvalidFloat(t *testing.T) {
+	input := `val = "not-a-float"`
+	type Cfg struct {
+		Val float64 `toml:"val"`
+	}
+	var cfg Cfg
+	err := Decode([]byte(input), &cfg)
+	if err == nil {
+		t.Fatal("expected error for invalid float string")
+	}
+}
+
+// TestDecodeScalar_ToInterface tests decoding a string into interface{}.
+func TestDecodeScalar_ToInterface(t *testing.T) {
+	input := `val = "hello"`
+	type Cfg struct {
+		Val interface{} `toml:"val"`
+	}
+	var cfg Cfg
+	if err := Decode([]byte(input), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	s, ok := cfg.Val.(string)
+	if !ok {
+		t.Fatalf("expected string, got %T", cfg.Val)
+	}
+	if s != "hello" {
+		t.Errorf("expected 'hello', got %q", s)
+	}
+}
+
+// TestDecodeFloat_NaN tests parsing NaN as a special float.
+func TestDecodeFloat_NaN(t *testing.T) {
+	input := `val = nan`
+	result, err := Parse([]byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, ok := result["val"]
+	if !ok {
+		t.Fatal("expected key 'val'")
+	}
+	f, ok := v.(float64)
+	if !ok {
+		t.Fatalf("expected float64, got %T", v)
+	}
+	if !math.IsNaN(f) {
+		t.Errorf("expected NaN, got %f", f)
+	}
+}
+
+// TestDecodeFloat_Inf tests parsing +inf and -inf as special floats.
+func TestDecodeFloat_Inf(t *testing.T) {
+	input := `pos = inf
+neg = -inf
+pos2 = +inf`
+	result, err := Parse([]byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	posVal, ok := result["pos"].(float64)
+	if !ok {
+		t.Fatal("pos: expected float64")
+	}
+	if !math.IsInf(posVal, 1) {
+		t.Errorf("pos: expected +Inf, got %f", posVal)
+	}
+
+	negVal, ok := result["neg"].(float64)
+	if !ok {
+		t.Fatal("neg: expected float64")
+	}
+	if !math.IsInf(negVal, -1) {
+		t.Errorf("neg: expected -Inf, got %f", negVal)
+	}
+
+	pos2Val, ok := result["pos2"].(float64)
+	if !ok {
+		t.Fatal("pos2: expected float64")
+	}
+	if !math.IsInf(pos2Val, 1) {
+		t.Errorf("pos2: expected +Inf, got %f", pos2Val)
+	}
+}
+
+// TestMultilineLiteralString_LeadingNewline tests multiline literal string.
+func TestMultilineLiteralString_LeadingNewline(t *testing.T) {
+	input := "val = '''\nfirst line\nsecond line'''"
+	result, err := Parse([]byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := "first line\nsecond line"
+	if result["val"] != expected {
+		t.Errorf("expected %q, got %q", expected, result["val"])
+	}
+}
+
+// TestMultilineBasicString_Escaped tests multiline basic string with backslash.
+func TestMultilineBasicString_Escaped(t *testing.T) {
+	input := "val = \"\"\"\\\n   first line\"\"\""
+	result, err := Parse([]byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := "first line"
+	if result["val"] != expected {
+		t.Errorf("expected %q, got %q", expected, result["val"])
+	}
+}
+
+// TestDecodeSlice_NonSliceTarget tests decoding array into non-slice type.
+func TestDecodeSlice_NonSliceTarget(t *testing.T) {
+	input := `val = [1, 2, 3]`
+	type Cfg struct {
+		Val string `toml:"val"`
+	}
+	var cfg Cfg
+	err := Decode([]byte(input), &cfg)
+	if err == nil {
+		t.Fatal("expected error decoding array into string")
+	}
+}
+
+// TestDecodeInt_ToUnsupported tests decoding int into unsupported type.
+func TestDecodeInt_ToUnsupported(t *testing.T) {
+	input := `val = 42`
+	type Cfg struct {
+		Val []int `toml:"val"`
+	}
+	var cfg Cfg
+	err := Decode([]byte(input), &cfg)
+	if err == nil {
+		t.Fatal("expected error decoding integer into slice")
+	}
+}
+
+// TestDecodeFile_NotFound tests DecodeFile with non-existent file.
+func TestDecodeFile_NotFound(t *testing.T) {
+	type Cfg struct{}
+	var cfg Cfg
+	err := DecodeFile("/tmp/nonexistent-toml-file-test-12345.toml", &cfg)
+	if err == nil {
+		t.Fatal("expected error for non-existent file")
+	}
+}
+
+// TestUnicodeEscape_4digit tests 4-digit unicode escape.
+func TestUnicodeEscape_4digit(t *testing.T) {
+	input := `val = "\u0048\u0065\u006c\u006c\u006f"`
+	result, err := Parse([]byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result["val"] != "Hello" {
+		t.Errorf("expected 'Hello', got %q", result["val"])
+	}
+}
+
+// TestInlineTable_Empty tests empty inline table.
+func TestInlineTable_Empty(t *testing.T) {
+	input := `val = {}`
+	result, err := Parse([]byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, ok := result["val"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected map, got %T", result["val"])
+	}
+	if len(m) != 0 {
+		t.Errorf("expected empty map, got %d items", len(m))
 	}
 }
 

@@ -378,3 +378,81 @@ func TestApply_InvalidCPUPath(t *testing.T) {
 		t.Fatal("expected error for invalid CPU profile path")
 	}
 }
+
+func TestApply_WithPprof(t *testing.T) {
+	cfg := ProfileConfig{
+		EnablePprof: true,
+		PprofAddr:   "127.0.0.1:0",
+	}
+	cleanup, err := Apply(cfg)
+	if err != nil {
+		t.Fatalf("Apply with pprof: %v", err)
+	}
+	// Give server a moment to start
+	time.Sleep(50 * time.Millisecond)
+	cleanup()
+}
+
+func TestApply_WithPprofDefaultAddr(t *testing.T) {
+	// Test the case where PprofAddr is empty (uses default)
+	cfg := ProfileConfig{
+		EnablePprof: true,
+		PprofAddr:   "", // will default to localhost:6060
+	}
+	cleanup, err := Apply(cfg)
+	if err != nil {
+		t.Fatalf("Apply with pprof default addr: %v", err)
+	}
+	cleanup()
+}
+
+func TestApply_FullConfig(t *testing.T) {
+	dir := t.TempDir()
+	cfg := ProfileConfig{
+		CPUProfilePath:       filepath.Join(dir, "cpu.prof"),
+		MemProfilePath:       filepath.Join(dir, "mem.prof"),
+		BlockProfileRate:     1,
+		MutexProfileFraction: 1,
+		EnablePprof:          true,
+		PprofAddr:            "127.0.0.1:0",
+	}
+
+	cleanup, err := Apply(cfg)
+	if err != nil {
+		t.Fatalf("Apply full config: %v", err)
+	}
+
+	// Do some work
+	for i := 0; i < 1000; i++ {
+		_ = make([]byte, 256)
+	}
+
+	cleanup()
+
+	// Verify CPU profile was written
+	info, err := os.Stat(cfg.CPUProfilePath)
+	if err != nil {
+		t.Errorf("CPU profile not created: %v", err)
+	} else if info.Size() == 0 {
+		t.Error("CPU profile is empty")
+	}
+
+	// Verify memory profile was written
+	info, err = os.Stat(cfg.MemProfilePath)
+	if err != nil {
+		t.Errorf("mem profile not created: %v", err)
+	} else if info.Size() == 0 {
+		t.Error("mem profile is empty")
+	}
+
+	// Reset profiling state
+	runtime.SetBlockProfileRate(0)
+	runtime.SetMutexProfileFraction(0)
+}
+
+func TestWriteAllocProfile_InvalidPath(t *testing.T) {
+	err := WriteAllocProfile(filepath.Join(t.TempDir(), "no", "such", "dir", "allocs.prof"))
+	if err == nil {
+		t.Fatal("expected error for invalid alloc profile path")
+	}
+}

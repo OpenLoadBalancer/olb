@@ -2817,3 +2817,353 @@ func TestDrainBackend_InvalidPath(t *testing.T) {
 
 	// Should return bad request or not found
 }
+
+// TestExtractPoolName tests the extractPoolName helper with various paths.
+func TestExtractPoolName(t *testing.T) {
+	tests := []struct {
+		path string
+		want string
+	}{
+		{"/api/v1/backends/mypool", "mypool"},
+		{"/api/v1/backends/test-pool", "test-pool"},
+		{"/api/v1/backends/", ""},
+		{"/api/v1/", ""},
+		{"/other/path", ""},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			got := extractPoolName(tt.path)
+			if got != tt.want {
+				t.Errorf("extractPoolName(%q) = %q, want %q", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestExtractBackendID tests the extractBackendID helper with various paths.
+func TestExtractBackendID(t *testing.T) {
+	tests := []struct {
+		path        string
+		wantPool    string
+		wantBackend string
+	}{
+		{"/api/v1/backends/mypool/mybackend", "mypool", "mybackend"},
+		{"/api/v1/backends/pool1/backend1", "pool1", "backend1"},
+		{"/api/v1/backends/mypool", "", ""},
+		{"/api/v1/", "", ""},
+		{"", "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			gotPool, gotBackend := extractBackendID(tt.path)
+			if gotPool != tt.wantPool || gotBackend != tt.wantBackend {
+				t.Errorf("extractBackendID(%q) = (%q, %q), want (%q, %q)",
+					tt.path, gotPool, gotBackend, tt.wantPool, tt.wantBackend)
+			}
+		})
+	}
+}
+
+// TestAddBackend_InvalidJSON tests addBackend with invalid JSON body.
+func TestAddBackend_InvalidJSON(t *testing.T) {
+	server, poolManager, _, _, _ := setupTestServer(t, nil)
+
+	pool := backend.NewPool("test-pool", "round_robin")
+	poolManager.AddPool(pool)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/backends/test-pool", strings.NewReader("not json"))
+	w := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", w.Code)
+	}
+}
+
+// TestAddBackend_MissingID tests addBackend with missing backend ID.
+func TestAddBackend_MissingID(t *testing.T) {
+	server, poolManager, _, _, _ := setupTestServer(t, nil)
+
+	pool := backend.NewPool("test-pool", "round_robin")
+	poolManager.AddPool(pool)
+
+	body := `{"address": "10.0.0.1:8080"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/backends/test-pool", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", w.Code)
+	}
+}
+
+// TestAddBackend_MissingAddress tests addBackend with missing address.
+func TestAddBackend_MissingAddress(t *testing.T) {
+	server, poolManager, _, _, _ := setupTestServer(t, nil)
+
+	pool := backend.NewPool("test-pool", "round_robin")
+	poolManager.AddPool(pool)
+
+	body := `{"id": "backend1"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/backends/test-pool", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", w.Code)
+	}
+}
+
+// TestAddBackend_NoPoolManager tests addBackend when pool manager is nil.
+func TestAddBackend_NoPoolManager(t *testing.T) {
+	serverCfg := &Config{
+		Address: "127.0.0.1:0",
+	}
+	srv, err := NewServer(serverCfg)
+	if err != nil {
+		t.Fatalf("failed to create server: %v", err)
+	}
+
+	body := `{"id": "b1", "address": "10.0.0.1:8080"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/backends/test-pool", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.server.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", w.Code)
+	}
+}
+
+// TestHandleBackendDetail_GetBackend tests getting a single backend (not implemented).
+func TestHandleBackendDetail_GetBackend(t *testing.T) {
+	server, poolManager, _, _, _ := setupTestServer(t, nil)
+
+	pool := backend.NewPool("test-pool", "round_robin")
+	b := backend.NewBackend("b1", "10.0.0.1:8080")
+	pool.AddBackend(b)
+	poolManager.AddPool(pool)
+
+	// GET /api/v1/backends/test-pool/b1 should return 501 (not implemented)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/backends/test-pool/b1", nil)
+	w := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotImplemented {
+		t.Errorf("expected status 501, got %d", w.Code)
+	}
+}
+
+// TestHandleBackendDetail_MethodNotAllowed tests unsupported methods on backend detail.
+func TestHandleBackendDetail_MethodNotAllowed(t *testing.T) {
+	server, poolManager, _, _, _ := setupTestServer(t, nil)
+
+	pool := backend.NewPool("test-pool", "round_robin")
+	poolManager.AddPool(pool)
+
+	// PATCH is not supported
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/backends/test-pool/b1", nil)
+	w := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status 405, got %d", w.Code)
+	}
+}
+
+// TestHandleBackendDetail_PoolLevel_MethodNotAllowed tests unsupported method on pool level.
+func TestHandleBackendDetail_PoolLevel_MethodNotAllowed(t *testing.T) {
+	server, poolManager, _, _, _ := setupTestServer(t, nil)
+
+	pool := backend.NewPool("test-pool", "round_robin")
+	poolManager.AddPool(pool)
+
+	// DELETE on pool level is not supported
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/backends/test-pool", nil)
+	w := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status 405, got %d", w.Code)
+	}
+}
+
+// TestGetMetricsJSON_MethodNotAllowed tests metrics with wrong method.
+func TestGetMetricsJSON_MethodNotAllowed(t *testing.T) {
+	server, _, _, _, _ := setupTestServer(t, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/metrics", nil)
+	w := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status 405, got %d", w.Code)
+	}
+}
+
+// TestGetMetricsPrometheus_MethodNotAllowed tests prometheus metrics with wrong method.
+func TestGetMetricsPrometheus_MethodNotAllowed(t *testing.T) {
+	server, _, _, _, _ := setupTestServer(t, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/metrics", nil)
+	w := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status 405, got %d", w.Code)
+	}
+}
+
+// TestGetSystemInfo_MethodNotAllowed tests system info with wrong method.
+func TestGetSystemInfo_MethodNotAllowed(t *testing.T) {
+	server, _, _, _, _ := setupTestServer(t, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/system/info", nil)
+	w := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status 405, got %d", w.Code)
+	}
+}
+
+// TestGetSystemHealth_MethodNotAllowed_Specific tests health with POST method.
+func TestGetSystemHealth_MethodNotAllowed_Specific(t *testing.T) {
+	server, _, _, _, _ := setupTestServer(t, nil)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/system/health", nil)
+	w := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status 405, got %d", w.Code)
+	}
+}
+
+// TestReloadConfig_MethodNotAllowed tests reload with wrong method.
+func TestReloadConfig_MethodNotAllowed(t *testing.T) {
+	server, _, _, _, _ := setupTestServer(t, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/system/reload", nil)
+	w := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status 405, got %d", w.Code)
+	}
+}
+
+// TestListBackends_MethodNotAllowed tests list backends with wrong method.
+func TestListBackends_MethodNotAllowed(t *testing.T) {
+	server, _, _, _, _ := setupTestServer(t, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/backends", nil)
+	w := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status 405, got %d", w.Code)
+	}
+}
+
+// TestListRoutes_MethodNotAllowed tests list routes with wrong method.
+func TestListRoutes_MethodNotAllowed(t *testing.T) {
+	server, _, _, _, _ := setupTestServer(t, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/routes", nil)
+	w := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status 405, got %d", w.Code)
+	}
+}
+
+// TestGetPool_EmptyPoolName tests getPool with empty pool name.
+func TestGetPool_EmptyPoolName(t *testing.T) {
+	server, _, _, _, _ := setupTestServer(t, nil)
+
+	// Path with no pool name
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/backends/", nil)
+	w := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(w, req)
+
+	// Should fail due to empty pool name
+	if w.Code == http.StatusOK {
+		t.Error("expected non-200 status for empty pool name")
+	}
+}
+
+// TestNewDefaultMetrics_NilRegistry tests NewDefaultMetrics with nil registry.
+func TestNewDefaultMetrics_NilRegistry(t *testing.T) {
+	m := NewDefaultMetrics(nil)
+	if m == nil {
+		t.Fatal("expected non-nil metrics")
+	}
+	// Should use default registry and not panic
+	result := m.GetAllMetrics()
+	if result == nil {
+		t.Error("expected non-nil metrics result")
+	}
+
+	// PrometheusFormat should work too
+	prom := m.PrometheusFormat()
+	_ = prom // just verify it doesn't panic
+}
+
+// TestNewDefaultMetrics_WithRegistry tests NewDefaultMetrics with a real registry.
+func TestNewDefaultMetrics_WithRegistry(t *testing.T) {
+	reg := metrics.NewRegistry()
+	m := NewDefaultMetrics(reg)
+	if m == nil {
+		t.Fatal("expected non-nil metrics")
+	}
+
+	result := m.GetAllMetrics()
+	if result == nil {
+		t.Error("expected non-nil metrics result")
+	}
+
+	prom := m.PrometheusFormat()
+	if prom == "" {
+		// Note: an empty registry may produce empty output, that's fine
+	}
+}
+
+// TestRemoveBackend_EmptyBackendID tests removeBackend with empty IDs.
+func TestRemoveBackend_EmptyBackendID(t *testing.T) {
+	server, poolManager, _, _, _ := setupTestServer(t, nil)
+
+	pool := backend.NewPool("test-pool", "round_robin")
+	poolManager.AddPool(pool)
+
+	// Path missing backend ID
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/backends/test-pool", nil)
+	w := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(w, req)
+
+	// Should get method not allowed at pool level for DELETE
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status 405, got %d", w.Code)
+	}
+}
+
+// TestDrainBackend_MethodNotAllowed_PUT tests drain with PUT method.
+func TestDrainBackend_MethodNotAllowed_PUT(t *testing.T) {
+	server, poolManager, _, _, _ := setupTestServer(t, nil)
+
+	pool := backend.NewPool("test-pool", "round_robin")
+	b := backend.NewBackend("b1", "10.0.0.1:8080")
+	pool.AddBackend(b)
+	poolManager.AddPool(pool)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/backends/test-pool/b1/drain", nil)
+	w := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status 405, got %d", w.Code)
+	}
+}
