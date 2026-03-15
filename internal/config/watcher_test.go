@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -20,11 +21,14 @@ func TestWatcher_DetectsChange(t *testing.T) {
 	}
 
 	var changed atomic.Bool
+	var mu sync.Mutex
 	var receivedData []byte
 
 	callback := func(path string, data []byte) {
-		changed.Store(true)
+		mu.Lock()
 		receivedData = data
+		mu.Unlock()
+		changed.Store(true)
 	}
 
 	watcher, err := NewWatcher(configFile, 50*time.Millisecond, callback, nil)
@@ -52,8 +56,11 @@ func TestWatcher_DetectsChange(t *testing.T) {
 		t.Error("Expected callback to be called on file change")
 	}
 
-	if string(receivedData) != string(newContent) {
-		t.Errorf("Received data = %q, want %q", string(receivedData), string(newContent))
+	mu.Lock()
+	gotData := string(receivedData)
+	mu.Unlock()
+	if gotData != string(newContent) {
+		t.Errorf("Received data = %q, want %q", gotData, string(newContent))
 	}
 }
 

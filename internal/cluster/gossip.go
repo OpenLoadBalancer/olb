@@ -303,8 +303,9 @@ type Gossip struct {
 	wg     sync.WaitGroup
 	closed atomic.Bool
 
-	// Random source (not shared; used under locks or in single goroutine).
-	rng *rand.Rand
+	// Random source — protected by rngMu for concurrent access.
+	rng   *rand.Rand
+	rngMu sync.Mutex
 
 	// nowFn allows injecting a clock for testing.
 	nowFn func() time.Time
@@ -1638,7 +1639,10 @@ func (g *Gossip) randomMember() *GossipNode {
 	if len(eligible) == 0 {
 		return nil
 	}
-	return eligible[g.rng.Intn(len(eligible))].Clone()
+	g.rngMu.Lock()
+	idx := g.rng.Intn(len(eligible))
+	g.rngMu.Unlock()
+	return eligible[idx].Clone()
 }
 
 // randomMembers returns up to n random alive/suspect members, excluding excludeID.
@@ -1658,9 +1662,11 @@ func (g *Gossip) randomMembers(n int, excludeID string) []*GossipNode {
 	}
 
 	// Fisher-Yates shuffle and take first n.
+	g.rngMu.Lock()
 	g.rng.Shuffle(len(eligible), func(i, j int) {
 		eligible[i], eligible[j] = eligible[j], eligible[i]
 	})
+	g.rngMu.Unlock()
 
 	if n > len(eligible) {
 		n = len(eligible)

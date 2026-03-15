@@ -4,11 +4,13 @@ import (
 	"encoding/binary"
 	"net"
 	"strings"
+	"sync"
 )
 
 // CIDRMatcher provides fast IP matching against CIDR ranges using a radix trie.
-// Supports both IPv4 and IPv6 addresses.
+// Supports both IPv4 and IPv6 addresses. All methods are safe for concurrent use.
 type CIDRMatcher struct {
+	mu    sync.RWMutex
 	root4 *cidrNode
 	root6 *cidrNode
 }
@@ -27,12 +29,15 @@ func NewCIDRMatcher() *CIDRMatcher {
 }
 
 // Add adds a CIDR range to the matcher.
-// Returns error if the CIDR is invalid.
+// Returns error if the CIDR is invalid. Safe for concurrent use.
 func (cm *CIDRMatcher) Add(cidr string) error {
 	_, ipnet, err := net.ParseCIDR(cidr)
 	if err != nil {
 		return err
 	}
+
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
 
 	if ipnet.IP.To4() != nil {
 		cm.addCIDR(cm.root4, ipnet.IP.To4(), ipnet.Mask)
@@ -64,11 +69,15 @@ func (cm *CIDRMatcher) addCIDR(root *cidrNode, ip net.IP, mask net.IPMask) {
 }
 
 // Contains checks if an IP address matches any of the added CIDR ranges.
+// Safe for concurrent use.
 func (cm *CIDRMatcher) Contains(ip string) bool {
 	parsedIP := net.ParseIP(ip)
 	if parsedIP == nil {
 		return false
 	}
+
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
 
 	if parsedIP.To4() != nil {
 		return cm.match(cm.root4, parsedIP.To4())
@@ -105,10 +114,14 @@ func (cm *CIDRMatcher) match(root *cidrNode, ip net.IP) bool {
 }
 
 // ContainsIP checks if a net.IP matches any of the added CIDR ranges.
+// Safe for concurrent use.
 func (cm *CIDRMatcher) ContainsIP(ip net.IP) bool {
 	if ip == nil {
 		return false
 	}
+
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
 
 	if ip.To4() != nil {
 		return cm.match(cm.root4, ip.To4())
@@ -116,8 +129,10 @@ func (cm *CIDRMatcher) ContainsIP(ip net.IP) bool {
 	return cm.match(cm.root6, ip.To16())
 }
 
-// Len returns the number of CIDR ranges added.
+// Len returns the number of CIDR ranges added. Safe for concurrent use.
 func (cm *CIDRMatcher) Len() int {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
 	return cm.count(cm.root4) + cm.count(cm.root6)
 }
 
@@ -132,8 +147,10 @@ func (cm *CIDRMatcher) count(node *cidrNode) int {
 	return cm.count(node.child[0]) + cm.count(node.child[1])
 }
 
-// Clear removes all CIDR ranges.
+// Clear removes all CIDR ranges. Safe for concurrent use.
 func (cm *CIDRMatcher) Clear() {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
 	cm.root4 = &cidrNode{}
 	cm.root6 = &cidrNode{}
 }
