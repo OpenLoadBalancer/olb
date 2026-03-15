@@ -147,12 +147,12 @@ jobs:
 
           **Quick install (Linux/macOS):**
           ```sh
-          curl -fsSL https://raw.githubusercontent.com/openloadbalancer/olb/main/scripts/install.sh | sh
+          curl -fsSL https://openloadbalancer.dev/install.sh | sh
           ```
 
           **Install specific version:**
           ```sh
-          curl -fsSL https://raw.githubusercontent.com/openloadbalancer/olb/main/scripts/install.sh | sh -s -- --version $GITHUB_REF_NAME
+          curl -fsSL https://openloadbalancer.dev/install.sh | sh -s -- --version $GITHUB_REF_NAME
           ```
 
           ### Docker

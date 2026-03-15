@@ -1,7 +1,7 @@
 # OpenLoadBalancer — SPECIFICATION v1.0
 
 > **Project**: OpenLoadBalancer (OLB)
-> **Repository**: github.com/openloadbalancer
+> **Repository**: github.com/openloadbalancer/olb
 > **Language**: Go 1.23+ (zero external dependencies — stdlib only)
 > **License**: Apache 2.0
 > **Author**: Ersin Koç / ECOSTACK TECHNOLOGY OÜ
@@ -2848,7 +2848,7 @@ The binary is named `olb` (OpenLoadBalancer):
 go install github.com/openloadbalancer/olb/cmd/olb@latest
 
 # Or download binary
-curl -fsSL https://get.openloadbalancer.com | sh
+curl -fsSL https://openloadbalancer.dev/install.sh | sh
 
 # Run
 olb start --config olb.yaml

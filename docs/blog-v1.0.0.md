@@ -57,7 +57,7 @@ Binary size: 9.1MB. Web UI: 441KB. Startup: <100ms.
 
 ```sh
 # Install
-curl -fsSL https://raw.githubusercontent.com/openloadbalancer/olb/main/scripts/install.sh | sh
+curl -fsSL https://openloadbalancer.dev/install.sh | sh
 
 # Or with Homebrew
 brew tap openloadbalancer/olb && brew install olb

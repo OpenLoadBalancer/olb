@@ -21,7 +21,7 @@ set -euo pipefail
 PROJECT_NAME="olb"
 PROJECT_DESCRIPTION="OpenLoadBalancer - High-performance, zero-dependency load balancer"
 PROJECT_URL="https://github.com/openloadbalancer/olb"
-MAINTAINER="OpenLoadBalancer Team <maintainers@openloadbalancer.io>"
+MAINTAINER="OpenLoadBalancer Team <hello@openloadbalancer.dev>"
 LICENSE="Apache-2.0"
 VENDOR="OpenLoadBalancer"
 
@@ -591,7 +591,7 @@ fi
 %dir %attr(0750,olb,olb) /var/lib/olb
 
 %changelog
-* $(date "+%a %b %d %Y") OpenLoadBalancer Team <maintainers@openloadbalancer.io> - ${rpm_version}-${rpm_release}
+* $(date "+%a %b %d %Y") OpenLoadBalancer Team <hello@openloadbalancer.dev> - ${rpm_version}-${rpm_release}
 - Release ${rpm_version}
 EOF
 

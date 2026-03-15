@@ -141,7 +141,7 @@ Pre-built binaries for Linux (amd64/arm64), macOS (amd64/arm64), Windows (amd64/
 ### Install Script
 
 ```bash
-curl -sSL https://get.openloadbalancer.io | sh
+curl -sSL https://openloadbalancer.dev/install.sh | sh
 ```
 
 ### Docker

@@ -2,9 +2,9 @@
 # OpenLoadBalancer (OLB) Install Script
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/openloadbalancer/olb/main/scripts/install.sh | sh
-#   curl -fsSL https://raw.githubusercontent.com/openloadbalancer/olb/main/scripts/install.sh | sh -s -- --version v0.2.0
-#   curl -fsSL https://raw.githubusercontent.com/openloadbalancer/olb/main/scripts/install.sh | sh -s -- --prefix /opt/olb/bin
+#   curl -fsSL https://openloadbalancer.dev/install.sh | sh
+#   curl -fsSL https://openloadbalancer.dev/install.sh | sh -s -- --version v0.2.0
+#   curl -fsSL https://openloadbalancer.dev/install.sh | sh -s -- --prefix /opt/olb/bin
 #
 # Environment variables:
 #   OLB_VERSION   - Version to install (default: latest)
