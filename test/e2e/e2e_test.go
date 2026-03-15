@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -38,7 +39,7 @@ func TestFullE2E_ProxyActuallyWorks(t *testing.T) {
 		t.Fatalf("Failed to load config: %v", err)
 	}
 
-	eng, err := engine.New(cfg, cfgPath)
+	eng, err := engine.New(cfg, "") // empty path disables config file watcher
 	if err != nil {
 		t.Fatalf("Failed to create engine: %v", err)
 	}
@@ -48,7 +49,9 @@ func TestFullE2E_ProxyActuallyWorks(t *testing.T) {
 		t.Fatalf("Failed to start engine: %v", err)
 	}
 	t.Cleanup(func() {
-		eng.Shutdown(nil)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		eng.Shutdown(ctx)
 	})
 
 	// Wait for listener to be ready
