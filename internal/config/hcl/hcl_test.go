@@ -1196,6 +1196,24 @@ simple_key = 123
 	}
 }
 
+// TestHCL_PeekFunctions tests peek/peekAt/peekN indirectly through parsing
+// that requires lookahead (block with labels and a list value).
+func TestHCL_PeekFunctions(t *testing.T) {
+	input := `
+resource "aws" "main" {
+  count = 3
+  tags = ["a", "b"]
+}
+`
+	result, err := Parse([]byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil {
+		t.Fatal("nil result")
+	}
+}
+
 func BenchmarkParse(b *testing.B) {
 	input := []byte(`
 version = "1"

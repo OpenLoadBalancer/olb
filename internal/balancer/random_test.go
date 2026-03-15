@@ -136,6 +136,12 @@ func TestRandomUpdate(t *testing.T) {
 	}
 }
 
+// TestRandom_Update_NilBackend tests Update with nil backend.
+func TestRandom_Update_NilBackend(t *testing.T) {
+	r := &Random{}
+	r.Update(nil) // no-op, should not panic
+}
+
 // TestRandomConcurrent tests concurrent access.
 func TestRandomConcurrent(t *testing.T) {
 	r := NewRandom()

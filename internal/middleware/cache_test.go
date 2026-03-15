@@ -952,3 +952,9 @@ func TestDiscardResponseWriter_WriteAfterWriteHeader(t *testing.T) {
 		t.Errorf("Write returned %d, want 12", n)
 	}
 }
+
+func TestDiscardResponseWriter_WriteHeader_Direct(t *testing.T) {
+	dw := &discardResponseWriter{header: make(http.Header)}
+	dw.WriteHeader(200) // should not panic
+	dw.WriteHeader(404) // second call, should not panic
+}

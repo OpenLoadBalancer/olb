@@ -869,6 +869,59 @@ func buildClientHelloWithoutSNI() []byte {
 	return record
 }
 
+// TestSNIBasedProxy_handleConnection tests the unexported handleConnection method.
+func TestSNIBasedProxy_handleConnection(t *testing.T) {
+	proxy := NewSNIBasedProxy(DefaultSNIRouterConfig())
+
+	// Create a pipe; handleConnection will try to route via the router
+	// which has no routes, so it will close the connection.
+	client, server := net.Pipe()
+	defer client.Close()
+
+	go func() {
+		client.Write([]byte("not TLS data"))
+		client.Close()
+	}()
+
+	// Should not panic; the error is swallowed inside handleConnection.
+	proxy.handleConnection(server)
+}
+
+// TestSNIProxy_HandleConnection tests the exported HandleConnection method.
+func TestSNIProxy_HandleConnection(t *testing.T) {
+	proxy := NewSNIProxy(DefaultSNIRouterConfig())
+
+	// Create a pipe; HandleConnection will try to extract SNI from non-TLS
+	// data, fail, and return gracefully.
+	client, server := net.Pipe()
+
+	go func() {
+		client.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+		client.Close()
+	}()
+
+	// Should not panic; returns gracefully when SNI extraction fails.
+	proxy.HandleConnection(server)
+}
+
+// TestSNIProxy_HandleConnection_WithSNI tests HandleConnection with a TLS
+// ClientHello that has an SNI but no matching backend.
+func TestSNIProxy_HandleConnection_WithSNI(t *testing.T) {
+	config := DefaultSNIRouterConfig()
+	proxy := NewSNIProxy(config)
+
+	client, server := net.Pipe()
+
+	clientHello := buildClientHelloWithSNI("unknown.example.com")
+	go func() {
+		client.Write(clientHello)
+		client.Close()
+	}()
+
+	// No route and no default backend, so HandleConnection returns gracefully.
+	proxy.HandleConnection(server)
+}
+
 // buildServerHello builds a ServerHello (for testing non-ClientHello).
 func buildServerHello() []byte {
 	return []byte{0x16, 0x03, 0x01, 0x00, 0x05, 0x02, 0x00, 0x00, 0x00, 0x00}

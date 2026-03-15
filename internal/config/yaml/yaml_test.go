@@ -3114,3 +3114,16 @@ key3: value3
 		t.Errorf("items length = %d, want 3", len(result2["items"]))
 	}
 }
+
+// TestYAML_ParserSkip_FlowAndBlankLines exercises parser.skip() with extra
+// blank lines and flow sequences that require token skipping.
+func TestYAML_ParserSkip_FlowAndBlankLines(t *testing.T) {
+	input := "\n\nkey: [1, 2, 3]\n\n\nother: value\n"
+	result, err := Parse(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil {
+		t.Fatal("nil result")
+	}
+}

@@ -485,6 +485,21 @@ func TestCIDRMatcher_IPv6Matching(t *testing.T) {
 	}
 }
 
+func TestCIDRMatcher_Len(t *testing.T) {
+	cm := NewCIDRMatcher()
+	if cm.Len() != 0 {
+		t.Errorf("empty Len = %d", cm.Len())
+	}
+	cm.Add("10.0.0.0/8")
+	if cm.Len() != 1 {
+		t.Errorf("after add Len = %d", cm.Len())
+	}
+	cm.Add("192.168.0.0/16")
+	if cm.Len() != 2 {
+		t.Errorf("after 2 adds Len = %d", cm.Len())
+	}
+}
+
 // TestCIDRMatcher_ConcurrentAccess tests concurrent access to CIDR matcher
 func TestCIDRMatcher_ConcurrentAccess(t *testing.T) {
 	cm := NewCIDRMatcher()

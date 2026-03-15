@@ -1439,5 +1439,18 @@ format = "json"
 	}
 }
 
+// TestTOML_SkipWhitespace tests that skipWhitespace is exercised through
+// parsing with significant whitespace between key and value.
+func TestTOML_SkipWhitespace_Explicit(t *testing.T) {
+	input := `key   =   "value"`
+	result, err := Parse([]byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result["key"] != "value" {
+		t.Errorf("got %v", result["key"])
+	}
+}
+
 // Ensure reflect is used (compiler sometimes complains if not referenced)
 var _ = reflect.TypeOf(nil)

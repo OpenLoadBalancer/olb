@@ -206,6 +206,13 @@ func TestRoundRobin_Update_NoOp(t *testing.T) {
 	}
 }
 
+func TestRoundRobin_AddRemoveUpdate_Nil(t *testing.T) {
+	rr := &RoundRobin{}
+	rr.Add(nil)    // no-op, should not panic
+	rr.Remove("x") // no-op
+	rr.Update(nil) // no-op
+}
+
 func BenchmarkRoundRobin_Next_SingleBackend(b *testing.B) {
 	rr := NewRoundRobin()
 

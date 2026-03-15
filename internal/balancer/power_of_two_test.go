@@ -223,6 +223,11 @@ func TestPowerOfTwo_Update_NoOp(t *testing.T) {
 	}
 }
 
+func TestPowerOfTwo_Update_NilBackend(t *testing.T) {
+	p := &PowerOfTwo{}
+	p.Update(nil) // no-op, should not panic
+}
+
 func TestPowerOfTwo_ConcurrentAccess(t *testing.T) {
 	p2c := NewPowerOfTwo()
 	b1 := backend.NewBackend("b1", "127.0.0.1:8080")
