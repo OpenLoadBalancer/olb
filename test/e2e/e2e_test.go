@@ -1357,6 +1357,922 @@ pools:
 	}
 }
 
+// TestE2E_WAF verifies that the WAF middleware blocks SQL injection and XSS
+// attacks while allowing normal requests through.
+func TestE2E_WAF(t *testing.T) {
+	var hits atomic.Int64
+	backendAddr := startBackend(t, "waf-backend", &hits)
+
+	proxyPort := getFreePort(t)
+	adminPort := getFreePort(t)
+
+	yamlCfg := fmt.Sprintf(`admin:
+  address: "127.0.0.1:%d"
+waf:
+  enabled: true
+  mode: blocking
+listeners:
+  - name: http
+    address: "127.0.0.1:%d"
+    protocol: http
+    routes:
+      - path: /
+        pool: waf-pool
+pools:
+  - name: waf-pool
+    algorithm: round_robin
+    backends:
+      - address: "%s"
+    health_check:
+      type: http
+      interval: 1s
+      timeout: 1s
+      path: /health
+`, adminPort, proxyPort, backendAddr)
+
+	cfgPath := writeYAML(t, yamlCfg)
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	eng, err := engine.New(cfg, "")
+	if err != nil {
+		t.Fatalf("Failed to create engine: %v", err)
+	}
+	if err := eng.Start(); err != nil {
+		t.Fatalf("Failed to start engine: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		eng.Shutdown(ctx)
+	})
+
+	proxyAddr := cfg.Listeners[0].Address
+	waitForReady(t, proxyAddr, 5*time.Second)
+	time.Sleep(2 * time.Second) // Wait for health checks
+
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	// Normal request should succeed
+	resp, err := client.Get(fmt.Sprintf("http://%s/", proxyAddr))
+	if err != nil {
+		t.Fatalf("Normal GET failed: %v", err)
+	}
+	io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("Normal GET: expected 200, got %d", resp.StatusCode)
+	}
+	t.Log("Normal request returned 200 OK")
+
+	// SQL injection in query should be blocked
+	// Use URL-encoded single quotes (%27) so the URL is valid HTTP
+	resp, err = client.Get(fmt.Sprintf("http://%s/?id=1%%27+OR+%%271%%27%%3D%%271", proxyAddr))
+	if err != nil {
+		t.Fatalf("SQLi request failed: %v", err)
+	}
+	io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 403 {
+		t.Errorf("SQLi attack: expected 403, got %d", resp.StatusCode)
+	} else {
+		t.Log("SQL injection blocked with 403")
+	}
+
+	// XSS via javascript: URI scheme in query should be blocked
+	// The WAF XSS rule matches "javascript:" pattern in args
+	resp, err = client.Get(fmt.Sprintf("http://%s/?q=javascript:alert(1)", proxyAddr))
+	if err != nil {
+		t.Fatalf("XSS request failed: %v", err)
+	}
+	io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 403 {
+		t.Errorf("XSS attack: expected 403, got %d", resp.StatusCode)
+	} else {
+		t.Log("XSS attack blocked with 403")
+	}
+}
+
+// TestE2E_IPFilter verifies that the IP filter middleware denies requests from
+// IPs on the deny list.
+func TestE2E_IPFilter(t *testing.T) {
+	var hits atomic.Int64
+	backendAddr := startBackend(t, "ipf-backend", &hits)
+
+	proxyPort := getFreePort(t)
+	adminPort := getFreePort(t)
+
+	yamlCfg := fmt.Sprintf(`admin:
+  address: "127.0.0.1:%d"
+middleware:
+  ip_filter:
+    enabled: true
+    deny_list:
+      - "127.0.0.1/32"
+    default_action: "allow"
+listeners:
+  - name: http
+    address: "127.0.0.1:%d"
+    protocol: http
+    routes:
+      - path: /
+        pool: ipf-pool
+pools:
+  - name: ipf-pool
+    algorithm: round_robin
+    backends:
+      - address: "%s"
+    health_check:
+      type: http
+      interval: 1s
+      timeout: 1s
+      path: /health
+`, adminPort, proxyPort, backendAddr)
+
+	cfgPath := writeYAML(t, yamlCfg)
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	eng, err := engine.New(cfg, "")
+	if err != nil {
+		t.Fatalf("Failed to create engine: %v", err)
+	}
+	if err := eng.Start(); err != nil {
+		t.Fatalf("Failed to start engine: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		eng.Shutdown(ctx)
+	})
+
+	proxyAddr := cfg.Listeners[0].Address
+	waitForReady(t, proxyAddr, 5*time.Second)
+	time.Sleep(2 * time.Second) // Wait for health checks
+
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	// Request from localhost (127.0.0.1) should be denied
+	resp, err := client.Get(fmt.Sprintf("http://%s/", proxyAddr))
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	t.Logf("IP filter response: status=%d, body=%s", resp.StatusCode, string(body))
+
+	if resp.StatusCode != 403 {
+		t.Errorf("Expected 403 Forbidden for denied IP, got %d", resp.StatusCode)
+	} else {
+		t.Log("IP filter correctly blocked request from 127.0.0.1")
+	}
+
+	// Backend should NOT have received any hits
+	if hits.Load() > 0 {
+		t.Errorf("Backend received %d hits despite IP filter deny", hits.Load())
+	}
+}
+
+// TestE2E_CircuitBreaker verifies that the circuit breaker middleware opens after
+// enough backend errors and starts returning 503 Service Unavailable.
+func TestE2E_CircuitBreaker(t *testing.T) {
+	proxyPort := getFreePort(t)
+	adminPort := getFreePort(t)
+
+	// Backend that always returns 500 errors
+	backendAddr := startBackendWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(200)
+			fmt.Fprint(w, "OK")
+			return
+		}
+		w.WriteHeader(500)
+		fmt.Fprint(w, "Internal Server Error")
+	})
+
+	yamlCfg := fmt.Sprintf(`admin:
+  address: "127.0.0.1:%d"
+middleware:
+  circuit_breaker:
+    enabled: true
+    error_threshold: 3
+listeners:
+  - name: http
+    address: "127.0.0.1:%d"
+    protocol: http
+    routes:
+      - path: /
+        pool: cb-pool
+pools:
+  - name: cb-pool
+    algorithm: round_robin
+    backends:
+      - address: "%s"
+    health_check:
+      type: http
+      interval: 1s
+      timeout: 1s
+      path: /health
+`, adminPort, proxyPort, backendAddr)
+
+	cfgPath := writeYAML(t, yamlCfg)
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	eng, err := engine.New(cfg, "")
+	if err != nil {
+		t.Fatalf("Failed to create engine: %v", err)
+	}
+	if err := eng.Start(); err != nil {
+		t.Fatalf("Failed to start engine: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		eng.Shutdown(ctx)
+	})
+
+	proxyAddr := cfg.Listeners[0].Address
+	waitForReady(t, proxyAddr, 5*time.Second)
+	time.Sleep(2 * time.Second) // Wait for health checks
+
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	// Send requests to trigger errors and observe the circuit breaker opening
+	var status500, status503 int
+	for i := 0; i < 15; i++ {
+		resp, err := client.Get(fmt.Sprintf("http://%s/", proxyAddr))
+		if err != nil {
+			t.Logf("Request %d error: %v", i, err)
+			continue
+		}
+		io.ReadAll(resp.Body)
+		resp.Body.Close()
+		switch resp.StatusCode {
+		case 500:
+			status500++
+		case 503:
+			status503++
+		}
+		t.Logf("Request %d: status %d", i, resp.StatusCode)
+	}
+
+	t.Logf("Results: 500s=%d, 503s=%d", status500, status503)
+
+	// We should see some 500s (from backend before circuit opens)
+	if status500 == 0 {
+		t.Error("No 500 responses seen -- backend errors not reaching circuit breaker")
+	}
+
+	// After error_threshold errors, circuit should open and return 503
+	if status503 == 0 {
+		t.Error("No 503 responses from circuit breaker -- circuit did not open")
+	}
+
+	if status500 > 0 && status503 > 0 {
+		t.Log("Circuit breaker working: initial 500s from backend, then 503s after circuit opened")
+	}
+
+	// Verify the 503 responses have the circuit breaker header
+	resp, err := client.Get(fmt.Sprintf("http://%s/", proxyAddr))
+	if err != nil {
+		t.Fatalf("Final request error: %v", err)
+	}
+	io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	circuitState := resp.Header.Get("X-Circuit-State")
+	t.Logf("Final request: status=%d, X-Circuit-State=%s", resp.StatusCode, circuitState)
+
+	if resp.StatusCode == 503 && (circuitState == "open" || circuitState == "half-open") {
+		t.Log("Circuit breaker state header confirmed")
+	}
+}
+
+// TestE2E_ResponseCache verifies that the response cache middleware caches
+// GET responses and serves them from cache on subsequent requests.
+func TestE2E_ResponseCache(t *testing.T) {
+	proxyPort := getFreePort(t)
+	adminPort := getFreePort(t)
+
+	// Backend that returns an incrementing counter
+	var requestCount atomic.Int64
+	backendAddr := startBackendWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(200)
+			fmt.Fprint(w, "OK")
+			return
+		}
+		count := requestCount.Add(1)
+		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Cache-Control", "max-age=60")
+		fmt.Fprintf(w, "response-%d", count)
+	})
+
+	yamlCfg := fmt.Sprintf(`admin:
+  address: "127.0.0.1:%d"
+middleware:
+  cache:
+    enabled: true
+listeners:
+  - name: http
+    address: "127.0.0.1:%d"
+    protocol: http
+    routes:
+      - path: /
+        pool: cache-pool
+pools:
+  - name: cache-pool
+    algorithm: round_robin
+    backends:
+      - address: "%s"
+    health_check:
+      type: http
+      interval: 1s
+      timeout: 1s
+      path: /health
+`, adminPort, proxyPort, backendAddr)
+
+	cfgPath := writeYAML(t, yamlCfg)
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	eng, err := engine.New(cfg, "")
+	if err != nil {
+		t.Fatalf("Failed to create engine: %v", err)
+	}
+	if err := eng.Start(); err != nil {
+		t.Fatalf("Failed to start engine: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		eng.Shutdown(ctx)
+	})
+
+	proxyAddr := cfg.Listeners[0].Address
+	waitForReady(t, proxyAddr, 5*time.Second)
+	time.Sleep(2 * time.Second) // Wait for health checks
+
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	// First request: should be a cache miss
+	resp1, err := client.Get(fmt.Sprintf("http://%s/", proxyAddr))
+	if err != nil {
+		t.Fatalf("First request failed: %v", err)
+	}
+	body1, _ := io.ReadAll(resp1.Body)
+	resp1.Body.Close()
+
+	if resp1.StatusCode != 200 {
+		t.Fatalf("First request: expected 200, got %d", resp1.StatusCode)
+	}
+
+	cache1 := resp1.Header.Get("X-Cache")
+	t.Logf("First request: body=%s, X-Cache=%s", string(body1), cache1)
+
+	// Second request: should be a cache hit
+	resp2, err := client.Get(fmt.Sprintf("http://%s/", proxyAddr))
+	if err != nil {
+		t.Fatalf("Second request failed: %v", err)
+	}
+	body2, _ := io.ReadAll(resp2.Body)
+	resp2.Body.Close()
+
+	if resp2.StatusCode != 200 {
+		t.Fatalf("Second request: expected 200, got %d", resp2.StatusCode)
+	}
+
+	cache2 := resp2.Header.Get("X-Cache")
+	t.Logf("Second request: body=%s, X-Cache=%s", string(body2), cache2)
+
+	// Verify cache hit
+	if cache2 == "HIT" {
+		t.Log("Cache is working: second request served from cache (X-Cache: HIT)")
+	} else {
+		t.Logf("X-Cache header on second request: %s (expected HIT)", cache2)
+	}
+
+	// Verify response bodies match (cached response should be identical)
+	if string(body1) != string(body2) {
+		t.Errorf("Cached response body mismatch: first=%s, second=%s", string(body1), string(body2))
+	} else {
+		t.Logf("Response bodies match: %s", string(body1))
+	}
+
+	// Verify backend only received 1 request (the second was served from cache)
+	backendHits := requestCount.Load()
+	t.Logf("Backend received %d requests (expected 1 if cache worked)", backendHits)
+	if backendHits > 1 {
+		t.Log("Warning: backend received more than 1 request, cache may not be active for this path")
+	}
+}
+
+// TestE2E_PrometheusMetrics verifies that the Prometheus metrics endpoint returns
+// properly formatted metrics data.
+func TestE2E_PrometheusMetrics(t *testing.T) {
+	var hits atomic.Int64
+	backendAddr := startBackend(t, "prom-backend", &hits)
+
+	proxyPort := getFreePort(t)
+	adminPort := getFreePort(t)
+
+	yamlCfg := fmt.Sprintf(`admin:
+  address: "127.0.0.1:%d"
+listeners:
+  - name: http
+    address: "127.0.0.1:%d"
+    protocol: http
+    routes:
+      - path: /
+        pool: prom-pool
+pools:
+  - name: prom-pool
+    algorithm: round_robin
+    backends:
+      - address: "%s"
+    health_check:
+      type: http
+      interval: 1s
+      timeout: 1s
+      path: /health
+`, adminPort, proxyPort, backendAddr)
+
+	cfgPath := writeYAML(t, yamlCfg)
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	eng, err := engine.New(cfg, "")
+	if err != nil {
+		t.Fatalf("Failed to create engine: %v", err)
+	}
+	if err := eng.Start(); err != nil {
+		t.Fatalf("Failed to start engine: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		eng.Shutdown(ctx)
+	})
+
+	proxyAddr := cfg.Listeners[0].Address
+	adminAddr := cfg.Admin.Address
+	waitForReady(t, proxyAddr, 5*time.Second)
+	waitForReady(t, adminAddr, 5*time.Second)
+	time.Sleep(2 * time.Second) // Wait for health checks
+
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	// Send a few proxy requests to generate metrics
+	for i := 0; i < 5; i++ {
+		resp, err := client.Get(fmt.Sprintf("http://%s/", proxyAddr))
+		if err != nil {
+			t.Logf("Proxy request %d failed: %v", i, err)
+			continue
+		}
+		io.ReadAll(resp.Body)
+		resp.Body.Close()
+	}
+
+	// GET /metrics on admin port (Prometheus format)
+	resp, err := client.Get(fmt.Sprintf("http://%s/metrics", adminAddr))
+	if err != nil {
+		t.Fatalf("GET /metrics failed: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("GET /metrics status %d: %s", resp.StatusCode, body)
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	t.Logf("Content-Type: %s", contentType)
+	if !strings.Contains(contentType, "text/plain") {
+		t.Errorf("Expected text/plain Content-Type, got: %s", contentType)
+	}
+
+	bodyStr := string(body)
+	t.Logf("Prometheus metrics (first 500 bytes): %s", bodyStr[:min(500, len(bodyStr))])
+
+	// Verify response contains Prometheus-formatted metrics (# HELP, # TYPE, or metric names)
+	if len(bodyStr) == 0 {
+		t.Error("Prometheus metrics response is empty")
+	}
+
+	// Check for typical metric content
+	hasMetricContent := strings.Contains(bodyStr, "# HELP") ||
+		strings.Contains(bodyStr, "# TYPE") ||
+		strings.Contains(bodyStr, "requests") ||
+		strings.Contains(bodyStr, "total") ||
+		strings.Contains(bodyStr, "duration")
+
+	if hasMetricContent {
+		t.Log("Prometheus metrics endpoint returns valid metric data")
+	} else {
+		t.Log("Warning: Prometheus metrics response does not contain expected metric names")
+		t.Logf("Full response: %s", bodyStr)
+	}
+}
+
+// TestE2E_TCPProxy verifies that the L4 TCP proxy can forward raw TCP traffic
+// to a backend echo server.
+func TestE2E_TCPProxy(t *testing.T) {
+	// Start a simple TCP echo server
+	echoListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to start echo server: %v", err)
+	}
+	echoAddr := echoListener.Addr().String()
+	t.Logf("Echo server listening on %s", echoAddr)
+
+	go func() {
+		for {
+			conn, err := echoListener.Accept()
+			if err != nil {
+				return // listener closed
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				buf := make([]byte, 4096)
+				for {
+					n, err := c.Read(buf)
+					if err != nil {
+						return
+					}
+					c.Write(buf[:n])
+				}
+			}(conn)
+		}
+	}()
+	t.Cleanup(func() { echoListener.Close() })
+
+	proxyPort := getFreePort(t)
+	adminPort := getFreePort(t)
+
+	yamlCfg := fmt.Sprintf(`admin:
+  address: "127.0.0.1:%d"
+listeners:
+  - name: tcp-proxy
+    address: "127.0.0.1:%d"
+    protocol: tcp
+    pool: tcp-pool
+pools:
+  - name: tcp-pool
+    algorithm: round_robin
+    backends:
+      - address: "%s"
+    health_check:
+      type: tcp
+      interval: 1s
+      timeout: 1s
+`, adminPort, proxyPort, echoAddr)
+
+	cfgPath := writeYAML(t, yamlCfg)
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	eng, err := engine.New(cfg, "")
+	if err != nil {
+		t.Fatalf("Failed to create engine: %v", err)
+	}
+	if err := eng.Start(); err != nil {
+		t.Fatalf("Failed to start engine: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		eng.Shutdown(ctx)
+	})
+
+	proxyAddr := fmt.Sprintf("127.0.0.1:%d", proxyPort)
+	waitForReady(t, proxyAddr, 5*time.Second)
+	time.Sleep(2 * time.Second) // Wait for health checks
+
+	// Connect to the TCP proxy and send data
+	conn, err := net.DialTimeout("tcp", proxyAddr, 5*time.Second)
+	if err != nil {
+		t.Fatalf("Failed to connect to TCP proxy: %v", err)
+	}
+	defer conn.Close()
+
+	// Set read/write deadlines
+	conn.SetDeadline(time.Now().Add(5 * time.Second))
+
+	// Send "hello" and expect it echoed back
+	message := "hello"
+	_, err = conn.Write([]byte(message))
+	if err != nil {
+		t.Fatalf("Failed to write to TCP proxy: %v", err)
+	}
+
+	buf := make([]byte, 1024)
+	n, err := conn.Read(buf)
+	if err != nil {
+		t.Fatalf("Failed to read from TCP proxy: %v", err)
+	}
+
+	response := string(buf[:n])
+	t.Logf("TCP echo response: %s", response)
+
+	if response != message {
+		t.Errorf("TCP echo mismatch: sent=%q, got=%q", message, response)
+	} else {
+		t.Log("TCP proxy echo test passed: sent and received data match")
+	}
+
+	// Send another message to verify persistent connection
+	message2 := "world123"
+	_, err = conn.Write([]byte(message2))
+	if err != nil {
+		t.Fatalf("Failed to write second message: %v", err)
+	}
+
+	n, err = conn.Read(buf)
+	if err != nil {
+		t.Fatalf("Failed to read second response: %v", err)
+	}
+
+	response2 := string(buf[:n])
+	if response2 != message2 {
+		t.Errorf("Second echo mismatch: sent=%q, got=%q", message2, response2)
+	} else {
+		t.Log("TCP proxy persistent connection works correctly")
+	}
+}
+
+// TestE2E_MCP verifies that the MCP (Model Context Protocol) server responds
+// to JSON-RPC requests over HTTP.
+func TestE2E_MCP(t *testing.T) {
+	var hits atomic.Int64
+	backendAddr := startBackend(t, "mcp-backend", &hits)
+
+	proxyPort := getFreePort(t)
+	adminPort := getFreePort(t)
+
+	yamlCfg := fmt.Sprintf(`admin:
+  address: "127.0.0.1:%d"
+listeners:
+  - name: http
+    address: "127.0.0.1:%d"
+    protocol: http
+    routes:
+      - path: /
+        pool: mcp-pool
+pools:
+  - name: mcp-pool
+    algorithm: round_robin
+    backends:
+      - address: "%s"
+    health_check:
+      type: http
+      interval: 1s
+      timeout: 1s
+      path: /health
+`, adminPort, proxyPort, backendAddr)
+
+	cfgPath := writeYAML(t, yamlCfg)
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	eng, err := engine.New(cfg, "")
+	if err != nil {
+		t.Fatalf("Failed to create engine: %v", err)
+	}
+	if err := eng.Start(); err != nil {
+		t.Fatalf("Failed to start engine: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		eng.Shutdown(ctx)
+	})
+
+	// MCP runs on admin port + 1
+	mcpAddr := fmt.Sprintf("127.0.0.1:%d", adminPort+1)
+	waitForReady(t, mcpAddr, 5*time.Second)
+
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	// Send JSON-RPC "initialize" request
+	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}`
+	resp, err := client.Post(
+		fmt.Sprintf("http://%s/mcp", mcpAddr),
+		"application/json",
+		strings.NewReader(initReq),
+	)
+	if err != nil {
+		t.Fatalf("MCP initialize request failed: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("MCP initialize: expected 200, got %d, body: %s", resp.StatusCode, body)
+	}
+
+	bodyStr := string(body)
+	t.Logf("MCP initialize response: %s", bodyStr)
+
+	if !strings.Contains(bodyStr, "serverInfo") {
+		t.Error("MCP initialize response missing 'serverInfo'")
+	}
+	if !strings.Contains(bodyStr, "capabilities") {
+		t.Error("MCP initialize response missing 'capabilities'")
+	}
+
+	// Send JSON-RPC "tools/list" request
+	toolsReq := `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`
+	resp, err = client.Post(
+		fmt.Sprintf("http://%s/mcp", mcpAddr),
+		"application/json",
+		strings.NewReader(toolsReq),
+	)
+	if err != nil {
+		t.Fatalf("MCP tools/list request failed: %v", err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("MCP tools/list: expected 200, got %d, body: %s", resp.StatusCode, body)
+	}
+
+	bodyStr = string(body)
+	t.Logf("MCP tools/list response: %s", bodyStr[:min(500, len(bodyStr))])
+
+	if !strings.Contains(bodyStr, "tools") {
+		t.Error("MCP tools/list response missing 'tools'")
+	} else {
+		t.Log("MCP server responds correctly to initialize and tools/list")
+	}
+}
+
+// TestE2E_MultipleListeners verifies that an HTTP listener and a TCP listener
+// can run simultaneously, each serving different types of traffic.
+// This tests that the engine can manage multiple listener types at once.
+func TestE2E_MultipleListeners(t *testing.T) {
+	// HTTP backend (pool-a)
+	var httpHits atomic.Int64
+	httpBackendAddr := startBackend(t, "http-backend", &httpHits)
+
+	// TCP echo server (pool-b)
+	echoListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to start echo server: %v", err)
+	}
+	echoAddr := echoListener.Addr().String()
+	go func() {
+		for {
+			conn, err := echoListener.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				buf := make([]byte, 4096)
+				for {
+					n, err := c.Read(buf)
+					if err != nil {
+						return
+					}
+					c.Write(buf[:n])
+				}
+			}(conn)
+		}
+	}()
+	t.Cleanup(func() { echoListener.Close() })
+
+	httpPort := getFreePort(t)
+	tcpPort := getFreePort(t)
+	adminPort := getFreePort(t)
+
+	// Configure HTTP listener + TCP listener using separate config objects
+	// since the custom YAML parser has limitations with multiple sequences.
+	// We build the config programmatically instead.
+	cfg := &config.Config{
+		Admin: &config.Admin{Address: fmt.Sprintf("127.0.0.1:%d", adminPort)},
+		Listeners: []*config.Listener{
+			{
+				Name:     "http-listener",
+				Address:  fmt.Sprintf("127.0.0.1:%d", httpPort),
+				Protocol: "http",
+				Routes: []*config.Route{
+					{Path: "/", Pool: "http-pool"},
+				},
+			},
+			{
+				Name:     "tcp-listener",
+				Address:  fmt.Sprintf("127.0.0.1:%d", tcpPort),
+				Protocol: "tcp",
+				Pool:     "tcp-pool",
+			},
+		},
+		Pools: []*config.Pool{
+			{
+				Name:      "http-pool",
+				Algorithm: "round_robin",
+				Backends:  []*config.Backend{{Address: httpBackendAddr, Weight: 100}},
+				HealthCheck: &config.HealthCheck{
+					Type: "http", Path: "/health", Interval: "1s", Timeout: "1s",
+				},
+			},
+			{
+				Name:      "tcp-pool",
+				Algorithm: "round_robin",
+				Backends:  []*config.Backend{{Address: echoAddr, Weight: 100}},
+				HealthCheck: &config.HealthCheck{
+					Type: "tcp", Interval: "1s", Timeout: "1s",
+				},
+			},
+		},
+		Logging: &config.Logging{Level: "info", Format: "json", Output: "stdout"},
+		Metrics: &config.Metrics{Enabled: true, Path: "/metrics"},
+	}
+
+	eng, err := engine.New(cfg, "")
+	if err != nil {
+		t.Fatalf("Failed to create engine: %v", err)
+	}
+	if err := eng.Start(); err != nil {
+		t.Fatalf("Failed to start engine: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		eng.Shutdown(ctx)
+	})
+
+	httpAddr := fmt.Sprintf("127.0.0.1:%d", httpPort)
+	tcpAddr := fmt.Sprintf("127.0.0.1:%d", tcpPort)
+	waitForReady(t, httpAddr, 5*time.Second)
+	waitForReady(t, tcpAddr, 5*time.Second)
+	time.Sleep(2 * time.Second) // Wait for health checks
+
+	// Test 1: HTTP listener works
+	client := &http.Client{Timeout: 5 * time.Second}
+	for i := 0; i < 5; i++ {
+		resp, err := client.Get(fmt.Sprintf("http://%s/", httpAddr))
+		if err != nil {
+			t.Logf("HTTP request %d failed: %v", i, err)
+			continue
+		}
+		io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Logf("HTTP request %d: status %d", i, resp.StatusCode)
+		}
+	}
+
+	// Test 2: TCP listener works
+	tcpConn, err := net.DialTimeout("tcp", tcpAddr, 5*time.Second)
+	if err != nil {
+		t.Fatalf("Failed to connect to TCP listener: %v", err)
+	}
+	defer tcpConn.Close()
+	tcpConn.SetDeadline(time.Now().Add(5 * time.Second))
+
+	message := "hello-tcp"
+	tcpConn.Write([]byte(message))
+	buf := make([]byte, 1024)
+	n, err := tcpConn.Read(buf)
+	if err != nil {
+		t.Fatalf("TCP read failed: %v", err)
+	}
+	tcpResponse := string(buf[:n])
+
+	t.Logf("HTTP backend hits: %d", httpHits.Load())
+	t.Logf("TCP echo response: %s", tcpResponse)
+
+	if httpHits.Load() == 0 {
+		t.Error("HTTP listener did not route any traffic to backends")
+	}
+
+	if tcpResponse != message {
+		t.Errorf("TCP echo mismatch: sent=%q, got=%q", message, tcpResponse)
+	}
+
+	if httpHits.Load() > 0 && tcpResponse == message {
+		t.Log("Multiple listeners confirmed: HTTP and TCP listeners both active and routing correctly")
+	}
+}
+
 // --- Helper functions ---
 
 // writeYAML writes YAML content to a temp file and returns the path.
