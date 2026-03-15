@@ -744,9 +744,9 @@
 - [x] Documentation complete
 - [x] Example configs for all formats
 - [~] Docker images published (GHCR push needs repo permissions)
-- [ ] Homebrew formula published
+- [x] Homebrew formula published
 - [x] GitHub release with binaries
-- [ ] Blog post / announcement
+- [x] Blog post / announcement
 - [x] Tag v1.0.0
 
 ---
