@@ -421,6 +421,11 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 	e.listeners = nil
 
 	// 2. Drain active connections
+	if ctx == nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+	}
 	if err := e.connManager.Drain(ctx); err != nil {
 		e.logger.Warn("Connection drain incomplete", logging.Error(err))
 	} else {
@@ -638,9 +643,14 @@ func (e *Engine) initializePools() error {
 		pool.SetBalancer(bal)
 
 		// Add backends
-		for _, backendCfg := range poolCfg.Backends {
-			b := backend.NewBackend(backendCfg.ID, backendCfg.Address)
+		for i, backendCfg := range poolCfg.Backends {
+			id := backendCfg.ID
+			if id == "" {
+				id = fmt.Sprintf("%s-%d", backendCfg.Address, i)
+			}
+			b := backend.NewBackend(id, backendCfg.Address)
 			b.Weight = int32(backendCfg.Weight)
+			b.SetState(backend.StateUp) // Start as Up, health checker will update
 			if err := pool.AddBackend(b); err != nil {
 				return fmt.Errorf("failed to add backend %s to pool %s: %w",
 					backendCfg.ID, poolCfg.Name, err)
