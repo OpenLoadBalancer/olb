@@ -243,16 +243,16 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 	}
 	e.mcpServer = mcp.NewServer(mcpCfg)
 
+	// Set up admin server reload callback before creating the server
+	adminCfg.OnReload = func() error {
+		return e.Reload()
+	}
+
 	adminServer, err := admin.NewServer(adminCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create admin server: %w", err)
 	}
 	e.adminServer = adminServer
-
-	// Set up admin server reload callback
-	adminCfg.OnReload = func() error {
-		return e.Reload()
-	}
 
 	// Initialize cluster manager if configured
 	if cfg.Cluster != nil && cfg.Cluster.Enabled {

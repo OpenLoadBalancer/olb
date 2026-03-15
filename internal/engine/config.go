@@ -100,12 +100,16 @@ func (e *Engine) applyConfig(newCfg *config.Config) error {
 		pool.SetBalancer(bal)
 
 		// Add backends
-		for _, backendCfg := range poolCfg.Backends {
-			b := backend.NewBackend(backendCfg.ID, backendCfg.Address)
+		for i, backendCfg := range poolCfg.Backends {
+			id := backendCfg.ID
+			if id == "" {
+				id = fmt.Sprintf("%s-%d", backendCfg.Address, i)
+			}
+			b := backend.NewBackend(id, backendCfg.Address)
 			b.Weight = int32(backendCfg.Weight)
 			if err := pool.AddBackend(b); err != nil {
 				return fmt.Errorf("failed to add backend %s to pool %s: %w",
-					backendCfg.ID, poolCfg.Name, err)
+					id, poolCfg.Name, err)
 			}
 
 			// Register with health checker
