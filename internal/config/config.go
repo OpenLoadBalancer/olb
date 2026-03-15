@@ -10,22 +10,104 @@ import (
 
 // Config represents the top-level configuration.
 type Config struct {
-	Version   string      `yaml:"version" json:"version"`
-	Listeners []*Listener `yaml:"listeners" json:"listeners"`
-	Pools     []*Pool     `yaml:"pools" json:"pools"`
-	TLS       *TLSConfig  `yaml:"tls" json:"tls"`
-	Admin     *Admin      `yaml:"admin" json:"admin"`
-	Logging   *Logging    `yaml:"logging" json:"logging"`
-	Metrics   *Metrics    `yaml:"metrics" json:"metrics"`
+	Version    string            `yaml:"version" json:"version"`
+	Listeners  []*Listener       `yaml:"listeners" json:"listeners"`
+	Pools      []*Pool           `yaml:"pools" json:"pools"`
+	TLS        *TLSConfig        `yaml:"tls" json:"tls"`
+	Admin      *Admin            `yaml:"admin" json:"admin"`
+	Logging    *Logging          `yaml:"logging" json:"logging"`
+	Metrics    *Metrics          `yaml:"metrics" json:"metrics"`
+	Cluster    *ClusterConfig    `yaml:"cluster" json:"cluster"`
+	Middleware *MiddlewareConfig `yaml:"middleware" json:"middleware"`
+	WAF        *WAFConfig        `yaml:"waf" json:"waf"`
+}
+
+// MiddlewareConfig represents middleware configuration.
+type MiddlewareConfig struct {
+	RateLimit      *RateLimitConfig      `yaml:"rate_limit" json:"rate_limit"`
+	CORS           *CORSConfig           `yaml:"cors" json:"cors"`
+	Compression    *CompressionConfig    `yaml:"compression" json:"compression"`
+	CircuitBreaker *CircuitBreakerConfig `yaml:"circuit_breaker" json:"circuit_breaker"`
+	Retry          *RetryConfig          `yaml:"retry" json:"retry"`
+	Cache          *CacheConfig          `yaml:"cache" json:"cache"`
+	IPFilter       *IPFilterConfig       `yaml:"ip_filter" json:"ip_filter"`
+	Headers        *HeadersConfig        `yaml:"headers" json:"headers"`
+}
+
+type RateLimitConfig struct {
+	Enabled           bool    `yaml:"enabled" json:"enabled"`
+	RequestsPerSecond float64 `yaml:"requests_per_second" json:"requests_per_second"`
+	BurstSize         int     `yaml:"burst_size" json:"burst_size"`
+}
+
+type CORSConfig struct {
+	Enabled          bool     `yaml:"enabled" json:"enabled"`
+	AllowedOrigins   []string `yaml:"allowed_origins" json:"allowed_origins"`
+	AllowedMethods   []string `yaml:"allowed_methods" json:"allowed_methods"`
+	AllowedHeaders   []string `yaml:"allowed_headers" json:"allowed_headers"`
+	AllowCredentials bool     `yaml:"allow_credentials" json:"allow_credentials"`
+	MaxAge           int      `yaml:"max_age" json:"max_age"`
+}
+
+type CompressionConfig struct {
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	MinSize int  `yaml:"min_size" json:"min_size"`
+	Level   int  `yaml:"level" json:"level"`
+}
+
+type CircuitBreakerConfig struct {
+	Enabled            bool    `yaml:"enabled" json:"enabled"`
+	ErrorThreshold     int     `yaml:"error_threshold" json:"error_threshold"`
+	ErrorRateThreshold float64 `yaml:"error_rate_threshold" json:"error_rate_threshold"`
+	OpenDuration       string  `yaml:"open_duration" json:"open_duration"`
+}
+
+type RetryConfig struct {
+	Enabled    bool  `yaml:"enabled" json:"enabled"`
+	MaxRetries int   `yaml:"max_retries" json:"max_retries"`
+	RetryOn    []int `yaml:"retry_on" json:"retry_on"`
+}
+
+type CacheConfig struct {
+	Enabled    bool   `yaml:"enabled" json:"enabled"`
+	MaxEntries int    `yaml:"max_entries" json:"max_entries"`
+	DefaultTTL string `yaml:"default_ttl" json:"default_ttl"`
+}
+
+type IPFilterConfig struct {
+	Enabled       bool     `yaml:"enabled" json:"enabled"`
+	AllowList     []string `yaml:"allow_list" json:"allow_list"`
+	DenyList      []string `yaml:"deny_list" json:"deny_list"`
+	DefaultAction string   `yaml:"default_action" json:"default_action"`
+}
+
+type HeadersConfig struct {
+	Enabled     bool              `yaml:"enabled" json:"enabled"`
+	RequestAdd  map[string]string `yaml:"request_add" json:"request_add"`
+	ResponseAdd map[string]string `yaml:"response_add" json:"response_add"`
+}
+
+type WAFConfig struct {
+	Enabled bool   `yaml:"enabled" json:"enabled"`
+	Mode    string `yaml:"mode" json:"mode"`
 }
 
 // Listener represents an L4/L7 listener.
 type Listener struct {
-	Name     string   `yaml:"name" json:"name"`
-	Address  string   `yaml:"address" json:"address"`
-	Protocol string   `yaml:"protocol" json:"protocol"`
-	TLS      bool     `yaml:"tls" json:"tls"`
-	Routes   []*Route `yaml:"routes" json:"routes"`
+	Name     string      `yaml:"name" json:"name"`
+	Address  string      `yaml:"address" json:"address"`
+	Protocol string      `yaml:"protocol" json:"protocol"`
+	TLS      bool        `yaml:"tls" json:"tls"`
+	Routes   []*Route    `yaml:"routes" json:"routes"`
+	MTLS     *MTLSConfig `yaml:"mtls" json:"mtls"`
+	Pool     string      `yaml:"pool" json:"pool"` // backend pool for L4 (tcp/udp) listeners
+}
+
+// MTLSConfig represents mTLS configuration for a listener.
+type MTLSConfig struct {
+	Enabled    bool     `yaml:"enabled" json:"enabled"`
+	ClientAuth string   `yaml:"client_auth" json:"client_auth"`
+	ClientCAs  []string `yaml:"client_cas" json:"client_cas"`
 }
 
 // Route represents a routing rule.
@@ -90,6 +172,18 @@ type Logging struct {
 type Metrics struct {
 	Enabled bool   `yaml:"enabled" json:"enabled"`
 	Path    string `yaml:"path" json:"path"`
+}
+
+// ClusterConfig represents cluster configuration.
+type ClusterConfig struct {
+	Enabled       bool     `yaml:"enabled" json:"enabled"`
+	NodeID        string   `yaml:"node_id" json:"node_id"`
+	BindAddr      string   `yaml:"bind_addr" json:"bind_addr"`
+	BindPort      int      `yaml:"bind_port" json:"bind_port"`
+	Peers         []string `yaml:"peers" json:"peers"`
+	DataDir       string   `yaml:"data_dir" json:"data_dir"`
+	ElectionTick  string   `yaml:"election_tick" json:"election_tick"`
+	HeartbeatTick string   `yaml:"heartbeat_tick" json:"heartbeat_tick"`
 }
 
 // ExpandEnv substitutes environment variables in a string.

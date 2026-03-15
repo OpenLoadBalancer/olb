@@ -11,7 +11,7 @@ import (
 	"github.com/openloadbalancer/olb/internal/logging"
 	"github.com/openloadbalancer/olb/internal/proxy/l7"
 	"github.com/openloadbalancer/olb/internal/router"
-	"github.com/openloadbalancer/olb/internal/tls"
+	olbTLS "github.com/openloadbalancer/olb/internal/tls"
 )
 
 // loadConfig reloads configuration from disk.
@@ -177,7 +177,7 @@ func (e *Engine) applyConfig(newCfg *config.Config) error {
 
 	// 7. Reload TLS certificates if changed
 	if newCfg.TLS != nil && newCfg.TLS.CertFile != "" && newCfg.TLS.KeyFile != "" {
-		if err := e.tlsManager.ReloadCertificates([]tls.CertConfig{
+		if err := e.tlsManager.ReloadCertificates([]olbTLS.CertConfig{
 			{CertFile: newCfg.TLS.CertFile, KeyFile: newCfg.TLS.KeyFile},
 		}); err != nil {
 			e.logger.Warn("Failed to reload TLS certificates", logging.Error(err))

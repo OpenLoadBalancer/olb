@@ -43,6 +43,11 @@ type HTTPProxy struct {
 	healthChecker   *health.Checker
 	middlewareChain *middleware.Chain
 
+	// Protocol-specific handlers
+	wsHandler   *WebSocketHandler
+	grpcHandler *GRPCHandler
+	sseHandler  *SSEHandler
+
 	// Configuration
 	proxyTimeout time.Duration
 	dialTimeout  time.Duration
@@ -102,6 +107,9 @@ func NewHTTPProxy(config *Config) *HTTPProxy {
 		connPoolManager: config.ConnPoolManager,
 		healthChecker:   config.HealthChecker,
 		middlewareChain: config.MiddlewareChain,
+		wsHandler:       NewWebSocketHandler(nil),
+		grpcHandler:     NewGRPCHandler(nil),
+		sseHandler:      NewSSEHandler(nil),
 		proxyTimeout:    proxyTimeout,
 		dialTimeout:     dialTimeout,
 		maxRetries:      maxRetries,
@@ -187,6 +195,8 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // proxyHandler handles the actual proxying.
+// It detects protocol-specific requests (WebSocket, gRPC, SSE) and delegates
+// to the appropriate handler, falling back to standard HTTP proxying.
 func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request, reqCtx *middleware.RequestContext, routeMatch *router.RouteMatch) {
 	// Get backend pool
 	pool := p.poolManager.GetPool(routeMatch.Route.BackendPool)
@@ -195,7 +205,38 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request, reqCtx 
 		return
 	}
 
-	// Try backends with retry logic
+	// Check for protocol-specific requests that bypass the retry loop.
+	// These long-lived connections (WebSocket, gRPC streaming, SSE) are
+	// handled by dedicated handlers with their own connection lifecycle.
+	isWS := IsWebSocketUpgrade(r) && p.wsHandler != nil
+	isGRPC := IsGRPCRequest(r) && p.grpcHandler != nil
+	isSSE := IsSSERequest(r) && p.sseHandler != nil
+
+	if isWS || isGRPC || isSSE {
+		// Select a backend for the protocol-specific handler
+		selectedBackend := p.selectBackend(pool)
+		if selectedBackend == nil {
+			p.errorHandler(w, r, olbErrors.ErrBackendUnavailable.WithContext("pool", pool.Name))
+			return
+		}
+		reqCtx.Backend = selectedBackend
+
+		var err error
+		switch {
+		case isWS:
+			err = p.wsHandler.HandleWebSocket(w, r, selectedBackend)
+		case isGRPC:
+			err = p.grpcHandler.HandleGRPC(w, r, selectedBackend)
+		case isSSE:
+			err = p.sseHandler.HandleSSE(w, r, selectedBackend)
+		}
+		if err != nil {
+			p.errorHandler(w, r, err)
+		}
+		return
+	}
+
+	// Standard HTTP proxy with retry logic
 	var lastErr error
 	var attemptedBackends []string
 
@@ -252,6 +293,16 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request, reqCtx 
 
 	// All retries exhausted
 	p.errorHandler(w, r, olbErrors.ErrBackendUnavailable.WithContext("reason", lastErr.Error()))
+}
+
+// selectBackend picks a healthy backend from the pool using the configured balancer.
+// Returns nil if no healthy backend is available.
+func (p *HTTPProxy) selectBackend(pool *backend.Pool) *backend.Backend {
+	healthyBackends := pool.GetHealthyBackends()
+	if len(healthyBackends) == 0 {
+		return nil
+	}
+	return pool.GetBalancer().Next(healthyBackends)
 }
 
 // proxyRequest proxies a single request to a backend.

@@ -5,6 +5,7 @@ package engine
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"os"
@@ -25,9 +26,11 @@ import (
 	"github.com/openloadbalancer/olb/internal/metrics"
 	"github.com/openloadbalancer/olb/internal/middleware"
 	"github.com/openloadbalancer/olb/internal/plugin"
+	"github.com/openloadbalancer/olb/internal/proxy/l4"
 	"github.com/openloadbalancer/olb/internal/proxy/l7"
 	"github.com/openloadbalancer/olb/internal/router"
-	"github.com/openloadbalancer/olb/internal/tls"
+	olbTLS "github.com/openloadbalancer/olb/internal/tls"
+	"github.com/openloadbalancer/olb/internal/waf"
 	"github.com/openloadbalancer/olb/internal/webui"
 	"github.com/openloadbalancer/olb/pkg/version"
 )
@@ -58,7 +61,9 @@ type Engine struct {
 	// Components
 	logger          *logging.Logger
 	metrics         *metrics.Registry
-	tlsManager      *tls.Manager
+	tlsManager      *olbTLS.Manager
+	mtlsManager     *olbTLS.MTLSManager
+	ocspManager     *olbTLS.OCSPManager
 	poolManager     *backend.PoolManager
 	healthChecker   *health.Checker
 	router          *router.Router
@@ -69,13 +74,20 @@ type Engine struct {
 	connPoolMgr     *conn.PoolManager
 	middlewareChain *middleware.Chain
 
+	// L4 proxies (kept for lifecycle management)
+	udpProxies []*l4.UDPProxy
+
 	// Integrated subsystems
 	mcpServer    *mcp.Server
 	mcpTransport *mcp.HTTPTransport
 	pluginMgr    *plugin.PluginManager
 	clusterMgr   *cluster.ClusterManager // optional, nil if not configured
+	raftCluster  *cluster.Cluster        // optional, nil if not configured
 	discoveryMgr *discovery.Manager
 	webUIHandler *webui.Handler
+
+	// Config file watcher
+	configWatcher *config.Watcher
 
 	// Runtime state
 	state     State
@@ -116,7 +128,13 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 	metricsRegistry := metrics.NewRegistry()
 
 	// Create TLS manager
-	tlsMgr := tls.NewManager()
+	tlsMgr := olbTLS.NewManager()
+
+	// Create mTLS manager
+	mtlsMgr := olbTLS.NewMTLSManager()
+
+	// Create OCSP manager
+	ocspMgr := olbTLS.NewOCSPManager(olbTLS.DefaultOCSPConfig())
 
 	// Create connection manager with limits
 	connMgr := conn.NewManager(&conn.Config{
@@ -191,6 +209,8 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 		logger:          logger,
 		metrics:         metricsRegistry,
 		tlsManager:      tlsMgr,
+		mtlsManager:     mtlsMgr,
+		ocspManager:     ocspMgr,
 		poolManager:     poolMgr,
 		healthChecker:   healthChecker,
 		router:          rtr,
@@ -230,12 +250,77 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 		return e.Reload()
 	}
 
+	// Initialize cluster manager if configured
+	if cfg.Cluster != nil && cfg.Cluster.Enabled {
+		if err := e.initCluster(cfg.Cluster, logger); err != nil {
+			logger.Warn("Failed to initialize cluster, running standalone",
+				logging.Error(err),
+			)
+		}
+	}
+
 	logger.Info("Engine created",
 		logging.String("version", version.Version),
 		logging.String("config_path", configPath),
 	)
 
 	return e, nil
+}
+
+// initCluster initializes the Raft cluster and cluster manager.
+func (e *Engine) initCluster(clusterCfg *config.ClusterConfig, logger *logging.Logger) error {
+	raftCfg := &cluster.Config{
+		NodeID:        clusterCfg.NodeID,
+		BindAddr:      clusterCfg.BindAddr,
+		BindPort:      clusterCfg.BindPort,
+		Peers:         clusterCfg.Peers,
+		DataDir:       clusterCfg.DataDir,
+		ElectionTick:  parseDuration(clusterCfg.ElectionTick, 2*time.Second),
+		HeartbeatTick: parseDuration(clusterCfg.HeartbeatTick, 500*time.Millisecond),
+	}
+
+	// Create a simple state machine for the cluster
+	stateMachine := &engineStateMachine{}
+
+	raftCluster, err := cluster.New(raftCfg, stateMachine)
+	if err != nil {
+		return fmt.Errorf("failed to create Raft cluster: %w", err)
+	}
+	e.raftCluster = raftCluster
+
+	// Create distributed state
+	distState := cluster.NewDistributedState(nil)
+
+	// Create cluster manager
+	mgrCfg := &cluster.ClusterManagerConfig{
+		NodeID:   clusterCfg.NodeID,
+		BindAddr: clusterCfg.BindAddr,
+		BindPort: clusterCfg.BindPort,
+	}
+	e.clusterMgr = cluster.NewClusterManager(mgrCfg, raftCluster, distState)
+
+	logger.Info("Cluster initialized",
+		logging.String("node_id", clusterCfg.NodeID),
+		logging.Int("peers", len(clusterCfg.Peers)),
+	)
+
+	return nil
+}
+
+// engineStateMachine implements cluster.StateMachine for the engine.
+type engineStateMachine struct{}
+
+func (sm *engineStateMachine) Apply(command []byte) ([]byte, error) {
+	// Simple passthrough - in production this would apply config changes
+	return command, nil
+}
+
+func (sm *engineStateMachine) Snapshot() ([]byte, error) {
+	return []byte("{}"), nil
+}
+
+func (sm *engineStateMachine) Restore(snapshot []byte) error {
+	return nil
 }
 
 // Start initializes and starts all components in the correct order.
@@ -268,28 +353,37 @@ func (e *Engine) Start() error {
 		}
 	}
 
-	// 2. Start health checker
+	// 2. Start OCSP manager for certificate stapling
+	if e.ocspManager != nil {
+		if err := e.ocspManager.Start(); err != nil {
+			e.logger.Warn("OCSP manager start failed", logging.Error(err))
+		} else {
+			e.logger.Info("OCSP manager started")
+		}
+	}
+
+	// 3. Start health checker
 	e.healthChecker = health.NewChecker()
 
-	// 3. Initialize backend pools and register backends with health checker
+	// 4. Initialize backend pools and register backends with health checker
 	if err := e.initializePools(); err != nil {
 		e.setState(StateStopped)
 		return fmt.Errorf("failed to initialize pools: %w", err)
 	}
 
-	// 4. Add routes to router
+	// 5. Add routes to router
 	if err := e.initializeRoutes(); err != nil {
 		e.setState(StateStopped)
 		return fmt.Errorf("failed to initialize routes: %w", err)
 	}
 
-	// 5. Start listeners
+	// 6. Start listeners (HTTP, HTTPS with mTLS, TCP, UDP)
 	if err := e.startListeners(); err != nil {
 		e.setState(StateStopped)
 		return fmt.Errorf("failed to start listeners: %w", err)
 	}
 
-	// 6. Start admin server
+	// 7. Start admin server
 	e.wg.Add(1)
 	go func() {
 		defer e.wg.Done()
@@ -302,7 +396,7 @@ func (e *Engine) Start() error {
 		}
 	}()
 
-	// 7. Start plugin manager
+	// 8. Start plugin manager
 	if e.pluginMgr != nil {
 		if err := e.pluginMgr.StartAll(); err != nil {
 			e.logger.Warn("Plugin manager start failed", logging.Error(err))
@@ -311,7 +405,7 @@ func (e *Engine) Start() error {
 		}
 	}
 
-	// 8. Start MCP HTTP transport if admin address is available
+	// 9. Start MCP HTTP transport if admin address is available
 	if e.mcpServer != nil {
 		mcpAddr := getMCPAddress(e.config)
 		if mcpAddr != "" {
@@ -327,12 +421,20 @@ func (e *Engine) Start() error {
 		}
 	}
 
-	// 9. Start cluster manager if configured
+	// 10. Start cluster manager if configured
 	if e.clusterMgr != nil {
-		e.logger.Info("Cluster manager available")
+		if e.config.Cluster != nil && len(e.config.Cluster.Peers) > 0 {
+			if err := e.clusterMgr.Join(e.config.Cluster.Peers); err != nil {
+				e.logger.Warn("Failed to join cluster", logging.Error(err))
+			} else {
+				e.logger.Info("Cluster manager started, joined cluster")
+			}
+		} else {
+			e.logger.Info("Cluster manager available (standalone mode)")
+		}
 	}
 
-	// 10. Start discovery manager
+	// 11. Start discovery manager
 	if e.discoveryMgr != nil {
 		ctx := context.Background()
 		if err := e.discoveryMgr.Start(ctx); err != nil {
@@ -342,10 +444,15 @@ func (e *Engine) Start() error {
 		}
 	}
 
-	// 11. Install signal handlers
+	// 12. Start config file watcher for auto-reload
+	if e.configPath != "" {
+		e.startConfigWatcher()
+	}
+
+	// 13. Install signal handlers
 	e.setupSignalHandlers()
 
-	// 12. Set running state
+	// 14. Set running state
 	e.mu.Lock()
 	e.state = StateRunning
 	e.startTime = time.Now()
@@ -360,6 +467,39 @@ func (e *Engine) Start() error {
 	return nil
 }
 
+// startConfigWatcher creates and starts a file watcher for the config file.
+// On change, it triggers a Reload().
+func (e *Engine) startConfigWatcher() {
+	watcher, err := config.NewWatcher(
+		e.configPath,
+		2*time.Second,
+		func(path string, data []byte) {
+			e.logger.Info("Config file changed, triggering reload",
+				logging.String("path", path),
+			)
+			if err := e.Reload(); err != nil {
+				e.logger.Error("Auto-reload failed", logging.Error(err))
+			}
+		},
+		func(path string, err error) {
+			e.logger.Warn("Config watcher error",
+				logging.String("path", path),
+				logging.Error(err),
+			)
+		},
+	)
+	if err != nil {
+		e.logger.Warn("Failed to create config file watcher", logging.Error(err))
+		return
+	}
+
+	e.configWatcher = watcher
+	watcher.Start(context.Background())
+	e.logger.Info("Config file watcher started",
+		logging.String("path", e.configPath),
+	)
+}
+
 // Shutdown gracefully stops all components in reverse order.
 func (e *Engine) Shutdown(ctx context.Context) error {
 	e.mu.Lock()
@@ -371,6 +511,12 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 	e.mu.Unlock()
 
 	e.logger.Info("Shutting down engine...")
+
+	// 0. Stop config file watcher
+	if e.configWatcher != nil {
+		e.configWatcher.Stop()
+		e.logger.Info("Config file watcher stopped")
+	}
 
 	// 0a. Stop MCP transport
 	if e.mcpTransport != nil {
@@ -405,6 +551,15 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 		}
 	}
 
+	// 0e. Stop OCSP manager
+	if e.ocspManager != nil {
+		if err := e.ocspManager.Stop(); err != nil {
+			e.logger.Warn("Failed to stop OCSP manager", logging.Error(err))
+		} else {
+			e.logger.Info("OCSP manager stopped")
+		}
+	}
+
 	// 1. Stop accepting new connections (close listeners)
 	for _, l := range e.listeners {
 		if err := l.Stop(ctx); err != nil {
@@ -419,6 +574,14 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 		}
 	}
 	e.listeners = nil
+
+	// 1a. Stop UDP proxies
+	for _, udpProxy := range e.udpProxies {
+		if err := udpProxy.Stop(); err != nil {
+			e.logger.Warn("Failed to stop UDP proxy", logging.Error(err))
+		}
+	}
+	e.udpProxies = nil
 
 	// 2. Drain active connections
 	if ctx == nil {
@@ -635,8 +798,32 @@ func (e *Engine) initializePools() error {
 		// Create balancer for the pool
 		var bal backend.Balancer
 		switch poolCfg.Algorithm {
+		case "round_robin", "rr":
+			bal = balancer.NewRoundRobin()
 		case "weighted_round_robin", "wrr":
 			bal = balancer.NewWeightedRoundRobin()
+		case "least_connections", "lc":
+			bal = balancer.NewLeastConnections()
+		case "weighted_least_connections", "wlc":
+			bal = balancer.NewWeightedLeastConnections()
+		case "least_response_time", "lrt":
+			bal = balancer.NewLeastResponseTime()
+		case "weighted_least_response_time", "wlrt":
+			bal = balancer.NewWeightedLeastResponseTime()
+		case "ip_hash", "iphash":
+			bal = balancer.NewIPHash()
+		case "consistent_hash", "ch", "ketama":
+			bal = balancer.NewConsistentHash(balancer.DefaultVirtualNodes)
+		case "maglev":
+			bal = balancer.NewMaglev()
+		case "power_of_two", "p2c":
+			bal = balancer.NewPowerOfTwo()
+		case "random":
+			bal = balancer.NewRandom()
+		case "weighted_random", "wrandom":
+			bal = balancer.NewWeightedRandom()
+		case "ring_hash", "ringhash":
+			bal = balancer.NewRingHash()
 		default:
 			bal = balancer.NewRoundRobin()
 		}
@@ -712,47 +899,284 @@ func (e *Engine) initializeRoutes() error {
 }
 
 // startListeners creates and starts all listeners.
+// Supports HTTP, HTTPS (with optional mTLS), TCP (L4), and UDP (L4) protocols.
 func (e *Engine) startListeners() error {
 	for _, listenerCfg := range e.config.Listeners {
-		opts := &listener.Options{
-			Name:           listenerCfg.Name,
-			Address:        listenerCfg.Address,
-			Handler:        e.proxy,
-			ReadTimeout:    30 * time.Second,
-			WriteTimeout:   30 * time.Second,
-			IdleTimeout:    120 * time.Second,
-			MaxHeaderBytes: 1 << 20, // 1 MB
+		switch listenerCfg.Protocol {
+		case "tcp":
+			// L4 TCP proxy listener
+			if err := e.startTCPListener(listenerCfg); err != nil {
+				return fmt.Errorf("failed to start TCP listener %s: %w", listenerCfg.Name, err)
+			}
+
+		case "udp":
+			// L4 UDP proxy
+			if err := e.startUDPListener(listenerCfg); err != nil {
+				return fmt.Errorf("failed to start UDP listener %s: %w", listenerCfg.Name, err)
+			}
+
+		default:
+			// HTTP/HTTPS (L7) listener
+			if err := e.startHTTPListener(listenerCfg); err != nil {
+				return fmt.Errorf("failed to start listener %s: %w", listenerCfg.Name, err)
+			}
 		}
-
-		var l listener.Listener
-		var err error
-
-		if listenerCfg.TLS {
-			// HTTPS listener
-			l, err = listener.NewHTTPSListener(opts, e.tlsManager)
-		} else {
-			// HTTP listener
-			l, err = listener.NewHTTPListener(opts)
-		}
-
-		if err != nil {
-			return fmt.Errorf("failed to create listener %s: %w", listenerCfg.Name, err)
-		}
-
-		if err := l.Start(); err != nil {
-			return fmt.Errorf("failed to start listener %s: %w", listenerCfg.Name, err)
-		}
-
-		e.listeners = append(e.listeners, l)
-
-		e.logger.Info("Listener started",
-			logging.String("name", listenerCfg.Name),
-			logging.String("address", l.Address()),
-			logging.Bool("tls", listenerCfg.TLS),
-		)
 	}
 
 	return nil
+}
+
+// startTCPListener creates and starts a TCP (L4) proxy listener.
+func (e *Engine) startTCPListener(listenerCfg *config.Listener) error {
+	// Resolve the backend pool for this TCP listener
+	poolName := listenerCfg.Pool
+	if poolName == "" && len(listenerCfg.Routes) > 0 {
+		poolName = listenerCfg.Routes[0].Pool
+	}
+
+	pool := e.poolManager.GetPool(poolName)
+	if pool == nil {
+		return fmt.Errorf("backend pool %q not found for TCP listener %s", poolName, listenerCfg.Name)
+	}
+
+	// Create TCP proxy with simple round-robin balancer
+	tcpBalancer := l4.NewSimpleBalancer()
+	tcpProxy := l4.NewTCPProxy(pool, tcpBalancer, l4.DefaultTCPProxyConfig())
+
+	// Create TCP listener
+	tcpListener, err := l4.NewTCPListener(&l4.TCPListenerOptions{
+		Name:    listenerCfg.Name,
+		Address: listenerCfg.Address,
+		Proxy:   tcpProxy,
+	})
+	if err != nil {
+		return err
+	}
+
+	if err := tcpListener.Start(); err != nil {
+		return err
+	}
+
+	e.listeners = append(e.listeners, tcpListener)
+
+	e.logger.Info("TCP listener started",
+		logging.String("name", listenerCfg.Name),
+		logging.String("address", tcpListener.Address()),
+		logging.String("pool", poolName),
+	)
+
+	return nil
+}
+
+// startUDPListener creates and starts a UDP (L4) proxy.
+func (e *Engine) startUDPListener(listenerCfg *config.Listener) error {
+	// Resolve the backend pool for this UDP listener
+	poolName := listenerCfg.Pool
+	if poolName == "" && len(listenerCfg.Routes) > 0 {
+		poolName = listenerCfg.Routes[0].Pool
+	}
+
+	pool := e.poolManager.GetPool(poolName)
+	if pool == nil {
+		return fmt.Errorf("backend pool %q not found for UDP listener %s", poolName, listenerCfg.Name)
+	}
+
+	// Create UDP proxy with simple round-robin balancer
+	udpBalancer := l4.NewSimpleBalancer()
+	udpConfig := l4.DefaultUDPProxyConfig()
+	udpConfig.ListenAddr = listenerCfg.Address
+	udpConfig.BackendPool = poolName
+
+	udpProxy := l4.NewUDPProxy(pool, udpBalancer, udpConfig)
+
+	if err := udpProxy.Start(); err != nil {
+		return err
+	}
+
+	e.udpProxies = append(e.udpProxies, udpProxy)
+
+	e.logger.Info("UDP listener started",
+		logging.String("name", listenerCfg.Name),
+		logging.String("address", listenerCfg.Address),
+		logging.String("pool", poolName),
+	)
+
+	return nil
+}
+
+// startHTTPListener creates and starts an HTTP or HTTPS (L7) listener.
+// If the listener has mTLS configured, it applies client certificate settings.
+func (e *Engine) startHTTPListener(listenerCfg *config.Listener) error {
+	opts := &listener.Options{
+		Name:           listenerCfg.Name,
+		Address:        listenerCfg.Address,
+		Handler:        e.proxy,
+		ReadTimeout:    30 * time.Second,
+		WriteTimeout:   30 * time.Second,
+		IdleTimeout:    120 * time.Second,
+		MaxHeaderBytes: 1 << 20, // 1 MB
+	}
+
+	var l listener.Listener
+	var err error
+
+	if listenerCfg.TLS {
+		// Check for mTLS configuration
+		if listenerCfg.MTLS != nil && listenerCfg.MTLS.Enabled {
+			l, err = e.createMTLSListener(opts, listenerCfg)
+		} else {
+			// Standard HTTPS listener
+			l, err = listener.NewHTTPSListener(opts, e.tlsManager)
+		}
+	} else {
+		// HTTP listener
+		l, err = listener.NewHTTPListener(opts)
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to create listener %s: %w", listenerCfg.Name, err)
+	}
+
+	if err := l.Start(); err != nil {
+		return fmt.Errorf("failed to start listener %s: %w", listenerCfg.Name, err)
+	}
+
+	e.listeners = append(e.listeners, l)
+
+	e.logger.Info("Listener started",
+		logging.String("name", listenerCfg.Name),
+		logging.String("address", l.Address()),
+		logging.Bool("tls", listenerCfg.TLS),
+		logging.Bool("mtls", listenerCfg.MTLS != nil && listenerCfg.MTLS.Enabled),
+	)
+
+	return nil
+}
+
+// createMTLSListener creates an HTTPS listener with mTLS (mutual TLS) support.
+// It loads client CA certificates and configures client certificate verification.
+func (e *Engine) createMTLSListener(opts *listener.Options, listenerCfg *config.Listener) (listener.Listener, error) {
+	mtlsCfg := &olbTLS.MTLSConfig{
+		Enabled:   true,
+		ClientCAs: listenerCfg.MTLS.ClientCAs,
+	}
+
+	// Parse client auth policy
+	if listenerCfg.MTLS.ClientAuth != "" {
+		policy, err := olbTLS.ParseClientAuthPolicy(listenerCfg.MTLS.ClientAuth)
+		if err != nil {
+			return nil, fmt.Errorf("invalid client_auth policy: %w", err)
+		}
+		mtlsCfg.ClientAuth = policy
+	} else {
+		mtlsCfg.ClientAuth = olbTLS.RequireAndVerifyClientCert
+	}
+
+	// Build mTLS-enabled TLS config using the MTLSManager
+	tlsConfig, err := e.mtlsManager.BuildServerTLSConfig(
+		listenerCfg.Name,
+		mtlsCfg,
+		e.tlsManager.GetCertificateCallback(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build mTLS config: %w", err)
+	}
+
+	// Create a custom HTTPS listener that uses our mTLS-configured tls.Config
+	return newMTLSHTTPSListener(opts, tlsConfig)
+}
+
+// mtlsHTTPSListener is an HTTPS listener with custom TLS configuration for mTLS.
+type mtlsHTTPSListener struct {
+	name       string
+	address    string
+	handler    http.Handler
+	tlsConfig  *tls.Config
+	server     *http.Server
+	ln         interface{ Addr() fmt.Stringer }
+	running    bool
+	mu         sync.RWMutex
+	actualAddr string
+}
+
+// newMTLSHTTPSListener creates a new HTTPS listener with mTLS support.
+func newMTLSHTTPSListener(opts *listener.Options, tlsConfig *tls.Config) (*mtlsHTTPSListener, error) {
+	return &mtlsHTTPSListener{
+		name:      opts.Name,
+		address:   opts.Address,
+		handler:   opts.Handler,
+		tlsConfig: tlsConfig,
+	}, nil
+}
+
+// Start begins listening for mTLS connections.
+func (l *mtlsHTTPSListener) Start() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.running {
+		return fmt.Errorf("listener already running")
+	}
+
+	srv := &http.Server{
+		Addr:           l.address,
+		Handler:        l.handler,
+		TLSConfig:      l.tlsConfig,
+		ReadTimeout:    30 * time.Second,
+		WriteTimeout:   30 * time.Second,
+		IdleTimeout:    120 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+	}
+	l.server = srv
+	l.running = true
+
+	// Use ListenAndServeTLS with empty cert/key since tlsConfig has GetCertificate
+	go func() {
+		err := srv.ListenAndServeTLS("", "")
+		if err != nil && err != http.ErrServerClosed {
+			l.mu.Lock()
+			l.running = false
+			l.mu.Unlock()
+		}
+	}()
+
+	// Store the address (may differ from configured if port 0 was used)
+	l.actualAddr = l.address
+
+	return nil
+}
+
+// Stop gracefully shuts down the mTLS HTTPS listener.
+func (l *mtlsHTTPSListener) Stop(ctx context.Context) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if !l.running {
+		return fmt.Errorf("listener not running")
+	}
+
+	l.running = false
+	if l.server != nil {
+		return l.server.Shutdown(ctx)
+	}
+	return nil
+}
+
+// Name returns the listener name.
+func (l *mtlsHTTPSListener) Name() string { return l.name }
+
+// Address returns the listener address.
+func (l *mtlsHTTPSListener) Address() string {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.actualAddr
+}
+
+// IsRunning returns true if the listener is active.
+func (l *mtlsHTTPSListener) IsRunning() bool {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.running
 }
 
 // createLogger creates the logger based on configuration.
@@ -804,29 +1228,139 @@ func createLogger(cfg *config.Logging) *logging.Logger {
 func createMiddlewareChain(cfg *config.Config, logger *logging.Logger, registry *metrics.Registry) *middleware.Chain {
 	chain := middleware.NewChain()
 
-	// Request ID middleware (first)
-	chain.Use(middleware.NewRequestIDMiddleware(middleware.RequestIDConfig{}))
+	// IP Filter (priority 100)
+	if cfg.Middleware != nil && cfg.Middleware.IPFilter != nil && cfg.Middleware.IPFilter.Enabled {
+		ipCfg := cfg.Middleware.IPFilter
+		ipFilter, err := middleware.NewIPFilterMiddleware(middleware.IPFilterConfig{
+			AllowList: ipCfg.AllowList, DenyList: ipCfg.DenyList, DefaultAction: ipCfg.DefaultAction,
+		})
+		if err == nil {
+			chain.Use(ipFilter)
+		}
+	}
 
-	// Real IP middleware
+	// WAF (priority 100)
+	if cfg.WAF != nil && cfg.WAF.Enabled {
+		wafCfg := waf.DefaultConfig()
+		if cfg.WAF.Mode != "" {
+			wafCfg.Mode = cfg.WAF.Mode
+		}
+		w, err := waf.New(wafCfg)
+		if err == nil {
+			chain.Use(&wafMiddlewareAdapter{waf: w})
+		}
+	}
+
+	// Real IP (priority 300)
 	if realIP, err := middleware.NewRealIPMiddleware(middleware.RealIPConfig{}); err == nil {
 		chain.Use(realIP)
 	}
 
-	// CORS middleware (if configured)
-	// TODO: Add CORS configuration from config
+	// Request ID (priority 400)
+	chain.Use(middleware.NewRequestIDMiddleware(middleware.RequestIDConfig{}))
 
-	// Rate limiter middleware (if configured)
-	// TODO: Add rate limiter configuration from config
+	// Rate Limiter (priority 500)
+	if cfg.Middleware != nil && cfg.Middleware.RateLimit != nil && cfg.Middleware.RateLimit.Enabled {
+		rl := cfg.Middleware.RateLimit
+		rps := rl.RequestsPerSecond
+		if rps <= 0 {
+			rps = 100
+		}
+		burst := rl.BurstSize
+		if burst <= 0 {
+			burst = 200
+		}
+		if rateLimiter, err := middleware.NewRateLimitMiddleware(middleware.RateLimitConfig{
+			RequestsPerSecond: rps, BurstSize: burst,
+		}); err == nil {
+			chain.Use(rateLimiter)
+		}
+	}
 
-	// Metrics middleware
+	// Circuit Breaker (priority 550)
+	if cfg.Middleware != nil && cfg.Middleware.CircuitBreaker != nil && cfg.Middleware.CircuitBreaker.Enabled {
+		cbCfg := middleware.DefaultCircuitBreakerConfig()
+		if cfg.Middleware.CircuitBreaker.ErrorThreshold > 0 {
+			cbCfg.ErrorThreshold = cfg.Middleware.CircuitBreaker.ErrorThreshold
+		}
+		chain.Use(middleware.NewCircuitBreaker(cbCfg))
+	}
+
+	// CORS (priority 600)
+	if cfg.Middleware != nil && cfg.Middleware.CORS != nil && cfg.Middleware.CORS.Enabled {
+		c := cfg.Middleware.CORS
+		origins := c.AllowedOrigins
+		if len(origins) == 0 {
+			origins = []string{"*"}
+		}
+		methods := c.AllowedMethods
+		if len(methods) == 0 {
+			methods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
+		}
+		chain.Use(middleware.NewCORSMiddleware(middleware.CORSConfig{
+			AllowedOrigins: origins, AllowedMethods: methods, AllowedHeaders: c.AllowedHeaders,
+			AllowCredentials: c.AllowCredentials, MaxAge: time.Duration(c.MaxAge) * time.Second,
+		}))
+	}
+
+	// Headers (priority 700)
+	if cfg.Middleware != nil && cfg.Middleware.Headers != nil && cfg.Middleware.Headers.Enabled {
+		h := cfg.Middleware.Headers
+		chain.Use(middleware.NewHeadersMiddleware(middleware.HeadersConfig{
+			RequestAdd: h.RequestAdd, ResponseAdd: h.ResponseAdd,
+		}))
+	}
+
+	// Compression (priority 800)
+	if cfg.Middleware != nil && cfg.Middleware.Compression != nil && cfg.Middleware.Compression.Enabled {
+		if comp, err := middleware.NewCompressionMiddleware(middleware.CompressionConfig{
+			MinSize: cfg.Middleware.Compression.MinSize,
+			Level:   cfg.Middleware.Compression.Level,
+		}); err == nil {
+			chain.Use(comp)
+		}
+	}
+
+	// Retry (priority 750)
+	if cfg.Middleware != nil && cfg.Middleware.Retry != nil && cfg.Middleware.Retry.Enabled {
+		retryCfg := middleware.DefaultRetryConfig()
+		if cfg.Middleware.Retry.MaxRetries > 0 {
+			retryCfg.MaxRetries = cfg.Middleware.Retry.MaxRetries
+		}
+		chain.Use(middleware.NewRetryMiddleware(retryCfg))
+	}
+
+	// Cache (priority 750)
+	if cfg.Middleware != nil && cfg.Middleware.Cache != nil && cfg.Middleware.Cache.Enabled {
+		chain.Use(middleware.NewCacheMiddleware(middleware.DefaultCacheConfig()))
+	}
+
+	// Metrics (priority 900)
 	chain.Use(middleware.NewMetricsMiddleware(registry))
 
-	// Access log middleware (last)
-	chain.Use(middleware.NewAccessLogMiddleware(middleware.AccessLogConfig{
-		Logger: logger,
-	}))
+	// Access Log (priority 1000)
+	chain.Use(middleware.NewAccessLogMiddleware(middleware.AccessLogConfig{Logger: logger}))
 
 	return chain
+}
+
+// wafMiddlewareAdapter wraps waf.WAF as a middleware.Middleware.
+type wafMiddlewareAdapter struct {
+	waf *waf.WAF
+}
+
+func (w *wafMiddlewareAdapter) Name() string  { return "waf" }
+func (w *wafMiddlewareAdapter) Priority() int { return 100 }
+func (w *wafMiddlewareAdapter) Wrap(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		result, err := w.waf.Process(r)
+		if err != nil || !result.Allowed {
+			rw.WriteHeader(http.StatusForbidden)
+			rw.Write([]byte(`{"error":"blocked by WAF"}`))
+			return
+		}
+		next.ServeHTTP(rw, r)
+	})
 }
 
 // getAdminAddress returns the admin server address from config.

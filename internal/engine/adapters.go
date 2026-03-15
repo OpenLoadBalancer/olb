@@ -9,7 +9,7 @@ import (
 	"github.com/openloadbalancer/olb/internal/config"
 	"github.com/openloadbalancer/olb/internal/mcp"
 	"github.com/openloadbalancer/olb/internal/router"
-	"github.com/openloadbalancer/olb/internal/tls"
+	olbTLS "github.com/openloadbalancer/olb/internal/tls"
 )
 
 // --------------------------------------------------------------------------
@@ -28,7 +28,7 @@ func (g *engineConfigGetter) GetConfig() interface{} {
 
 // engineCertLister implements admin.CertLister using the TLS manager.
 type engineCertLister struct {
-	tlsMgr *tls.Manager
+	tlsMgr *olbTLS.Manager
 }
 
 func (l *engineCertLister) ListCertificates() []admin.CertInfoView {
