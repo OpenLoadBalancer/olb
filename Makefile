@@ -3,7 +3,7 @@
 # Project settings
 MODULE := github.com/openloadbalancer/olb
 BINARY := olb
-VERSION := 0.1.0
+VERSION := $(shell git describe --tags --always 2>/dev/null || echo "dev")
 COMMIT := $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 SHORT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
