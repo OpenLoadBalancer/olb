@@ -1,14 +1,18 @@
 # OpenLoadBalancer
 
-[![Website](https://img.shields.io/badge/web-openloadbalancer.dev-blue)](https://openloadbalancer.dev)
-[![Go](https://img.shields.io/badge/go-1.25+-00ADD8?logo=go&logoColor=white)](https://golang.org)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/openloadbalancer/olb)](https://github.com/openloadbalancer/olb/releases)
-[![Tests](https://img.shields.io/badge/tests-39_E2E_%2B_36_unit-brightgreen)](./)
-[![Coverage](https://img.shields.io/badge/coverage-89%25-brightgreen)](./)
-[![Zero Deps](https://img.shields.io/badge/deps-zero-orange)](./)
+<p align="center">
+  <img src="olb.png" alt="OpenLoadBalancer" width="100%">
+</p>
 
-High-performance L4/L7 load balancer and reverse proxy. Single binary. Zero external dependencies. Written in Go stdlib only.
+<p align="center">
+  <a href="https://openloadbalancer.dev"><img src="https://img.shields.io/badge/web-openloadbalancer.dev-blue" alt="Website"></a>
+  <a href="https://golang.org"><img src="https://img.shields.io/badge/go-1.25+-00ADD8?logo=go&logoColor=white" alt="Go"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License"></a>
+  <a href="https://github.com/openloadbalancer/olb/releases"><img src="https://img.shields.io/github/v/release/openloadbalancer/olb" alt="Release"></a>
+  <a href="./"><img src="https://img.shields.io/badge/tests-39_E2E_%2B_36_unit-brightgreen" alt="Tests"></a>
+  <a href="./"><img src="https://img.shields.io/badge/coverage-89%25-brightgreen" alt="Coverage"></a>
+  <a href="./"><img src="https://img.shields.io/badge/deps-zero-orange" alt="Zero Deps"></a>
+</p>
 
 ## Quick Start
 
