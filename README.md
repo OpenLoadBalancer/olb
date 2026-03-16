@@ -246,7 +246,7 @@ olb cluster status                   # Cluster info
 | [Algorithms](docs/algorithms.md) | Algorithm details |
 | [API Reference](docs/api.md) | Admin REST API |
 | [Clustering](docs/clustering.md) | Multi-node setup |
-| [WAF](WAF-SPECIFICATION.md) | Web Application Firewall (6-layer defense) |
+| [WAF](docs/waf.md) | Web Application Firewall (6-layer defense) |
 | [MCP / AI](docs/mcp.md) | AI integration |
 | [Benchmarks](docs/benchmark-report.md) | Performance data |
 | [Specification](docs/SPECIFICATION.md) | Technical spec |
