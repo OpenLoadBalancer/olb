@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/openloadbalancer/olb/internal/config"
+	"github.com/openloadbalancer/olb/internal/engine"
 	"github.com/openloadbalancer/olb/pkg/version"
 )
 
@@ -126,9 +128,17 @@ func (c *StartCommand) Run(args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	_ = cfg // TODO: Start engine with config
+	// Create and start engine
+	eng, err := engine.New(cfg, c.config)
+	if err != nil {
+		return fmt.Errorf("failed to create engine: %w", err)
+	}
 
-	fmt.Printf("Starting OpenLoadBalancer with config: %s\n", c.config)
+	if err := eng.Start(); err != nil {
+		return fmt.Errorf("failed to start engine: %w", err)
+	}
+
+	fmt.Printf("OpenLoadBalancer started with config: %s\n", c.config)
 
 	// Handle signals
 	sigCh := make(chan os.Signal, 1)
@@ -138,9 +148,14 @@ func (c *StartCommand) Run(args []string) error {
 		switch sig {
 		case syscall.SIGHUP:
 			fmt.Println("Received SIGHUP, reloading configuration...")
-			// TODO: Reload config
+			if err := eng.Reload(); err != nil {
+				fmt.Printf("Reload failed: %v\n", err)
+			}
 		case syscall.SIGTERM, syscall.SIGINT:
 			fmt.Println("Received shutdown signal, stopping...")
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			eng.Shutdown(ctx)
 			return nil
 		}
 	}
