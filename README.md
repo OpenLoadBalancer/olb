@@ -3,8 +3,9 @@
 [![Website](https://img.shields.io/badge/website-openloadbalancer.dev-blue)](https://openloadbalancer.dev)
 [![Go Version](https://img.shields.io/badge/go-1.25+-00ADD8?logo=go&logoColor=white)](https://golang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-36%2F36_passing-brightgreen)](./)
+[![Tests](https://img.shields.io/badge/tests-39_E2E_%2B_36_unit-brightgreen)](./)
 [![Coverage](https://img.shields.io/badge/coverage-89%25-brightgreen)](./)
+[![E2E Verified](https://img.shields.io/badge/E2E-every_feature_proven-brightgreen)](./)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-orange)](./)
 
 **OpenLoadBalancer (OLB)** is a high-performance Layer 4/Layer 7 load balancer and reverse proxy written entirely in Go using only the standard library. It ships as a single static binary containing the proxy, CLI, Web UI dashboard, admin API, clustering engine, and MCP server for AI integration -- with zero external dependencies.
@@ -150,7 +151,7 @@ curl -sSL https://openloadbalancer.dev/install.sh | sh
 docker run -d \
   -p 80:80 -p 443:443 -p 8081:8081 \
   -v $(pwd)/olb.yaml:/etc/olb/configs/olb.yaml \
-  openloadbalancer/olb:latest
+  ghcr.io/openloadbalancer/olb:latest
 ```
 
 ### Docker Compose
@@ -159,7 +160,7 @@ docker run -d \
 version: "3.8"
 services:
   olb:
-    image: openloadbalancer/olb:latest
+    image: ghcr.io/openloadbalancer/olb:latest
     ports:
       - "80:80"
       - "443:443"
@@ -184,7 +185,7 @@ make test           # Run all tests
 make bench          # Run benchmarks
 ```
 
-Requires Go 1.23+. No other dependencies.
+Requires Go 1.25+. No other dependencies.
 
 ### System Packages
 
