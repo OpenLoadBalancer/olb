@@ -1,4 +1,4 @@
-# Binaries for programs and plugins
+# Binaries
 *.exe
 *.exe~
 *.dll
@@ -11,61 +11,61 @@ bin/
 # Test binary, built with `go test -c`
 *.test
 
-# Output of the go coverage tool
-coverage.out
-coverage.html
-conn_coverage.out
+# Coverage
+*.out
+*.out.*
 *.cover
 *.cov
+coverage.html
 
-# Benchmark results
+# Benchmarks
 bench-results/
 build-results/
 
-# Dependency directories
+# Dependencies
 vendor/
 
-# Go workspace files
+# Go workspace
 go.work
 go.work.sum
 
 # Claude Code
 .claude/
 
-# IDE specific files
+# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
-.DS_Store
 
-# Environment files
+# Environment
 .env
 .env.local
 .env.*.local
 
-# Local config files that should not be committed
+# Local config
 *.local.yaml
 *.local.json
 *.local.toml
 
-# Log files
+# Logs
 *.log
 logs/
 /var/log/olb/
 
-# Runtime files
+# Runtime
 /var/run/olb/
 /var/lib/olb/
 
-# Profiling output
+# Profiling
 *.prof
 *.pprof
 cpu.out
 mem.out
+trace.out
 
-# Temporary files
+# Temp
 tmp/
 temp/
 *.tmp
@@ -74,19 +74,21 @@ temp/
 dist/
 build/
 
-# TLS certificates (local dev only)
+# TLS certificates (local dev)
 *.pem
 *.key
 *.crt
 certs/local/
 
-# Database files
+# Database
 *.db
 *.sqlite
 
-# OS specific
+# OS
+.DS_Store
 Thumbs.db
 Desktop.ini
 
-*.out
-*.out.*
+# Raft data (local dev)
+raft-data/
+data/
