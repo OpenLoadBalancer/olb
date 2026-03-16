@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -148,7 +149,16 @@ func (r *Rule) getTargetValue(req *http.Request, body []byte, target string) str
 	case "path":
 		return req.URL.Path
 	case "query", "args":
-		return req.URL.RawQuery
+		// Check both raw and decoded query for encoded attack patterns
+		raw := req.URL.RawQuery
+		decoded, err := url.QueryUnescape(raw)
+		if err != nil {
+			return raw
+		}
+		if decoded != raw {
+			return raw + "\n" + decoded
+		}
+		return raw
 	case "method":
 		return req.Method
 	case "headers":
@@ -301,7 +311,7 @@ func (w *WAF) Process(req *http.Request) (*Result, error) {
 			}
 
 			// In blocking mode with critical/high severity, block immediately
-			if w.config.Mode == "blocking" && rule.Action == ActionBlock &&
+			if (w.config.Mode == "blocking" || w.config.Mode == "block") && rule.Action == ActionBlock &&
 				(rule.Severity == SeverityCritical || rule.Severity == SeverityHigh) {
 				return &Result{
 					Allowed:   false,
