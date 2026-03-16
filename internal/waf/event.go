@@ -34,6 +34,7 @@ type EventLogger struct {
 	logBlocked bool
 	logBody    bool
 	analytics  *Analytics
+	metrics    *WAFMetrics
 }
 
 // EventLoggerConfig configures the event logger.
@@ -44,6 +45,7 @@ type EventLoggerConfig struct {
 	LogBlocked bool
 	LogBody    bool
 	Analytics  *Analytics
+	Metrics    *WAFMetrics
 }
 
 // NewEventLogger creates a new EventLogger.
@@ -58,6 +60,7 @@ func NewEventLogger(cfg EventLoggerConfig) *EventLogger {
 		logAllowed: cfg.LogAllowed,
 		logBlocked: cfg.LogBlocked,
 		analytics:  cfg.Analytics,
+		metrics:    cfg.Metrics,
 	}
 }
 
@@ -75,6 +78,20 @@ func (el *EventLogger) LogEvent(evt *WAFEvent) {
 	// Update analytics
 	if el.analytics != nil {
 		el.analytics.Record(evt)
+	}
+
+	// Update Prometheus metrics
+	if el.metrics != nil {
+		el.metrics.RecordRequest(evt.Action)
+		if evt.Action == "block" {
+			el.metrics.RecordBlock(evt.Layer)
+		}
+		for _, f := range evt.Findings {
+			el.metrics.RecordDetectorHit(f.Detector)
+		}
+		if evt.LatencyNS > 0 {
+			el.metrics.RecordLatency(evt.Layer, float64(evt.LatencyNS)/1e9)
+		}
 	}
 
 	// Check if we should log this event

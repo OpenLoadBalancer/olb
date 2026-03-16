@@ -1278,7 +1278,8 @@ func createMiddlewareChain(cfg *config.Config, logger *logging.Logger, registry 
 	// WAF (priority 100) — 6-layer security pipeline
 	if cfg.WAF != nil && cfg.WAF.Enabled {
 		wafMW, err := waf.NewWAFMiddleware(waf.WAFMiddlewareConfig{
-			Config: cfg.WAF,
+			Config:          cfg.WAF,
+			MetricsRegistry: registry,
 		})
 		if err == nil {
 			chain.Use(wafMW)

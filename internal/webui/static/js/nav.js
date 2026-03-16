@@ -12,6 +12,7 @@
             { id: 'metrics', label: 'Metrics', icon: '◧', path: '/metrics', title: 'Metrics' },
             { id: 'logs', label: 'Logs', icon: '▤', path: '/logs', title: 'Logs' },
             { type: 'divider' },
+            { id: 'waf', label: 'WAF', icon: '⛨', path: '/waf', title: 'Web Application Firewall' },
             { id: 'config', label: 'Configuration', icon: '⚙', path: '/config', title: 'Configuration' },
             { id: 'cluster', label: 'Cluster', icon: '⊕', path: '/cluster', title: 'Cluster' },
             { id: 'certs', label: 'Certificates', icon: '🔒', path: '/certs', title: 'Certificates' }

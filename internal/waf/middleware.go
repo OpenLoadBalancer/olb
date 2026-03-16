@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/openloadbalancer/olb/internal/config"
+	"github.com/openloadbalancer/olb/internal/metrics"
 	"github.com/openloadbalancer/olb/internal/waf/botdetect"
 	"github.com/openloadbalancer/olb/internal/waf/detection"
 	"github.com/openloadbalancer/olb/internal/waf/detection/cmdi"
@@ -32,13 +33,15 @@ type WAFMiddleware struct {
 	response    *response.Protection
 	events      *EventLogger
 	analytics   *Analytics
+	metrics     *WAFMetrics
 	mode        string // "enforce", "monitor", "disabled"
 }
 
 // WAFMiddlewareConfig holds all dependencies for creating a WAFMiddleware.
 type WAFMiddlewareConfig struct {
-	Config *config.WAFConfig
-	NodeID string
+	Config          *config.WAFConfig
+	NodeID          string
+	MetricsRegistry *metrics.Registry
 }
 
 // NewWAFMiddleware creates a new WAFMiddleware with all layers.
@@ -50,11 +53,14 @@ func NewWAFMiddleware(cfg WAFMiddlewareConfig) (*WAFMiddleware, error) {
 
 	analytics := NewAnalytics()
 
+	wafMetrics := RegisterWAFMetrics(cfg.MetricsRegistry)
+
 	events := NewEventLogger(EventLoggerConfig{
 		NodeID:     cfg.NodeID,
 		LogBlocked: true,
 		LogAllowed: false,
 		Analytics:  analytics,
+		Metrics:    wafMetrics,
 	})
 	if wafCfg.Logging != nil {
 		events.logAllowed = wafCfg.Logging.LogAllowed
@@ -65,6 +71,7 @@ func NewWAFMiddleware(cfg WAFMiddlewareConfig) (*WAFMiddleware, error) {
 		config:    wafCfg,
 		events:    events,
 		analytics: analytics,
+		metrics:   wafMetrics,
 		mode:      normalizeMode(wafCfg.Mode),
 	}
 
