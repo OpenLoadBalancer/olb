@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1251,23 +1252,39 @@ func TestStartCommand_Run_LoadsConfigAndWaitsForSignal(t *testing.T) {
 		t.Skip("Skipping signal-based test on Windows (SIGINT not supported)")
 	}
 
-	// Create a valid config file
+	// Find free ports
+	l1, _ := net.Listen("tcp", "127.0.0.1:0")
+	proxyPort := l1.Addr().(*net.TCPAddr).Port
+	l1.Close()
+	l2, _ := net.Listen("tcp", "127.0.0.1:0")
+	adminPort := l2.Addr().(*net.TCPAddr).Port
+	l2.Close()
+
+	// Start a dummy backend
+	bl, _ := net.Listen("tcp", "127.0.0.1:0")
+	backendAddr := bl.Addr().String()
+	bs := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })}
+	go bs.Serve(bl)
+	defer bs.Close()
+
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "olb.yaml")
 	pidPath := filepath.Join(tmpDir, "olb.pid")
-	configContent := `version: "1"
+	configContent := fmt.Sprintf(`admin:
+  address: "127.0.0.1:%d"
 listeners:
   - name: http
-    address: :18080
+    address: "127.0.0.1:%d"
     protocol: http
+    routes:
+      - path: /
+        pool: default
 pools:
   - name: default
     algorithm: round_robin
     backends:
-      - id: backend1
-        address: 127.0.0.1:18081
-        weight: 100
-`
+      - address: "%s"
+`, adminPort, proxyPort, backendAddr)
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
 		t.Fatalf("Failed to create test config: %v", err)
 	}
