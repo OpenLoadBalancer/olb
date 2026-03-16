@@ -1,497 +1,254 @@
 # OpenLoadBalancer
 
-[![Website](https://img.shields.io/badge/website-openloadbalancer.dev-blue)](https://openloadbalancer.dev)
-[![Go Version](https://img.shields.io/badge/go-1.25+-00ADD8?logo=go&logoColor=white)](https://golang.org)
+[![Website](https://img.shields.io/badge/web-openloadbalancer.dev-blue)](https://openloadbalancer.dev)
+[![Go](https://img.shields.io/badge/go-1.25+-00ADD8?logo=go&logoColor=white)](https://golang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/openloadbalancer/olb)](https://github.com/openloadbalancer/olb/releases)
 [![Tests](https://img.shields.io/badge/tests-39_E2E_%2B_36_unit-brightgreen)](./)
 [![Coverage](https://img.shields.io/badge/coverage-89%25-brightgreen)](./)
-[![E2E Verified](https://img.shields.io/badge/E2E-every_feature_proven-brightgreen)](./)
-[![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-orange)](./)
+[![Zero Deps](https://img.shields.io/badge/deps-zero-orange)](./)
 
-**OpenLoadBalancer (OLB)** is a high-performance Layer 4/Layer 7 load balancer and reverse proxy written entirely in Go using only the standard library. It ships as a single static binary containing the proxy, CLI, Web UI dashboard, admin API, clustering engine, and MCP server for AI integration -- with zero external dependencies.
-
-## Key Features
-
-### Proxy & Protocols
-- **L7 HTTP/HTTPS** -- Full HTTP/1.1 and HTTP/2 reverse proxy with streaming, retries, and hop-by-hop header handling
-- **WebSocket** -- Transparent upgrade detection, bidirectional frame copy, ping/pong keepalive
-- **gRPC** -- HTTP/2 h2c support, trailer propagation, gRPC-Web, all 17 status codes
-- **SSE** -- Server-Sent Events streaming with event parsing and Last-Event-ID support
-- **L4 TCP** -- Raw TCP proxy with zero-copy splice on Linux
-- **SNI Routing** -- TLS ClientHello peeking for encrypted traffic routing without termination
-- **PROXY Protocol** -- v1 (text) and v2 (binary) parser/writer with TLV extensions
-
-### Load Balancing
-- **12 algorithms** with 16 name aliases (see [table below](#load-balancing-algorithms))
-- **Session affinity** -- Cookie, header, or URL parameter-based sticky sessions
-- **Health checking** -- Active (HTTP/TCP probes) and passive (error rate tracking)
-- **Circuit breaker** -- Per-backend with configurable thresholds and half-open recovery
-
-### Security
-- **TLS Management** -- SNI/wildcard certificate matching with hot reload
-- **Auto HTTPS** -- ACME v2 / Let's Encrypt with HTTP-01 challenges
-- **OCSP Stapling** -- Background refresh with response caching
-- **mTLS** -- Mutual TLS for both client-facing and backend connections
-- **WAF** -- SQL injection, XSS, path traversal, command injection detection
-- **Rate Limiting** -- Token bucket with per-client tracking and multi-zone support
-- **IP Filtering** -- Allow/deny lists with CIDR matching
-
-### Observability
-- **Metrics Engine** -- Counter, Gauge, Histogram with Prometheus and JSON export
-- **Web UI Dashboard** -- Real-time SPA with charts, sparklines, backend management, log viewer
-- **TUI Dashboard** -- `olb top` terminal interface with live metrics and keyboard navigation
-- **Structured Logging** -- JSON/Text output with rotation and SIGUSR1 reopen
-- **Admin API** -- 15+ REST endpoints for runtime management
-
-### Operations
-- **Hot Reload** -- Zero-downtime config, TLS, backend, and middleware updates (SIGHUP or API)
-- **Clustering** -- Built-in Raft consensus + SWIM gossip for multi-node deployments
-- **Service Discovery** -- Static, DNS SRV, and Consul providers with event system
-- **MCP Server** -- AI agent integration via Model Context Protocol (stdio and HTTP transports)
-- **Plugin System** -- Go plugin interface for custom middleware, balancers, and health checks
-- **CLI** -- 30+ commands for backend, route, cert, metrics, config, and cluster management
-
-## Architecture
-
-```
-                         ┌───────────────────────────────────────────────────────┐
-                         │                   OpenLoadBalancer                     │
-                         ├───────────────────────────────────────────────────────┤
-                         │                                                       │
-  Clients ──────────────►│  ┌──────────┐ ┌──────────┐ ┌──────────┐              │
-  (HTTP/S, WS, gRPC,    │  │  L7 HTTP  │ │  L4 TCP  │ │  L4 UDP  │              │
-   TCP, UDP)             │  │ Listener  │ │ Listener │ │ Listener │              │
-                         │  └────┬─────┘ └────┬─────┘ └────┬─────┘              │
-                         │       │             │             │                    │
-                         │  ┌────▼─────────────▼─────────────▼────────────────┐  │
-                         │  │           Connection Manager                     │  │
-                         │  │    (accept, track, limit, timeout, drain)        │  │
-                         │  └────────────────────┬────────────────────────────┘  │
-                         │                       │                               │
-                         │  ┌────────────────────▼────────────────────────────┐  │
-                         │  │          Middleware Pipeline                      │  │
-                         │  │  rate-limit │ cors │ auth │ waf │ compress │ ... │  │
-                         │  └────────────────────┬────────────────────────────┘  │
-                         │                       │                               │
-                         │  ┌─────────┐ ┌────────▼──────┐ ┌──────────┐          │
-                         │  │  Router  │ │ Load Balancer │ │  Backend │          │
-                         │  │ (radix   │ │  (12 algos)   │ │   Pool   │──►Backends
-                         │  │  trie)   │ │               │ │          │          │
-                         │  └─────────┘ └───────────────┘ └──────────┘          │
-                         │                                                       │
-                         │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐         │
-                         │  │  TLS   │ │Cluster │ │  MCP   │ │  Web   │         │
-                         │  │ Engine │ │ (Raft) │ │ Server │ │   UI   │         │
-                         │  └────────┘ └────────┘ └────────┘ └────────┘         │
-                         │                                                       │
-  Admin/CLI ────────────►│  ┌──────────────────────────────────────────┐         │
-                         │  │  Admin API (REST) + CLI + TUI (olb top)  │         │
-                         │  └──────────────────────────────────────────┘         │
-                         └───────────────────────────────────────────────────────┘
-```
+High-performance L4/L7 load balancer and reverse proxy. Single binary. Zero external dependencies. Written in Go stdlib only.
 
 ## Quick Start
-
-### Install
-
-```bash
-# Download latest binary (Linux amd64)
-curl -L https://github.com/openloadbalancer/olb/releases/latest/download/olb-linux-amd64 -o olb
-chmod +x olb
-
-# Or build from source
-git clone https://github.com/openloadbalancer/olb.git
-cd olb && make build
-```
-
-### Minimal Configuration
-
-Create `olb.yaml`:
-
-```yaml
-listeners:
-  - name: http
-    address: ":80"
-    routes:
-      - path: /
-        pool: backend
-
-pools:
-  - name: backend
-    health_check:
-      path: /health
-    backends:
-      - address: "10.0.1.10:8080"
-      - address: "10.0.1.11:8080"
-```
-
-### Run
-
-```bash
-./olb start --config olb.yaml
-```
-
-OLB starts listening on port 80, load-balancing traffic across the two backends with round-robin, health checks every 10 seconds, and the admin API on `127.0.0.1:8081`.
-
-## Installation
-
-### Binary Download
-
-Pre-built binaries for Linux (amd64/arm64), macOS (amd64/arm64), Windows (amd64/arm64), and FreeBSD are available on the [releases page](https://github.com/openloadbalancer/olb/releases).
-
-### Install Script
 
 ```bash
 curl -sSL https://openloadbalancer.dev/install.sh | sh
 ```
 
-### Docker
-
-```bash
-docker run -d \
-  -p 80:80 -p 443:443 -p 8081:8081 \
-  -v $(pwd)/olb.yaml:/etc/olb/configs/olb.yaml \
-  ghcr.io/openloadbalancer/olb:latest
-```
-
-### Docker Compose
+Create `olb.yaml`:
 
 ```yaml
-version: "3.8"
-services:
-  olb:
-    image: ghcr.io/openloadbalancer/olb:latest
-    ports:
-      - "80:80"
-      - "443:443"
-      - "8081:8081"
-    volumes:
-      - ./olb.yaml:/etc/olb/configs/olb.yaml
-      - olb-certs:/etc/olb/certs
-    restart: unless-stopped
+admin:
+  address: "127.0.0.1:8081"
 
-volumes:
-  olb-certs:
+listeners:
+  - name: http
+    address: ":80"
+    routes:
+      - path: /
+        pool: web
+
+pools:
+  - name: web
+    algorithm: round_robin
+    backends:
+      - address: "10.0.1.10:8080"
+      - address: "10.0.1.11:8080"
+    health_check:
+      type: http
+      path: /health
+      interval: 10s
 ```
 
-### Build from Source
+```bash
+olb start --config olb.yaml
+```
+
+That's it. HTTP proxy on `:80`, admin API on `:8081`, health checks every 10s, round-robin across two backends.
+
+## Install
 
 ```bash
-git clone https://github.com/openloadbalancer/olb.git
-cd olb
-make build          # Build for current platform
-make build-all      # Build for all platforms (Linux, macOS, Windows, FreeBSD)
-make test           # Run all tests
-make bench          # Run benchmarks
+# Binary
+curl -sSL https://openloadbalancer.dev/install.sh | sh
+
+# Docker
+docker pull ghcr.io/openloadbalancer/olb:latest
+docker run -d -p 80:80 -p 8081:8081 -v ./olb.yaml:/etc/olb/configs/olb.yaml ghcr.io/openloadbalancer/olb:latest
+
+# Homebrew
+brew tap openloadbalancer/olb && brew install olb
+
+# Build from source
+git clone https://github.com/openloadbalancer/olb.git && cd olb && make build
 ```
 
 Requires Go 1.25+. No other dependencies.
 
-### System Packages
+## Features
 
-```bash
-# Debian / Ubuntu
-dpkg -i olb_0.5.0_amd64.deb
+**Proxy:** HTTP/HTTPS, WebSocket, gRPC, SSE, TCP (L4), UDP (L4), SNI routing, PROXY protocol v1/v2
 
-# RHEL / Fedora
-rpm -i olb-0.5.0.x86_64.rpm
+**Load Balancing:** 12 algorithms — Round Robin, Weighted RR, Least Connections, Least Response Time, IP Hash, Consistent Hash (Ketama), Maglev, Ring Hash, Power of Two, Random, Weighted Random, Sticky Sessions
 
-# systemd service
-systemctl enable --now olb
-```
+**Security:** TLS termination + SNI, ACME/Let's Encrypt, mTLS, OCSP stapling, WAF (SQLi/XSS/traversal detection), rate limiting, IP filtering, circuit breaker
+
+**Middleware:** 18 components — rate limit, CORS, compression (gzip), WAF, IP filter, circuit breaker, retry, response cache, headers, request ID, real IP, access log, metrics
+
+**Observability:** Web UI dashboard (8 pages), TUI (`olb top`), Prometheus metrics, structured JSON logging, admin REST API (15+ endpoints)
+
+**Operations:** Hot config reload (SIGHUP or API), Raft clustering + SWIM gossip, service discovery (Static/DNS/Consul/Docker/File), MCP server for AI integration, plugin system, 30+ CLI commands
+
+## Performance
+
+Benchmarked on AMD Ryzen 9 9950X3D:
+
+| Metric | Result |
+|--------|--------|
+| Peak RPS | **15,480** (10 concurrent, round_robin) |
+| Proxy overhead | **137µs** (direct: 87µs → proxied: 223µs) |
+| RoundRobin.Next | **3.5 ns/op**, 0 allocs |
+| Middleware overhead | **< 3%** (full stack vs none) |
+| WAF overhead | **~3%** (11.8K vs 11.4K RPS) |
+| Binary size | **9 MB** |
+| P99 latency (50 conc.) | **22ms** |
+| Success rate | **100%** across all tests |
+
+<details>
+<summary>Algorithm comparison (1000 req, 50 concurrent)</summary>
+
+| Algorithm | RPS | Avg Latency | Distribution |
+|-----------|-----|-------------|-------------|
+| random | 12,913 | 3.5ms | 32/34/34% |
+| maglev | 11,597 | 3.8ms | 68/2/30% |
+| ip_hash | 11,062 | 4.0ms | 75/12/13% |
+| power_of_two | 10,708 | 4.0ms | 34/33/33% |
+| least_connections | 10,119 | 4.4ms | 33/33/34% |
+| consistent_hash | 8,897 | 4.6ms | 0/0/100% |
+| weighted_rr | 8,042 | 5.6ms | 33/33/34% |
+| round_robin | 7,320 | 6.3ms | 35/33/32% |
+
+</details>
+
+<details>
+<summary>Full benchmark report</summary>
+
+See [docs/benchmark-report.md](docs/benchmark-report.md) for the complete report including concurrency scaling, backend latency impact, and middleware overhead measurements.
+
+</details>
+
+## E2E Verified
+
+39 end-to-end tests prove every feature works in a real proxy scenario:
+
+| Category | Verified |
+|----------|----------|
+| **Proxy** | HTTP, HTTPS/TLS, WebSocket, SSE, TCP, UDP |
+| **Algorithms** | RR, WRR, LC, IPHash, CH, Maglev, P2C, Random, RingHash |
+| **Middleware** | Rate limit (429), CORS, gzip (98% reduction), WAF (SQLi/XSS → 403), IP filter, circuit breaker, cache (HIT/MISS), headers, retry |
+| **Operations** | Health check (down/recovery), config reload, weighted distribution, session affinity, graceful failover (0 downtime) |
+| **Infra** | Admin API, Web UI, Prometheus, MCP server, multiple listeners |
+| **Performance** | 15K RPS, 137µs proxy overhead, 100% success rate |
+
+## Algorithms
+
+| Algorithm | Config Name | Use Case |
+|-----------|------------|----------|
+| Round Robin | `round_robin` | Default, equal backends |
+| Weighted Round Robin | `weighted_round_robin` | Unequal backend capacity |
+| Least Connections | `least_connections` | Long-lived connections |
+| Least Response Time | `least_response_time` | Latency-sensitive |
+| IP Hash | `ip_hash` | Session affinity by IP |
+| Consistent Hash | `consistent_hash` | Cache locality |
+| Maglev | `maglev` | Google-style hashing |
+| Ring Hash | `ring_hash` | Consistent with vnodes |
+| Power of Two | `power_of_two` | Balanced random |
+| Random | `random` | Simple, no state |
 
 ## Configuration
 
-OLB supports **YAML**, **JSON**, **TOML**, and **HCL** configuration formats with environment variable substitution (`${VAR}` and `${VAR:-default}`).
+Supports **YAML**, **JSON**, **TOML**, and **HCL** with `${ENV_VAR}` substitution.
 
 ```yaml
-version: 1
-
-global:
-  limits:
-    max_connections: 10000
-  timeouts:
-    read: 30s
-    write: 30s
-    idle: 120s
-
 admin:
-  enabled: true
   address: "127.0.0.1:8081"
 
+middleware:
+  rate_limit:
+    enabled: true
+    requests_per_second: 1000
+  cors:
+    enabled: true
+    allowed_origins: ["*"]
+  compression:
+    enabled: true
+
+waf:
+  enabled: true
+  mode: block
+
 listeners:
-  - name: https
-    protocol: https
-    address: ":443"
-    tls:
-      cert_file: /etc/olb/certs/server.crt
-      key_file: /etc/olb/certs/server.key
+  - name: http
+    address: ":8080"
     routes:
-      - path: /api/
+      - path: /api
         pool: api-pool
-        middleware:
-          - name: rate_limit
-            config:
-              requests_per_second: 100
       - path: /
         pool: web-pool
 
 pools:
-  - name: api-pool
-    algorithm: least_connections
-    health_check:
-      path: /health
-      interval: 5s
-    backends:
-      - address: "10.0.1.10:8080"
-        weight: 100
-      - address: "10.0.1.11:8080"
-        weight: 100
-
   - name: web-pool
     algorithm: round_robin
     backends:
-      - address: "10.0.2.10:3000"
-      - address: "10.0.2.11:3000"
+      - address: "10.0.1.10:8080"
+      - address: "10.0.1.11:8080"
+    health_check:
+      type: http
+      path: /health
+      interval: 5s
+
+  - name: api-pool
+    algorithm: least_connections
+    backends:
+      - address: "10.0.2.10:8080"
+        weight: 3
+      - address: "10.0.2.11:8080"
+        weight: 2
 ```
 
-See [docs/configuration.md](docs/configuration.md) for the full configuration reference.
+See [docs/configuration.md](docs/configuration.md) for all options.
 
-## Load Balancing Algorithms
-
-| Algorithm | Aliases | Description |
-|-----------|---------|-------------|
-| Round Robin | `rr`, `round_robin` | Simple rotation through backends |
-| Weighted Round Robin | `wrr`, `weighted_round_robin` | Nginx-style smooth weighted distribution |
-| Least Connections | `lc`, `least_conn` | Selects backend with fewest active connections |
-| Weighted Least Connections | `wlc` | Least connections adjusted by weight |
-| Least Response Time | `lrt` | Sliding window response time tracking |
-| Weighted Least Response Time | `wlrt` | Response time adjusted by weight |
-| IP Hash | `iphash`, `ip_hash` | FNV-1a hash of client IP for session affinity |
-| Consistent Hash | `ch`, `ketama` | Ketama consistent hashing with virtual nodes |
-| Maglev | `maglev` | Google Maglev algorithm (65537 lookup table) |
-| Ring Hash | `ringhash`, `ring_hash` | Consistent hash ring with configurable vnodes |
-| Power of Two | `p2c` | Random selection of two, pick the least loaded |
-| Random | `random` | Uniform random selection |
-| Weighted Random | `wrandom` | Random with probability proportional to weight |
-
-## CLI Usage
+## CLI
 
 ```bash
-# Server lifecycle
-olb start --config olb.yaml        # Start the load balancer
-olb stop                            # Graceful shutdown
-olb reload                          # Hot-reload configuration
-olb status                          # Show server status
-olb version                         # Print version info
-
-# Backend management
-olb backend list                    # List all pools and backends
-olb backend add web-pool 10.0.1.12:8080 --weight 100
-olb backend remove web-pool 10.0.1.12:8080
-olb backend drain web-pool 10.0.1.10:8080
-olb backend enable web-pool 10.0.1.10:8080
-olb backend disable web-pool 10.0.1.10:8080
-olb backend stats web-pool          # Show backend statistics
-
-# Route management
-olb route add --host api.example.com --path /v2/ --pool api-pool
-olb route remove api-v2
-olb route test GET /api/users        # Test route matching
-
-# Certificate management
-olb cert list                        # List all certificates
-olb cert add --cert server.crt --key server.key
-olb cert remove example.com
-olb cert renew example.com           # Force ACME renewal
-olb cert info example.com            # Show certificate details
-
-# Metrics & monitoring
-olb metrics show                     # Show current metrics
-olb metrics export --format prometheus
+olb start --config olb.yaml         # Start proxy
+olb stop                             # Graceful shutdown
+olb reload                           # Hot-reload config
+olb status                           # Server status
 olb top                              # Live TUI dashboard
-olb health show                      # Show health check status
-
-# Configuration
-olb config show                      # Show running configuration
-olb config validate olb.yaml         # Validate without starting
-olb config diff olb.yaml             # Diff against running config
-
-# Cluster operations
-olb cluster status                   # Show cluster state
-olb cluster join 10.0.0.1:7946       # Join a cluster
-olb cluster leave                    # Graceful leave
-olb cluster members                  # List cluster members
+olb backend list                     # List backends
+olb backend drain web-pool 10.0.1.10:8080
+olb health show                      # Health check status
+olb config validate olb.yaml         # Validate config
+olb cluster status                   # Cluster info
 ```
 
-## Web UI Dashboard
-
-OLB includes a built-in Web UI accessible at the admin API address (default: `http://127.0.0.1:8081`). The dashboard is a vanilla JavaScript SPA embedded in the binary -- no build step, no Node.js, no external dependencies.
-
-<!-- Screenshot placeholder: ![OLB Dashboard](docs/images/dashboard.png) -->
-
-**Dashboard pages:**
-- **Overview** -- Live request rate, active connections, error rates, backend health grid, latency histogram
-- **Backends** -- Pool management with per-backend stats, drain/enable/disable actions, health check results
-- **Routes** -- Route table with match criteria, per-route metrics (RPS, p50/p95/p99 latency, error rate), testing tool
-- **Metrics** -- Interactive time-series charts, metric explorer with search, JSON/CSV export
-- **Logs** -- Real-time log stream via WebSocket, full-text search, level/route/backend/status filters
-- **Config** -- Syntax-highlighted config viewer, diff view, reload with confirmation
-- **Certificates** -- Certificate inventory, expiry warnings, ACME status, force renewal
-
-Features dark and light themes, responsive layout, and WebSocket-based real-time updates.
-
-## Admin API
-
-The REST API runs on a configurable address (default `127.0.0.1:8081`) with optional Basic or Bearer token authentication.
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/v1/system/info` | Version, uptime, state |
-| `GET` | `/api/v1/system/health` | Self health check |
-| `POST` | `/api/v1/system/reload` | Trigger config reload |
-| `GET` | `/api/v1/backends` | List all pools |
-| `GET` | `/api/v1/backends/:pool` | Pool detail with backends |
-| `POST` | `/api/v1/backends/:pool` | Add backend to pool |
-| `DELETE` | `/api/v1/backends/:pool/:backend` | Remove backend |
-| `POST` | `/api/v1/backends/:pool/:backend/drain` | Drain backend |
-| `GET` | `/api/v1/routes` | List all routes |
-| `GET` | `/api/v1/health` | All health check status |
-| `GET` | `/api/v1/metrics` | Metrics (JSON) |
-| `GET` | `/metrics` | Metrics (Prometheus) |
-
-## MCP / AI Integration
-
-OLB includes a built-in [MCP](https://modelcontextprotocol.io/) server that lets AI agents manage the load balancer through natural language. Supports stdio (for CLI tools like Claude Code) and HTTP transports.
-
-**MCP Tools:**
-- `olb_query_metrics` -- Query RPS, latency, error rates, connection counts
-- `olb_list_backends` -- List all backend pools and their status
-- `olb_modify_backend` -- Add, remove, drain, enable, disable backends
-- `olb_modify_route` -- Add or remove routes
-- `olb_diagnose` -- Automated error analysis, latency analysis, capacity planning
-- `olb_get_logs` -- Retrieve recent log entries with level filtering
-- `olb_get_config` -- Get the current running configuration
-- `olb_cluster_status` -- Get cluster membership and leader info
-
-**MCP Resources:** `olb://metrics`, `olb://config`, `olb://health`, `olb://logs`
-
-**MCP Prompts:** Diagnose issues, capacity planning, canary deployment setup
-
-See [docs/mcp.md](docs/mcp.md) for the full AI integration guide.
-
-## Performance
-
-Benchmarks on AMD Ryzen 9 9950X3D (single-threaded where noted):
-
-| Operation | Time | Allocations |
-|-----------|------|-------------|
-| RoundRobin (Next) | 3.5 ns/op | 0 allocs |
-| WeightedRoundRobin (Next) | 37 ns/op | 0 allocs |
-| Router Match (Static) | 109 ns/op | 0 allocs |
-| Router Match (Param) | 193 ns/op | 0 allocs |
-| Auth Middleware | 1.5 us/op | 0 allocs |
-| HTTP Proxy (Full round-trip) | ~1 ms/req | ~2 KB |
-
-- **Binary size:** ~9 MB (stripped, all features included)
-- **Startup time:** < 500 ms
-- **Latency overhead:** < 1 ms on localhost (E2E verified)
-
-### Production Load Test Results
+## Architecture
 
 ```
-1000 requests, 100 concurrent clients, least_connections algorithm
-8,541 RPS | 100% success | 0 errors | 9.2ms avg latency
-
-Backend distribution (5 backends with 1-5ms simulated latency):
-  1ms backend: 342 hits  |  2ms: 218  |  3ms: 178  |  4ms: 140  |  5ms: 122
-  → Faster backends correctly receive more traffic
-```
-
-### E2E Verified Features (39 tests)
-
-Every feature proven to work end-to-end:
-
-| Category | Features Verified |
-|----------|------------------|
-| **Proxy** | HTTP, HTTPS/TLS, WebSocket, SSE, TCP (L4), UDP (L4) |
-| **Algorithms** | RoundRobin, WeightedRR, LeastConn, IPHash, ConsistentHash, Maglev, P2C, Random, RingHash |
-| **Middleware** | RateLimit (429), CORS, Compression (gzip 98%), WAF (SQLi/XSS blocked), IPFilter, CircuitBreaker, Cache (HIT/MISS), Headers, Retry, RequestID |
-| **Operations** | Health check (down/recovery), Config reload, Weighted distribution, Session affinity, Graceful failover (0 downtime) |
-| **Infrastructure** | Admin API, Web UI, Prometheus metrics, MCP server, Multiple listeners |
-
-## Project Structure
-
-```
-cmd/olb/              Main entry point
-internal/
-  engine/             Core orchestration (start, shutdown, reload)
-  listener/           HTTP/HTTPS/TCP/UDP network listeners
-  conn/               Connection tracking, limits, pooling
-  proxy/
-    l7/               HTTP reverse proxy, WebSocket, gRPC, SSE, HTTP/2
-    l4/               TCP proxy, SNI routing, PROXY protocol
-  router/             Radix trie-based HTTP routing with path params
-  balancer/           12 load balancing algorithms
-  backend/            Backend pool management, state machine
-  health/             Active + passive health checking
-  middleware/         Middleware pipeline (rate limit, CORS, auth, WAF, etc.)
-  tls/                TLS manager, OCSP stapling, mTLS
-  acme/               ACME v2 client (Let's Encrypt)
-  config/             Config parsing (YAML, JSON, TOML, HCL)
-  metrics/            Counter, Gauge, Histogram, Prometheus export
-  logging/            Structured logger with rotation
-  admin/              Admin REST API
-  webui/              Web UI dashboard (embedded SPA)
-  cli/                CLI commands and TUI dashboard
-  cluster/            Raft consensus + SWIM gossip
-  discovery/          Service discovery (static, DNS, Consul)
-  ratelimit/          Distributed rate limiting
-  waf/                Web Application Firewall rules engine
-  mcp/                MCP server for AI integration
-  plugin/             Plugin system (Go plugins)
-pkg/
-  version/            Build-time version info
-  utils/              BufferPool, RingBuffer, LRU, CIDRMatcher, BloomFilter
-  errors/             Sentinel errors with codes and wrapping
-configs/              Example configs (YAML, TOML, HCL)
-docs/                 Documentation
-test/                 Integration tests
+                    ┌─────────────────────────────────────────────────┐
+                    │              OpenLoadBalancer                    │
+  Clients ─────────┤                                                  │
+  HTTP/S, WS,      │  Listeners → Middleware → Router → Balancer → Backends
+  gRPC, TCP, UDP   │  (L4/L7)     (18 types)   (trie)   (12 algos)  │
+                    │                                                  │
+                    │  TLS │ Cluster │ MCP │ Web UI │ Admin API       │
+                    └─────────────────────────────────────────────────┘
 ```
 
 ## Documentation
 
-- [Getting Started](docs/getting-started.md) -- 5-minute quick start guide
-- [Configuration Reference](docs/configuration.md) -- All configuration options
-- [Load Balancing Algorithms](docs/algorithms.md) -- Algorithm details and selection guide
-- [REST API Reference](docs/api.md) -- Admin API endpoints
-- [Clustering Guide](docs/clustering.md) -- Multi-node setup and operation
-- [MCP / AI Integration](docs/mcp.md) -- AI agent integration guide
-- [Specification](docs/SPECIFICATION.md) -- Full technical specification
-- [Implementation Guide](docs/IMPLEMENTATION.md) -- Internal architecture details
-- [Changelog](CHANGELOG.md) -- Release history
+| Guide | Description |
+|-------|-------------|
+| [Getting Started](docs/getting-started.md) | 5-minute quick start |
+| [Configuration](docs/configuration.md) | All config options |
+| [Algorithms](docs/algorithms.md) | Algorithm details |
+| [API Reference](docs/api.md) | Admin REST API |
+| [Clustering](docs/clustering.md) | Multi-node setup |
+| [MCP / AI](docs/mcp.md) | AI integration |
+| [Benchmarks](docs/benchmark-report.md) | Performance data |
+| [Specification](docs/SPECIFICATION.md) | Technical spec |
 
 ## Contributing
 
-Contributions are welcome! Please keep these guidelines in mind:
+See [CONTRIBUTING.md](CONTRIBUTING.md). Key rules:
 
-1. **Zero external dependencies** -- All code must use the Go standard library only. Do not add third-party packages.
-2. **Tests required** -- Every change must include unit tests. Run `make test` before submitting.
-3. **Benchmarks for hot paths** -- Performance-critical code should include benchmark tests.
-4. **GoDoc on all public APIs** -- Comprehensive documentation strings on all exported types and functions.
-5. **Hot-reload awareness** -- Design for runtime configuration changes without restart.
-
-```bash
-# Development workflow
-make build        # Build
-make test         # Run tests
-make bench        # Run benchmarks
-make lint         # Run linter (if available)
-make check        # Run all checks
-```
+1. **Zero external deps** — stdlib only
+2. **Tests required** — 89% coverage, don't lower it
+3. **All features wired** — no dead code in engine.go
+4. **gofmt + go vet** — CI enforced
 
 ## License
 
-Apache 2.0 -- See [LICENSE](LICENSE) for details.
-
-Copyright 2026 Ersin Koc / ECOSTACK TECHNOLOGY OU
+Apache 2.0 — [LICENSE](LICENSE)
