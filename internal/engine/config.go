@@ -214,7 +214,7 @@ func (e *Engine) reloadListeners(newCfg *config.Config) error {
 	for i, newListener := range newCfg.Listeners {
 		oldListener := e.config.Listeners[i]
 		if newListener.Address != oldListener.Address ||
-			newListener.TLS != oldListener.TLS {
+			newListener.IsTLS() != oldListener.IsTLS() {
 			e.logger.Warn("Listener configuration changed - requires restart for full effect",
 				logging.String("listener", newListener.Name),
 			)
@@ -234,7 +234,7 @@ func listenersChanged(oldCfg, newCfg *config.Config) bool {
 		newL := newCfg.Listeners[i]
 		if oldL.Name != newL.Name ||
 			oldL.Address != newL.Address ||
-			oldL.TLS != newL.TLS ||
+			oldL.IsTLS() != newL.IsTLS() ||
 			oldL.Protocol != newL.Protocol {
 			return true
 		}

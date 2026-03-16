@@ -37,7 +37,7 @@ func createTestConfig() *config.Config {
 				Name:     "test-http",
 				Address:  "127.0.0.1:0", // Use port 0 for dynamic allocation
 				Protocol: "http",
-				TLS:      false,
+				TLS:      nil,
 				Routes: []*config.Route{
 					{
 						Path: "/",
@@ -571,7 +571,7 @@ func TestInitializeRoutes(t *testing.T) {
 				Name:     "https",
 				Address:  "127.0.0.1:0",
 				Protocol: "https",
-				TLS:      true,
+				TLS:      &config.ListenerTLS{Enabled: true},
 				Routes: []*config.Route{
 					{Path: "/secure", Pool: "pool1"},
 				},
@@ -626,7 +626,7 @@ func TestListenersChanged(t *testing.T) {
 	oldCfg := &config.Config{
 		Listeners: []*config.Listener{
 			{Name: "l1", Address: ":80", Protocol: "http"},
-			{Name: "l2", Address: ":443", Protocol: "https", TLS: true},
+			{Name: "l2", Address: ":443", Protocol: "https", TLS: &config.ListenerTLS{Enabled: true}},
 		},
 	}
 
@@ -654,7 +654,7 @@ func TestListenersChanged(t *testing.T) {
 			newCfg: &config.Config{
 				Listeners: []*config.Listener{
 					{Name: "l1", Address: ":8080", Protocol: "http"},
-					{Name: "l2", Address: ":443", Protocol: "https", TLS: true},
+					{Name: "l2", Address: ":443", Protocol: "https", TLS: &config.ListenerTLS{Enabled: true}},
 				},
 			},
 			want: true,
@@ -664,7 +664,7 @@ func TestListenersChanged(t *testing.T) {
 			newCfg: &config.Config{
 				Listeners: []*config.Listener{
 					{Name: "l1", Address: ":80", Protocol: "http"},
-					{Name: "l2", Address: ":443", Protocol: "https", TLS: false},
+					{Name: "l2", Address: ":443", Protocol: "https", TLS: nil},
 				},
 			},
 			want: true,
@@ -863,7 +863,7 @@ func TestEngineStartWithInvalidListeners(t *testing.T) {
 
 func TestEngineStartWithMissingTLSCerts(t *testing.T) {
 	cfg := createTestConfig()
-	cfg.Listeners[0].TLS = true
+	cfg.Listeners[0].TLS = &config.ListenerTLS{Enabled: true}
 	cfg.Listeners[0].Protocol = "https"
 	cfg.TLS = &config.TLSConfig{
 		CertFile: "/nonexistent/path/cert.pem",
@@ -1283,7 +1283,7 @@ func TestReloadListeners(t *testing.T) {
 	t.Run("reload with same listener count but different TLS", func(t *testing.T) {
 		newCfg := &config.Config{
 			Listeners: []*config.Listener{
-				{Name: "test-http", Address: "127.0.0.1:0", Protocol: "http", TLS: true},
+				{Name: "test-http", Address: "127.0.0.1:0", Protocol: "http", TLS: &config.ListenerTLS{Enabled: true}},
 			},
 		}
 		err := engine.reloadListeners(newCfg)
@@ -1658,7 +1658,7 @@ func TestStartListenersWithErrors(t *testing.T) {
 					Name:     "https",
 					Address:  "127.0.0.1:0",
 					Protocol: "https",
-					TLS:      true,
+					TLS:      &config.ListenerTLS{Enabled: true},
 					Routes:   []*config.Route{{Path: "/", Pool: "pool1"}},
 				},
 			},
@@ -1855,13 +1855,13 @@ func TestListenersChangedDetection(t *testing.T) {
 			oldCfg: &config.Config{
 				Listeners: []*config.Listener{
 					{Name: "l1", Address: ":80", Protocol: "http"},
-					{Name: "l2", Address: ":443", Protocol: "https", TLS: true},
+					{Name: "l2", Address: ":443", Protocol: "https", TLS: &config.ListenerTLS{Enabled: true}},
 				},
 			},
 			newCfg: &config.Config{
 				Listeners: []*config.Listener{
 					{Name: "l1", Address: ":80", Protocol: "http"},
-					{Name: "l2", Address: ":443", Protocol: "https", TLS: true},
+					{Name: "l2", Address: ":443", Protocol: "https", TLS: &config.ListenerTLS{Enabled: true}},
 				},
 			},
 			want: false,
@@ -1871,13 +1871,13 @@ func TestListenersChangedDetection(t *testing.T) {
 			oldCfg: &config.Config{
 				Listeners: []*config.Listener{
 					{Name: "l1", Address: ":80", Protocol: "http"},
-					{Name: "l2", Address: ":443", Protocol: "https", TLS: true},
+					{Name: "l2", Address: ":443", Protocol: "https", TLS: &config.ListenerTLS{Enabled: true}},
 				},
 			},
 			newCfg: &config.Config{
 				Listeners: []*config.Listener{
 					{Name: "l1", Address: ":8080", Protocol: "http"},
-					{Name: "l2", Address: ":443", Protocol: "https", TLS: true},
+					{Name: "l2", Address: ":443", Protocol: "https", TLS: &config.ListenerTLS{Enabled: true}},
 				},
 			},
 			want: true,
@@ -3250,7 +3250,7 @@ func TestCreateMTLSListener(t *testing.T) {
 			Name:     "test-mtls",
 			Address:  "127.0.0.1:0",
 			Protocol: "https",
-			TLS:      true,
+			TLS:      &config.ListenerTLS{Enabled: true},
 			MTLS: &config.MTLSConfig{
 				Enabled:    true,
 				ClientAuth: "request", // does not require client_cas
@@ -3277,7 +3277,7 @@ func TestCreateMTLSListener(t *testing.T) {
 			Name:     "test-mtls-invalid",
 			Address:  "127.0.0.1:0",
 			Protocol: "https",
-			TLS:      true,
+			TLS:      &config.ListenerTLS{Enabled: true},
 			MTLS: &config.MTLSConfig{
 				Enabled:    true,
 				ClientAuth: "invalid_policy",

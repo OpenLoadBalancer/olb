@@ -255,7 +255,7 @@ func TestConfigStateMachine_Apply_UpdateListener(t *testing.T) {
 			Name:     "https",
 			Address:  ":443",
 			Protocol: "https",
-			TLS:      true,
+			TLS:      &config.ListenerTLS{Enabled: true},
 		})
 		if err != nil {
 			t.Fatalf("Failed to create command: %v", err)

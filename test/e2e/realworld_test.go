@@ -641,7 +641,8 @@ listeners:
   - name: https
     address: "127.0.0.1:%d"
     protocol: http
-    tls: true
+    tls:
+      enabled: true
     routes:
       - path: /
         pool: tls-pool

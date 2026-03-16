@@ -331,7 +331,8 @@ func TestConfig_TLS(t *testing.T) {
 listeners:
   - name: https
     address: ":443"
-    tls: true
+    tls:
+      enabled: true
 
 tls:
   cert_file: /etc/ssl/cert.pem
@@ -902,7 +903,8 @@ version: "1"
 listeners:
   - name: https
     address: ":443"
-    tls: true
+    tls:
+      enabled: true
     mtls:
       enabled: true
       client_auth: requireandverify
