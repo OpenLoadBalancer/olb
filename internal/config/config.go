@@ -18,9 +18,9 @@ type Config struct {
 	Logging    *Logging          `yaml:"logging" json:"logging"`
 	Metrics    *Metrics          `yaml:"metrics" json:"metrics"`
 	Cluster    *ClusterConfig    `yaml:"cluster" json:"cluster"`
-	Middleware *MiddlewareConfig  `yaml:"middleware" json:"middleware"`
-	WAF        *WAFConfig         `yaml:"waf" json:"waf"`
-	Profiling  *ProfilingConfig   `yaml:"profiling" json:"profiling"`
+	Middleware *MiddlewareConfig `yaml:"middleware" json:"middleware"`
+	WAF        *WAFConfig        `yaml:"waf" json:"waf"`
+	Profiling  *ProfilingConfig  `yaml:"profiling" json:"profiling"`
 }
 
 // ProfilingConfig represents profiling/debugging configuration.

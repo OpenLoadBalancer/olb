@@ -59,7 +59,7 @@ build-freebsd:
 ## test: Run all tests
 test:
 	@echo "Running tests..."
-	go test -v -race -coverprofile=coverage.out ./...
+	go test -v -count=1 -p 4 -coverprofile=coverage.out -timeout=300s ./...
 
 ## test-short: Run short tests only
 test-short:

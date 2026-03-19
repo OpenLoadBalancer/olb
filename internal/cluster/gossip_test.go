@@ -1981,7 +1981,7 @@ func TestProbe_WithUnreachableMember(t *testing.T) {
 // flaky failures on Windows where TCP and UDP port availability can differ.
 func getFreePort(t *testing.T) int {
 	t.Helper()
-	for attempt := 0; attempt < 50; attempt++ {
+	for attempt := 0; attempt < 200; attempt++ {
 		// Bind UDP first (more restrictive on Windows)
 		udpAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:0")
 		if err != nil {
@@ -2005,6 +2005,6 @@ func getFreePort(t *testing.T) int {
 		udpConn.Close()
 		return port
 	}
-	t.Fatalf("getFreePort: unable to find a port free for both TCP and UDP after 50 attempts")
+	t.Fatalf("getFreePort: unable to find a port free for both TCP and UDP after 200 attempts")
 	return 0
 }
