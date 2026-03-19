@@ -17,12 +17,12 @@ const (
 	ProviderTypeStatic ProviderType = "static"
 	// ProviderTypeConsul discovers services from HashiCorp Consul.
 	ProviderTypeConsul ProviderType = "consul"
-	// ProviderTypeKubernetes discovers services from Kubernetes.
-	ProviderTypeKubernetes ProviderType = "kubernetes"
 	// ProviderTypeDNS discovers services via DNS SRV records.
 	ProviderTypeDNS ProviderType = "dns"
 	// ProviderTypeFile watches a file for backend changes.
 	ProviderTypeFile ProviderType = "file"
+	// ProviderTypeDocker discovers services from Docker containers.
+	ProviderTypeDocker ProviderType = "docker"
 )
 
 // Service represents a discovered backend service.

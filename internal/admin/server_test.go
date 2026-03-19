@@ -2937,7 +2937,7 @@ func TestAddBackend_NoPoolManager(t *testing.T) {
 	}
 }
 
-// TestHandleBackendDetail_GetBackend tests getting a single backend (not implemented).
+// TestHandleBackendDetail_GetBackend tests getting a single backend.
 func TestHandleBackendDetail_GetBackend(t *testing.T) {
 	server, poolManager, _, _, _ := setupTestServer(t, nil)
 
@@ -2946,13 +2946,38 @@ func TestHandleBackendDetail_GetBackend(t *testing.T) {
 	pool.AddBackend(b)
 	poolManager.AddPool(pool)
 
-	// GET /api/v1/backends/test-pool/b1 should return 501 (not implemented)
+	// GET /api/v1/backends/test-pool/b1 should return 200 with backend detail
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/backends/test-pool/b1", nil)
 	w := httptest.NewRecorder()
 	server.server.Handler.ServeHTTP(w, req)
 
-	if w.Code != http.StatusNotImplemented {
-		t.Errorf("expected status 501, got %d", w.Code)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	// Verify response contains backend ID
+	body := w.Body.String()
+	if !strings.Contains(body, "b1") {
+		t.Errorf("expected response to contain backend ID 'b1', got: %s", body)
+	}
+	if !strings.Contains(body, "10.0.0.1:8080") {
+		t.Errorf("expected response to contain address '10.0.0.1:8080', got: %s", body)
+	}
+}
+
+// TestHandleBackendDetail_NotFound tests getting a non-existent backend.
+func TestHandleBackendDetail_NotFound(t *testing.T) {
+	server, poolManager, _, _, _ := setupTestServer(t, nil)
+
+	pool := backend.NewPool("test-pool", "round_robin")
+	poolManager.AddPool(pool)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/backends/test-pool/nonexistent", nil)
+	w := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", w.Code)
 	}
 }
 
@@ -2963,8 +2988,8 @@ func TestHandleBackendDetail_MethodNotAllowed(t *testing.T) {
 	pool := backend.NewPool("test-pool", "round_robin")
 	poolManager.AddPool(pool)
 
-	// PATCH is not supported
-	req := httptest.NewRequest(http.MethodPatch, "/api/v1/backends/test-pool/b1", nil)
+	// PUT is not supported on backend detail endpoint
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/backends/test-pool/b1", nil)
 	w := httptest.NewRecorder()
 	server.server.Handler.ServeHTTP(w, req)
 

@@ -46,7 +46,7 @@ func DefaultRetryConfig() RetryConfig {
 	return RetryConfig{
 		MaxRetries:        3,
 		RetryOn:           []int{http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout},
-		RetryMethods:      []string{http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodPut, http.MethodDelete},
+		RetryMethods:      []string{http.MethodGet, http.MethodHead, http.MethodOptions},
 		BackoffInitial:    100 * time.Millisecond,
 		BackoffMax:        5 * time.Second,
 		BackoffMultiplier: 2.0,

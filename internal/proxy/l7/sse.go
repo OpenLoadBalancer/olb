@@ -162,6 +162,11 @@ func (sh *SSEHandler) streamSSEResponse(w http.ResponseWriter, resp *http.Respon
 	// Copy headers
 	copySSEHeaders(w.Header(), resp.Header)
 
+	// Set SSE-required cache and streaming headers per spec
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no") // Disable proxy buffering (nginx compat)
+
 	// Set status code
 	w.WriteHeader(resp.StatusCode)
 

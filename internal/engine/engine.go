@@ -27,9 +27,11 @@ import (
 	"github.com/openloadbalancer/olb/internal/metrics"
 	"github.com/openloadbalancer/olb/internal/middleware"
 	"github.com/openloadbalancer/olb/internal/plugin"
+	"github.com/openloadbalancer/olb/internal/profiling"
 	"github.com/openloadbalancer/olb/internal/proxy/l4"
 	"github.com/openloadbalancer/olb/internal/proxy/l7"
 	"github.com/openloadbalancer/olb/internal/router"
+	"github.com/openloadbalancer/olb/internal/security"
 	olbTLS "github.com/openloadbalancer/olb/internal/tls"
 	"github.com/openloadbalancer/olb/internal/waf"
 	wafmcp "github.com/openloadbalancer/olb/internal/waf/mcp"
@@ -91,6 +93,12 @@ type Engine struct {
 	// ACME/Let's Encrypt client
 	acmeClient *acme.Client
 
+	// Profiling cleanup function (non-nil when profiling is active)
+	profilingCleanup func()
+
+	// Log file output for SIGUSR1 reopening (non-nil when logging to file)
+	logFileOutput *logging.RotatingFileOutput
+
 	// Config file watcher
 	configWatcher *config.Watcher
 
@@ -127,7 +135,7 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 	}
 
 	// Initialize logger
-	logger := createLogger(cfg.Logging)
+	logger, logFileOutput := createLoggerWithOutput(cfg.Logging)
 
 	// Initialize metrics registry
 	metricsRegistry := metrics.NewRegistry()
@@ -212,6 +220,7 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 		config:          cfg,
 		configPath:      configPath,
 		logger:          logger,
+		logFileOutput:   logFileOutput,
 		metrics:         metricsRegistry,
 		tlsManager:      tlsMgr,
 		mtlsManager:     mtlsMgr,
@@ -295,6 +304,30 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 		}
 	}
 
+	// Initialize profiling if configured
+	if cfg.Profiling != nil && cfg.Profiling.Enabled {
+		profCfg := profiling.ProfileConfig{
+			CPUProfilePath:       cfg.Profiling.CPUProfilePath,
+			MemProfilePath:       cfg.Profiling.MemProfilePath,
+			BlockProfileRate:     cfg.Profiling.BlockProfileRate,
+			MutexProfileFraction: cfg.Profiling.MutexProfileFraction,
+			EnablePprof:          true,
+			PprofAddr:            cfg.Profiling.PprofAddr,
+		}
+		if profCfg.PprofAddr == "" {
+			profCfg.PprofAddr = "localhost:6060"
+		}
+		cleanup, err := profiling.Apply(profCfg)
+		if err != nil {
+			logger.Warn("Failed to initialize profiling", logging.Error(err))
+		} else {
+			e.profilingCleanup = cleanup
+			logger.Info("Profiling enabled",
+				logging.String("pprof_addr", profCfg.PprofAddr),
+			)
+		}
+	}
+
 	logger.Info("Engine created",
 		logging.String("version", version.Version),
 		logging.String("config_path", configPath),
@@ -323,6 +356,27 @@ func (e *Engine) initCluster(clusterCfg *config.ClusterConfig, logger *logging.L
 		return fmt.Errorf("failed to create Raft cluster: %w", err)
 	}
 	e.raftCluster = raftCluster
+
+	// Initialize TCP transport for Raft RPCs
+	bindAddr := fmt.Sprintf("%s:%d", clusterCfg.BindAddr, clusterCfg.BindPort)
+	transportCfg := &cluster.TCPTransportConfig{
+		BindAddr:    bindAddr,
+		MaxPoolSize: 5,
+		Timeout:     5 * time.Second,
+	}
+	transport, err := cluster.NewTCPTransport(transportCfg, raftCluster)
+	if err != nil {
+		logger.Warn("Failed to create cluster transport, running in local mode",
+			logging.Error(err),
+		)
+	} else {
+		raftCluster.SetTransport(transport)
+		if err := transport.Start(); err != nil {
+			logger.Warn("Failed to start cluster transport", logging.Error(err))
+		} else {
+			logger.Info("Cluster TCP transport started", logging.String("bind_addr", bindAddr))
+		}
+	}
 
 	// Create distributed state
 	distState := cluster.NewDistributedState(nil)
@@ -661,6 +715,12 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 	// 7. Close connection manager
 	e.connManager.CloseAll()
 
+	// 8. Stop profiling and write memory profile if configured
+	if e.profilingCleanup != nil {
+		e.profilingCleanup()
+		e.logger.Info("Profiling stopped")
+	}
+
 	// Signal stop
 	close(e.stopCh)
 
@@ -860,6 +920,8 @@ func (e *Engine) initializePools() error {
 			bal = balancer.NewWeightedRandom()
 		case "ring_hash", "ringhash":
 			bal = balancer.NewRingHash()
+		case "sticky":
+			bal = balancer.NewSticky(balancer.NewRoundRobin(), nil)
 		default:
 			bal = balancer.NewRoundRobin()
 		}
@@ -1042,15 +1104,20 @@ func (e *Engine) startUDPListener(listenerCfg *config.Listener) error {
 
 // startHTTPListener creates and starts an HTTP or HTTPS (L7) listener.
 // If the listener has mTLS configured, it applies client certificate settings.
+// Slow loris protection settings from the security package are applied.
 func (e *Engine) startHTTPListener(listenerCfg *config.Listener) error {
+	// Use security package slow loris defaults for hardened timeouts
+	slp := security.DefaultSlowLorisProtection()
+
 	opts := &listener.Options{
 		Name:           listenerCfg.Name,
 		Address:        listenerCfg.Address,
 		Handler:        e.proxy,
-		ReadTimeout:    30 * time.Second,
-		WriteTimeout:   30 * time.Second,
-		IdleTimeout:    120 * time.Second,
-		MaxHeaderBytes: 1 << 20, // 1 MB
+		ReadTimeout:    slp.ReadTimeout,
+		HeaderTimeout:  slp.ReadHeaderTimeout,
+		WriteTimeout:   slp.WriteTimeout,
+		IdleTimeout:    slp.IdleTimeout,
+		MaxHeaderBytes: slp.MaxHeaderBytes,
 	}
 
 	var l listener.Listener
@@ -1116,6 +1183,18 @@ func (e *Engine) createMTLSListener(opts *listener.Options, listenerCfg *config.
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build mTLS config: %w", err)
+	}
+
+	// Apply security-hardened TLS defaults (min version, cipher suites, curves)
+	secureDefaults := security.DefaultTLSConfig()
+	if tlsConfig.MinVersion < secureDefaults.MinVersion {
+		tlsConfig.MinVersion = secureDefaults.MinVersion
+	}
+	if len(tlsConfig.CipherSuites) == 0 {
+		tlsConfig.CipherSuites = secureDefaults.CipherSuites
+	}
+	if len(tlsConfig.CurvePreferences) == 0 {
+		tlsConfig.CurvePreferences = secureDefaults.CurvePreferences
 	}
 
 	// Create a custom HTTPS listener that uses our mTLS-configured tls.Config
@@ -1215,9 +1294,11 @@ func (l *mtlsHTTPSListener) IsRunning() bool {
 	return l.running
 }
 
-// createLogger creates the logger based on configuration.
-func createLogger(cfg *config.Logging) *logging.Logger {
+// createLoggerWithOutput creates the logger and optionally returns a rotating file
+// output reference for SIGUSR1 log reopening.
+func createLoggerWithOutput(cfg *config.Logging) (*logging.Logger, *logging.RotatingFileOutput) {
 	var output logging.Output
+	var rotatingOut *logging.RotatingFileOutput
 
 	if cfg == nil {
 		// Default to stdout JSON
@@ -1249,6 +1330,7 @@ func createLogger(cfg *config.Logging) *logging.Logger {
 				output = logging.NewJSONOutput(os.Stdout)
 			} else {
 				output = rotatingOutput
+				rotatingOut = rotatingOutput
 			}
 		}
 	}
@@ -1257,7 +1339,7 @@ func createLogger(cfg *config.Logging) *logging.Logger {
 	if cfg != nil {
 		logger.SetLevel(logging.ParseLevel(cfg.Level))
 	}
-	return logger
+	return logger, rotatingOut
 }
 
 // createMiddlewareChain creates the middleware chain based on configuration.
@@ -1286,6 +1368,15 @@ func createMiddlewareChain(cfg *config.Config, logger *logging.Logger, registry 
 		}
 	}
 
+	// Max Body Size (priority 250) — prevent memory exhaustion from large uploads
+	if cfg.Middleware != nil && cfg.Middleware.MaxBodySize != nil && cfg.Middleware.MaxBodySize.Enabled {
+		maxSize := cfg.Middleware.MaxBodySize.MaxSize
+		if maxSize <= 0 {
+			maxSize = 10 * 1024 * 1024 // 10 MB default
+		}
+		chain.Use(middleware.NewBodyLimitMiddleware(middleware.BodyLimitConfig{MaxSize: maxSize}))
+	}
+
 	// Real IP (priority 300)
 	if realIP, err := middleware.NewRealIPMiddleware(middleware.RealIPConfig{}); err == nil {
 		chain.Use(realIP)
@@ -1293,6 +1384,12 @@ func createMiddlewareChain(cfg *config.Config, logger *logging.Logger, registry 
 
 	// Request ID (priority 400)
 	chain.Use(middleware.NewRequestIDMiddleware(middleware.RequestIDConfig{}))
+
+	// Request Timeout (priority 450) — prevent hung backends from blocking clients
+	if cfg.Middleware != nil && cfg.Middleware.Timeout != nil && cfg.Middleware.Timeout.Enabled {
+		timeout := parseDuration(cfg.Middleware.Timeout.Timeout, 60*time.Second)
+		chain.Use(middleware.NewTimeoutMiddleware(middleware.TimeoutConfig{Timeout: timeout}))
+	}
 
 	// Rate Limiter (priority 500)
 	if cfg.Middleware != nil && cfg.Middleware.RateLimit != nil && cfg.Middleware.RateLimit.Enabled {

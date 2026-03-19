@@ -482,11 +482,9 @@ func TestRetryMiddleware_DefaultConfig(t *testing.T) {
 		http.MethodGet:     true,
 		http.MethodHead:    true,
 		http.MethodOptions: true,
-		http.MethodPut:     true,
-		http.MethodDelete:  true,
 	}
-	if len(config.RetryMethods) != 5 {
-		t.Fatalf("Expected 5 RetryMethods, got %d", len(config.RetryMethods))
+	if len(config.RetryMethods) != 3 {
+		t.Fatalf("Expected 3 RetryMethods, got %d", len(config.RetryMethods))
 	}
 	for _, method := range config.RetryMethods {
 		if !expectedMethods[method] {
@@ -523,12 +521,12 @@ func TestRetryMiddleware_Priority(t *testing.T) {
 }
 
 func TestRetryMiddleware_IdempotentMethodsRetried(t *testing.T) {
+	// Only truly idempotent methods should be retried by default.
+	// PUT and DELETE are excluded to prevent data corruption.
 	methods := []string{
 		http.MethodGet,
 		http.MethodHead,
 		http.MethodOptions,
-		http.MethodPut,
-		http.MethodDelete,
 	}
 
 	for _, method := range methods {
@@ -700,8 +698,8 @@ func TestRetryMiddleware_ZeroValueConfigUsesDefaults(t *testing.T) {
 	if len(mw.config.RetryOn) != 3 {
 		t.Errorf("Expected 3 default RetryOn codes, got %d", len(mw.config.RetryOn))
 	}
-	if len(mw.config.RetryMethods) != 5 {
-		t.Errorf("Expected 5 default RetryMethods, got %d", len(mw.config.RetryMethods))
+	if len(mw.config.RetryMethods) != 3 {
+		t.Errorf("Expected 3 default RetryMethods, got %d", len(mw.config.RetryMethods))
 	}
 }
 

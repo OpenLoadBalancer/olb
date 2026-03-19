@@ -53,9 +53,24 @@ func (ch *ConsistentHash) Name() string {
 }
 
 // Next selects the next backend using consistent hashing.
-// The key is derived from the request context (client IP + path if available).
-// Returns nil if no backends are available.
+// Without a key, it hashes the first available backend's address as a
+// deterministic fallback. For proper consistent hashing with request
+// affinity, use NextWithKey instead.
 func (ch *ConsistentHash) Next(backends []*backend.Backend) *backend.Backend {
+	if len(backends) == 0 {
+		return nil
+	}
+	// Deterministic fallback: hash the first available backend's address.
+	// Callers should prefer NextWithKey for request-aware routing.
+	key := backends[0].Address
+	return ch.NextWithKey(backends, key)
+}
+
+// NextWithKey selects a backend using consistent hashing on the provided key.
+// The key is typically derived from request context (e.g. client IP, URL path,
+// or a combination). The same key will consistently map to the same backend
+// as long as the backend set is stable.
+func (ch *ConsistentHash) NextWithKey(backends []*backend.Backend, key string) *backend.Backend {
 	ch.mu.RLock()
 	defer ch.mu.RUnlock()
 
@@ -63,9 +78,6 @@ func (ch *ConsistentHash) Next(backends []*backend.Backend) *backend.Backend {
 		return nil
 	}
 
-	// Use a simple hash of the first available backend's ID as the key
-	// In production, this would be based on the request context (client IP + path)
-	key := ch.generateKey(backends)
 	hash := ch.hashKey(key)
 
 	backendID := ch.getNode(hash)
@@ -83,17 +95,6 @@ func (ch *ConsistentHash) Next(backends []*backend.Backend) *backend.Backend {
 	// Fallback: if the selected backend is not in the list or not available,
 	// find the next available backend on the ring
 	return ch.findNextAvailable(hash, backends)
-}
-
-// generateKey generates a hash key from the available backends.
-// In production, this should use request context (client IP + path).
-func (ch *ConsistentHash) generateKey(backends []*backend.Backend) string {
-	// For now, use a simple round-robin-like key based on time
-	// This is a placeholder - real implementation should use request context
-	if len(backends) > 0 {
-		return backends[0].ID
-	}
-	return "default"
 }
 
 // findNextAvailable finds the next available backend on the ring starting from the given hash.

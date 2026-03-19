@@ -18,8 +18,19 @@ type Config struct {
 	Logging    *Logging          `yaml:"logging" json:"logging"`
 	Metrics    *Metrics          `yaml:"metrics" json:"metrics"`
 	Cluster    *ClusterConfig    `yaml:"cluster" json:"cluster"`
-	Middleware *MiddlewareConfig `yaml:"middleware" json:"middleware"`
-	WAF        *WAFConfig        `yaml:"waf" json:"waf"`
+	Middleware *MiddlewareConfig  `yaml:"middleware" json:"middleware"`
+	WAF        *WAFConfig         `yaml:"waf" json:"waf"`
+	Profiling  *ProfilingConfig   `yaml:"profiling" json:"profiling"`
+}
+
+// ProfilingConfig represents profiling/debugging configuration.
+type ProfilingConfig struct {
+	Enabled              bool   `yaml:"enabled" json:"enabled"`
+	PprofAddr            string `yaml:"pprof_addr" json:"pprof_addr"`
+	CPUProfilePath       string `yaml:"cpu_profile_path" json:"cpu_profile_path"`
+	MemProfilePath       string `yaml:"mem_profile_path" json:"mem_profile_path"`
+	BlockProfileRate     int    `yaml:"block_profile_rate" json:"block_profile_rate"`
+	MutexProfileFraction int    `yaml:"mutex_profile_fraction" json:"mutex_profile_fraction"`
 }
 
 // MiddlewareConfig represents middleware configuration.
@@ -32,6 +43,20 @@ type MiddlewareConfig struct {
 	Cache          *CacheConfig          `yaml:"cache" json:"cache"`
 	IPFilter       *IPFilterConfig       `yaml:"ip_filter" json:"ip_filter"`
 	Headers        *HeadersConfig        `yaml:"headers" json:"headers"`
+	Timeout        *TimeoutConfig        `yaml:"timeout" json:"timeout"`
+	MaxBodySize    *MaxBodySizeConfig    `yaml:"max_body_size" json:"max_body_size"`
+}
+
+// TimeoutConfig represents request timeout configuration.
+type TimeoutConfig struct {
+	Enabled bool   `yaml:"enabled" json:"enabled"`
+	Timeout string `yaml:"timeout" json:"timeout"` // e.g. "60s", "30s"
+}
+
+// MaxBodySizeConfig represents request body size limit configuration.
+type MaxBodySizeConfig struct {
+	Enabled bool  `yaml:"enabled" json:"enabled"`
+	MaxSize int64 `yaml:"max_size" json:"max_size"` // bytes, default 10MB
 }
 
 type RateLimitConfig struct {
@@ -349,8 +374,9 @@ type ACME struct {
 
 // Admin represents admin API configuration.
 type Admin struct {
-	Address string `yaml:"address" json:"address"`
-	Enabled bool   `yaml:"enabled" json:"enabled"`
+	Address    string `yaml:"address" json:"address"`
+	Enabled    bool   `yaml:"enabled" json:"enabled"`
+	MCPAddress string `yaml:"mcp_address" json:"mcp_address"`
 }
 
 // Logging represents logging configuration.

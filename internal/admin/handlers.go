@@ -351,6 +351,59 @@ func (s *Server) removeBackend(w http.ResponseWriter, r *http.Request) {
 	writeSuccess(w, map[string]string{"message": "backend removed successfully"})
 }
 
+// UpdateBackendRequest is the request body for updating a backend.
+type UpdateBackendRequest struct {
+	Weight   *int32 `json:"weight,omitempty"`
+	MaxConns *int32 `json:"max_conns,omitempty"`
+}
+
+// updateBackend handles PATCH /api/v1/backends/:pool/:backend
+func (s *Server) updateBackend(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
+		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only PATCH is allowed")
+		return
+	}
+
+	poolName, backendID := extractBackendID(r.URL.Path)
+	if poolName == "" || backendID == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_PATH", "pool and backend IDs are required")
+		return
+	}
+
+	if s.poolManager == nil {
+		writeError(w, http.StatusNotFound, "POOL_NOT_FOUND", "pool not found")
+		return
+	}
+
+	pool := s.poolManager.GetPool(poolName)
+	if pool == nil {
+		writeError(w, http.StatusNotFound, "POOL_NOT_FOUND", "pool not found: "+poolName)
+		return
+	}
+
+	b := pool.GetBackend(backendID)
+	if b == nil {
+		writeError(w, http.StatusNotFound, "BACKEND_NOT_FOUND", "backend not found: "+backendID)
+		return
+	}
+
+	var req UpdateBackendRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_JSON", "invalid JSON: "+err.Error())
+		return
+	}
+	defer r.Body.Close()
+
+	if req.Weight != nil {
+		b.Weight = *req.Weight
+	}
+	if req.MaxConns != nil {
+		b.MaxConns = *req.MaxConns
+	}
+
+	writeSuccess(w, backendToInfo(b))
+}
+
 // drainBackend handles POST /api/v1/backends/:pool/:backend/drain
 func (s *Server) drainBackend(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -390,6 +443,39 @@ func (s *Server) drainBackend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeSuccess(w, map[string]string{"message": "backend drained successfully"})
+}
+
+// getBackendDetail handles GET /api/v1/backends/:pool/:backend
+func (s *Server) getBackendDetail(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only GET is allowed")
+		return
+	}
+
+	poolName, backendID := extractBackendID(r.URL.Path)
+	if poolName == "" || backendID == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_PATH", "pool and backend IDs are required")
+		return
+	}
+
+	if s.poolManager == nil {
+		writeError(w, http.StatusNotFound, "POOL_NOT_FOUND", "pool not found")
+		return
+	}
+
+	pool := s.poolManager.GetPool(poolName)
+	if pool == nil {
+		writeError(w, http.StatusNotFound, "POOL_NOT_FOUND", "pool not found: "+poolName)
+		return
+	}
+
+	b := pool.GetBackend(backendID)
+	if b == nil {
+		writeError(w, http.StatusNotFound, "BACKEND_NOT_FOUND", "backend not found: "+backendID)
+		return
+	}
+
+	writeSuccess(w, backendToInfo(b))
 }
 
 // listRoutes handles GET /api/v1/routes

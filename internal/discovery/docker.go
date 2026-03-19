@@ -13,9 +13,6 @@ import (
 	"time"
 )
 
-// ProviderTypeDocker discovers services from Docker containers.
-const ProviderTypeDocker ProviderType = "docker"
-
 // DockerConfig contains configuration for the Docker discovery provider.
 type DockerConfig struct {
 	// SocketPath is the path to the Docker daemon Unix socket.

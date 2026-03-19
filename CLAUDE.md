@@ -25,8 +25,8 @@ cmd/olb/main.go          → Entry point, CLI routing
 internal/engine/          → Central orchestrator (engine.go wires everything)
 internal/proxy/l7/        → HTTP reverse proxy + WebSocket/gRPC/SSE detection
 internal/proxy/l4/        → TCP/UDP proxy, SNI routing, PROXY protocol
-internal/balancer/        → 12 load balancing algorithms
-internal/middleware/      → 18 middleware components (config-gated)
+internal/balancer/        → 14 load balancing algorithms
+internal/middleware/      → 13 middleware components (config-gated)
 internal/config/          → YAML/TOML/HCL/JSON config + hot reload
 internal/admin/           → REST API + Web UI serving
 internal/cluster/         → Raft consensus + SWIM gossip
@@ -110,8 +110,8 @@ waf:
 
 ## Common Patterns
 - Engine wiring: `internal/engine/engine.go` → `New()`, `Start()`, `Shutdown()`
-- Balancer switch: `initializePools()` — all 12 algorithms
-- Middleware chain: `createMiddlewareChain()` — all 18 middleware
+- Balancer switch: `initializePools()` — all 14 algorithms
+- Middleware chain: `createMiddlewareChain()` — all 13 middleware
 - Protocol detection: `proxy.go` → `proxyHandler()` checks WebSocket/gRPC/SSE headers
 - Backend state: `StateStarting` → set `StateUp` after creation
 - Backend ID: auto-generated from address if not specified

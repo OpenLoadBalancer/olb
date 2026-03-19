@@ -176,6 +176,11 @@ func (p *engineRouteProvider) ModifyRoute(action, host, path, backendPool string
 // --------------------------------------------------------------------------
 
 func getMCPAddress(cfg *config.Config) string {
+	// Use explicit MCP address from config if set
+	if cfg.Admin != nil && cfg.Admin.MCPAddress != "" {
+		return cfg.Admin.MCPAddress
+	}
+
 	adminAddr := getAdminAddress(cfg)
 	// Parse port from admin address and use port+1 for MCP
 	// Default: if admin is :8080, MCP will be :8081

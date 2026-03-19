@@ -251,10 +251,16 @@ func (s *Server) handleBackendDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if len(parts) >= 5 {
 		// Backend-level request
+		// Check for sub-resource (e.g., /api/v1/backends/:pool/:backend/drain)
+		if len(parts) >= 6 && parts[5] == "drain" {
+			s.drainBackend(w, r)
+			return
+		}
 		switch r.Method {
 		case http.MethodGet:
-			// Could implement get single backend here
-			writeError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "get single backend not implemented")
+			s.getBackendDetail(w, r)
+		case http.MethodPatch:
+			s.updateBackend(w, r)
 		case http.MethodDelete:
 			s.removeBackend(w, r)
 		default:

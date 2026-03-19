@@ -47,7 +47,13 @@ func (e *Engine) setupSignalHandlers() {
 
 				case syscall.SIGUSR1:
 					e.logger.Info("Received SIGUSR1, reopening log files...")
-					// TODO: Implement log reopening
+					if e.logFileOutput != nil {
+						if err := e.logFileOutput.Reopen(); err != nil {
+							e.logger.Error("Failed to reopen log file", logging.Error(err))
+						} else {
+							e.logger.Info("Log file reopened successfully")
+						}
+					}
 				}
 
 			case <-e.stopCh:

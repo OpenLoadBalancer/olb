@@ -125,11 +125,19 @@ func (b *Backend) LastLatency() time.Duration {
 
 // AcquireConn attempts to acquire a connection slot.
 // Returns true if successful, false if at max connections.
+// Uses atomic compare-and-swap to prevent race conditions.
 func (b *Backend) AcquireConn() bool {
 	if b.MaxConns > 0 {
-		current := b.activeConns.Load()
-		if current >= int64(b.MaxConns) {
-			return false
+		for {
+			current := b.activeConns.Load()
+			if current >= int64(b.MaxConns) {
+				return false
+			}
+			if b.activeConns.CompareAndSwap(current, current+1) {
+				b.totalConns.Add(1)
+				return true
+			}
+			// CAS failed — another goroutine changed activeConns, retry
 		}
 	}
 	b.activeConns.Add(1)

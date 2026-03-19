@@ -105,6 +105,9 @@ type Cluster struct {
 	// State machine
 	stateMachine StateMachine
 
+	// Network transport for Raft RPCs (nil = local-only / test mode)
+	transport *TCPTransport
+
 	// Callbacks
 	onStateChange   func(State, State)
 	onLeaderElected func(string)
@@ -276,12 +279,15 @@ func (c *Cluster) getHeartbeatTimerChan() <-chan time.Time {
 // startElection starts a new election.
 func (c *Cluster) startElection() {
 	c.setState(StateCandidate)
-	_ = c.incrementTerm() // term would be used in RequestVote RPC
+	term := c.incrementTerm()
 	c.votedFor.Store(c.config.NodeID)
 
 	// Request votes from all peers
 	votes := 1 // Vote for self
 	votesMu := sync.Mutex{}
+
+	lastLogIndex := c.getLastLogIndex()
+	lastLogTerm := c.getLastLogTermLocked()
 
 	var wg sync.WaitGroup
 	for nodeID, node := range c.nodes {
@@ -293,12 +299,33 @@ func (c *Cluster) startElection() {
 		go func(id string, addr string) {
 			defer wg.Done()
 
-			// In a real implementation, this would be an RPC call
-			// For now, simulate a successful vote
-			// TODO: Implement actual RPC
-			votesMu.Lock()
-			votes++
-			votesMu.Unlock()
+			if c.transport != nil {
+				// Send real RPC via TCPTransport
+				resp, err := c.transport.SendRequestVote(addr, &RequestVote{
+					Term:         term,
+					CandidateID:  c.config.NodeID,
+					LastLogIndex: lastLogIndex,
+					LastLogTerm:  lastLogTerm,
+				})
+				if err != nil {
+					return
+				}
+				if resp.Term > term {
+					c.currentTerm.Store(resp.Term)
+					c.setState(StateFollower)
+					return
+				}
+				if resp.VoteGranted {
+					votesMu.Lock()
+					votes++
+					votesMu.Unlock()
+				}
+			} else {
+				// Local/test mode: simulate a successful vote
+				votesMu.Lock()
+				votes++
+				votesMu.Unlock()
+			}
 		}(nodeID, node.Address)
 	}
 
@@ -351,6 +378,7 @@ func (c *Cluster) becomeLeader() {
 // sendHeartbeats sends heartbeat messages to all peers.
 func (c *Cluster) sendHeartbeats() {
 	term := c.GetTerm()
+	commitIndex := c.commitIndex.Load()
 
 	for nodeID, node := range c.nodes {
 		if nodeID == c.config.NodeID {
@@ -358,10 +386,27 @@ func (c *Cluster) sendHeartbeats() {
 		}
 
 		go func(id string, addr string) {
-			// In a real implementation, this would be an RPC call
-			// TODO: Implement actual RPC
-			_ = term
-			_ = addr
+			if c.transport != nil {
+				// Send real heartbeat/AppendEntries RPC
+				resp, err := c.transport.SendAppendEntries(addr, &AppendEntries{
+					Term:         term,
+					LeaderID:     c.config.NodeID,
+					PrevLogIndex: c.getLastLogIndex(),
+					PrevLogTerm:  c.getLastLogTermLocked(),
+					Entries:      nil, // Empty = heartbeat
+					LeaderCommit: commitIndex,
+				})
+				if err != nil {
+					return
+				}
+				// If follower has higher term, step down
+				if resp.Term > term {
+					c.currentTerm.Store(resp.Term)
+					c.setState(StateFollower)
+					c.resetElectionTimer()
+				}
+			}
+			// Local/test mode: heartbeat is a no-op (peers are simulated)
 		}(nodeID, node.Address)
 	}
 }
@@ -486,6 +531,13 @@ func (c *Cluster) OnLeaderElected(fn func(leaderID string)) {
 	c.onLeaderElected = fn
 }
 
+// SetTransport sets the TCP transport for Raft RPCs.
+// When set, RPCs are sent over the network; when nil, the cluster
+// operates in local/test mode with simulated responses.
+func (c *Cluster) SetTransport(t *TCPTransport) {
+	c.transport = t
+}
+
 // RequestVote represents a request for a vote.
 type RequestVote struct {
 	Term         uint64
@@ -586,8 +638,77 @@ func (c *Cluster) HandleAppendEntries(req *AppendEntries) *AppendEntriesResponse
 
 	c.leaderID.Store(req.LeaderID)
 
-	// TODO: Implement log consistency check and entry appending
-	// This is a simplified version
+	// Log consistency check: verify PrevLogIndex/PrevLogTerm match
+	if req.PrevLogIndex > 0 {
+		c.logMu.RLock()
+		if req.PrevLogIndex > uint64(len(c.log)) {
+			// Our log is too short — report conflict
+			c.logMu.RUnlock()
+			return &AppendEntriesResponse{
+				Term:          c.GetTerm(),
+				Success:       false,
+				ConflictIndex: uint64(len(c.log)),
+			}
+		}
+		if req.PrevLogIndex <= uint64(len(c.log)) {
+			prevEntry := c.log[req.PrevLogIndex-1]
+			if prevEntry.Term != req.PrevLogTerm {
+				// Term mismatch at PrevLogIndex — report conflict
+				conflictTerm := prevEntry.Term
+				c.logMu.RUnlock()
+				return &AppendEntriesResponse{
+					Term:          c.GetTerm(),
+					Success:       false,
+					ConflictIndex: req.PrevLogIndex,
+					ConflictTerm:  conflictTerm,
+				}
+			}
+		}
+		c.logMu.RUnlock()
+	}
+
+	// Append new entries (overwrite conflicting entries if any)
+	if len(req.Entries) > 0 {
+		c.logMu.Lock()
+		for _, entry := range req.Entries {
+			idx := entry.Index
+			if idx <= uint64(len(c.log)) {
+				// Overwrite existing entry if term differs
+				if c.log[idx-1].Term != entry.Term {
+					c.log = c.log[:idx-1] // Truncate from conflict point
+					c.log = append(c.log, entry)
+				}
+			} else {
+				c.log = append(c.log, entry)
+			}
+		}
+		c.logMu.Unlock()
+	}
+
+	// Advance commitIndex if leader's commit is ahead
+	if req.LeaderCommit > c.commitIndex.Load() {
+		lastNewIndex := c.getLastLogIndex()
+		newCommit := req.LeaderCommit
+		if lastNewIndex < newCommit {
+			newCommit = lastNewIndex
+		}
+		c.commitIndex.Store(newCommit)
+
+		// Apply committed but unapplied entries to state machine
+		for c.lastApplied.Load() < c.commitIndex.Load() {
+			nextApply := c.lastApplied.Load() + 1
+			c.logMu.RLock()
+			if nextApply <= uint64(len(c.log)) {
+				entry := c.log[nextApply-1]
+				c.logMu.RUnlock()
+				c.stateMachine.Apply(entry.Command)
+				c.lastApplied.Add(1)
+			} else {
+				c.logMu.RUnlock()
+				break
+			}
+		}
+	}
 
 	return &AppendEntriesResponse{
 		Term:    c.GetTerm(),

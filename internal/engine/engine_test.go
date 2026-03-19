@@ -1461,9 +1461,9 @@ func TestCreateLogger(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logger := createLogger(tt.cfg)
+			logger, _ := createLoggerWithOutput(tt.cfg)
 			if logger == nil {
-				t.Error("createLogger() returned nil")
+				t.Error("createLoggerWithOutput() returned nil")
 			}
 		})
 	}

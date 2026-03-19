@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -38,8 +39,25 @@ type tokenBucket struct {
 	mu        sync.Mutex
 }
 
-// defaultKeyFunc extracts the client IP from the request.
+// defaultKeyFunc extracts the real client IP from the request.
+// It checks X-Forwarded-For and X-Real-IP headers before falling
+// back to RemoteAddr, so rate limiting works correctly behind proxies.
 func defaultKeyFunc(r *http.Request) string {
+	// Check X-Forwarded-For (first IP in chain is the original client)
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// Take the first (leftmost) IP — the original client
+		if idx := strings.Index(xff, ","); idx != -1 {
+			return strings.TrimSpace(xff[:idx])
+		}
+		return strings.TrimSpace(xff)
+	}
+
+	// Check X-Real-IP
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return strings.TrimSpace(xri)
+	}
+
+	// Fallback to direct connection address
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
