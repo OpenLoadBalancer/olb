@@ -122,7 +122,7 @@ func (p *PROXYProtocolParser) Parse(data []byte) (*PROXYHeader, []byte, error) {
 	// Check for v2 signature
 	if isPROXYProtocolV2(data) {
 		if !p.config.AcceptV2 {
-			return nil, data, errors.New("PROXY protocol v2 not accepted")
+			return nil, data, errors.New("proxy protocol v2 not accepted")
 		}
 		return p.parseV2(data)
 	}
@@ -130,7 +130,7 @@ func (p *PROXYProtocolParser) Parse(data []byte) (*PROXYHeader, []byte, error) {
 	// Check for v1 signature
 	if isPROXYProtocolV1(data) {
 		if !p.config.AcceptV1 {
-			return nil, data, errors.New("PROXY protocol v1 not accepted")
+			return nil, data, errors.New("proxy protocol v1 not accepted")
 		}
 		return p.parseV1(data)
 	}
@@ -244,7 +244,7 @@ func (p *PROXYProtocolParser) parseV2(data []byte) (*PROXYHeader, []byte, error)
 	}
 
 	if header.Command == PROXYCommandLocal && !p.config.AllowLocal {
-		return nil, data, errors.New("LOCAL command not allowed")
+		return nil, data, errors.New("local command not allowed")
 	}
 
 	// Family and transport (1 byte)

@@ -167,8 +167,8 @@ func TestSSEHandler_Disabled(t *testing.T) {
 	rec := httptest.NewRecorder()
 	err := handler.HandleSSE(rec, req, be)
 
-	if err == nil || err.Error() != "SSE disabled" {
-		t.Errorf("Expected 'SSE disabled' error, got: %v", err)
+	if err == nil || err.Error() != "sse disabled" {
+		t.Errorf("Expected 'sse disabled' error, got: %v", err)
 	}
 }
 

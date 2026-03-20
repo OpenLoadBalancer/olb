@@ -206,13 +206,13 @@ func (m *Manager) Accept(conn net.Conn) (*TrackedConn, error) {
 
 	// Check global limit
 	if m.maxConnections > 0 && len(m.connections) >= m.maxConnections {
-		conn.Close()
+		_ = conn.Close() // best-effort cleanup
 		return nil, errors.New("global connection limit exceeded")
 	}
 
 	// Check per-source limit
 	if m.maxPerSource > 0 && m.sourceCounts[host] >= m.maxPerSource {
-		conn.Close()
+		_ = conn.Close() // best-effort cleanup
 		return nil, errors.New("per-source connection limit exceeded")
 	}
 
@@ -378,7 +378,7 @@ func (m *Manager) CloseAll() {
 	m.mu.Unlock()
 
 	for _, conn := range conns {
-		conn.Close()
+		_ = conn.Close() // best-effort cleanup
 	}
 }
 

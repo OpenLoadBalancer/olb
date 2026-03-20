@@ -161,7 +161,7 @@ func (m *OCSPManager) refreshAll() {
 // It returns cached response if valid, or fetches a new one.
 func (m *OCSPManager) GetResponse(cert *x509.Certificate, issuer *x509.Certificate) (*OCSPResponse, error) {
 	if !m.config.Enabled {
-		return nil, errors.New("OCSP is disabled")
+		return nil, errors.New("ocsp is disabled")
 	}
 
 	if cert == nil {

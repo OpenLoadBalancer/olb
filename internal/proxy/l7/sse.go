@@ -73,7 +73,7 @@ func NewSSEHandler(config *SSEConfig) *SSEHandler {
 // 3. Handle Last-Event-ID for replay/resume
 func (sh *SSEHandler) HandleSSE(w http.ResponseWriter, r *http.Request, b *backend.Backend) error {
 	if !sh.config.EnableSSE {
-		return errors.New("SSE disabled")
+		return errors.New("sse disabled")
 	}
 
 	// Acquire connection slot

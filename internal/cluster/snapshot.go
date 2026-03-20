@@ -615,7 +615,7 @@ func (t *TCPTransport) Stop() error {
 
 	for addr, conns := range t.pool {
 		for _, conn := range conns {
-			conn.Close()
+			_ = conn.Close() // best-effort cleanup
 		}
 		delete(t.pool, addr)
 	}
@@ -785,14 +785,14 @@ func (t *TCPTransport) sendRPC(target string, msgType byte, payload []byte) ([]b
 
 	conn.SetWriteDeadline(time.Now().Add(t.timeout))
 	if err := writeFrame(conn, msgType, payload); err != nil {
-		conn.Close()
+		_ = conn.Close() // best-effort cleanup
 		return nil, fmt.Errorf("write frame: %w", err)
 	}
 
 	conn.SetReadDeadline(time.Now().Add(t.timeout))
 	_, respPayload, err := readFrame(conn)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close() // best-effort cleanup
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 
@@ -829,7 +829,7 @@ func (t *TCPTransport) returnConn(target string, conn net.Conn) {
 
 	conns := t.pool[target]
 	if len(conns) >= t.maxPoolSize {
-		conn.Close()
+		_ = conn.Close() // best-effort cleanup
 		return
 	}
 	t.pool[target] = append(conns, conn)

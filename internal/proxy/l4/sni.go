@@ -159,8 +159,7 @@ func (r *SNIRouter) peekClientHello(conn net.Conn) (string, net.Conn, error) {
 
 // routeToDefault routes to the default backend.
 func (r *SNIRouter) routeToDefault(conn net.Conn) error {
-	// For now, just close the connection if no default
-	conn.Close()
+	_ = conn.Close() // Best-effort close on rejected connection
 	return olbErrors.New(olbErrors.CodeNotFound, "no route found and no default backend")
 }
 
@@ -361,7 +360,7 @@ func parseSNIExtension(extensions []byte) (string, error) {
 		extensions = extensions[4+extensionLen:]
 	}
 
-	return "", errors.New("SNI extension not found")
+	return "", errors.New("sni extension not found")
 }
 
 // parseSNIList parses the SNI list.

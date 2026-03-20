@@ -83,7 +83,7 @@ func NewWebSocketHandler(config *WebSocketConfig) *WebSocketHandler {
 // 4. Establishing a bidirectional tunnel
 func (wh *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request, b *backend.Backend) error {
 	if !wh.config.EnableWebSocket {
-		return errors.New("WebSocket disabled")
+		return errors.New("websocket disabled")
 	}
 
 	wsKey := r.Header.Get("Sec-WebSocket-Key")

@@ -207,7 +207,7 @@ func (m *NodeAuthMiddleware) Accept() (net.Conn, error) {
 		conn.SetReadDeadline(deadlineFromNow(5))
 		n, err := conn.Read(buf)
 		if err != nil {
-			conn.Close()
+			_ = conn.Close() // best-effort cleanup
 			continue
 		}
 		conn.SetReadDeadline(zeroTime)
@@ -216,7 +216,7 @@ func (m *NodeAuthMiddleware) Accept() (net.Conn, error) {
 		parts := strings.SplitN(line, " ", 3)
 		if len(parts) != 3 || parts[0] != "AUTH" {
 			conn.Write([]byte("ERR invalid auth format\n"))
-			conn.Close()
+			_ = conn.Close() // best-effort cleanup
 			continue
 		}
 
@@ -231,14 +231,14 @@ func (m *NodeAuthMiddleware) Accept() (net.Conn, error) {
 
 		if !allowAll && !nodeAllowed {
 			conn.Write([]byte("ERR node not allowed\n"))
-			conn.Close()
+			_ = conn.Close() // best-effort cleanup
 			continue
 		}
 
 		// Verify token
 		if !VerifyNodeToken(token, nodeID, m.secret) {
 			conn.Write([]byte("ERR invalid token\n"))
-			conn.Close()
+			_ = conn.Close() // best-effort cleanup
 			continue
 		}
 
