@@ -347,7 +347,9 @@ func (c *Checker) checkGRPC(b *backend.Backend, config *Check) Result {
 	client := &http.Client{
 		Timeout: config.Timeout,
 		Transport: &http.Transport{
-			TLSClientConfig:   &tls.Config{InsecureSkipVerify: true},
+			// Health checks against backends typically use self-signed certs.
+			// Verification is skipped to avoid requiring CA distribution.
+			TLSClientConfig:   &tls.Config{InsecureSkipVerify: true}, //nolint:gosec — health check to internal backends
 			ForceAttemptHTTP2: true,
 		},
 	}

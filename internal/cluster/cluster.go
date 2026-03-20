@@ -189,9 +189,18 @@ func (c *Cluster) Start() error {
 	return nil
 }
 
-// Stop stops the cluster.
+// Stop stops the cluster and cleans up resources.
 func (c *Cluster) Stop() error {
 	close(c.stopCh)
+
+	// Stop timers to prevent goroutine/resource leaks
+	if c.electionTimer != nil {
+		c.electionTimer.Stop()
+	}
+	if c.heartbeatTimer != nil {
+		c.heartbeatTimer.Stop()
+	}
+
 	return nil
 }
 
@@ -290,13 +299,18 @@ func (c *Cluster) startElection() {
 	lastLogTerm := c.getLastLogTermLocked()
 
 	var wg sync.WaitGroup
+	c.nodesMu.RLock()
+	peers := make(map[string]string, len(c.nodes))
 	for nodeID, node := range c.nodes {
-		if nodeID == c.config.NodeID {
-			continue
+		if nodeID != c.config.NodeID {
+			peers[nodeID] = node.Address
 		}
+	}
+	c.nodesMu.RUnlock()
 
+	for _, addr := range peers {
 		wg.Add(1)
-		go func(id string, addr string) {
+		go func(addr string) {
 			defer wg.Done()
 
 			if c.transport != nil {
@@ -326,7 +340,7 @@ func (c *Cluster) startElection() {
 				votes++
 				votesMu.Unlock()
 			}
-		}(nodeID, node.Address)
+		}(addr)
 	}
 
 	// Wait for votes with timeout
@@ -380,14 +394,19 @@ func (c *Cluster) sendHeartbeats() {
 	term := c.GetTerm()
 	commitIndex := c.commitIndex.Load()
 
+	// Snapshot peers under lock to avoid race on c.nodes map
+	c.nodesMu.RLock()
+	peerAddrs := make([]string, 0, len(c.nodes))
 	for nodeID, node := range c.nodes {
-		if nodeID == c.config.NodeID {
-			continue
+		if nodeID != c.config.NodeID {
+			peerAddrs = append(peerAddrs, node.Address)
 		}
+	}
+	c.nodesMu.RUnlock()
 
-		go func(id string, addr string) {
+	for _, addr := range peerAddrs {
+		go func(addr string) {
 			if c.transport != nil {
-				// Send real heartbeat/AppendEntries RPC
 				resp, err := c.transport.SendAppendEntries(addr, &AppendEntries{
 					Term:         term,
 					LeaderID:     c.config.NodeID,
@@ -399,15 +418,13 @@ func (c *Cluster) sendHeartbeats() {
 				if err != nil {
 					return
 				}
-				// If follower has higher term, step down
 				if resp.Term > term {
 					c.currentTerm.Store(resp.Term)
 					c.setState(StateFollower)
 					c.resetElectionTimer()
 				}
 			}
-			// Local/test mode: heartbeat is a no-op (peers are simulated)
-		}(nodeID, node.Address)
+		}(addr)
 	}
 }
 

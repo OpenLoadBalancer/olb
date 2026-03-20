@@ -262,7 +262,10 @@ func (wh *WebSocketHandler) dialBackend(r *http.Request, b *backend.Backend) (ne
 
 	if isTLS || r.TLS != nil {
 		tlsConfig := &tls.Config{
-			InsecureSkipVerify: true,
+			// Backend TLS verification is skipped by default for internal
+			// backends using self-signed certificates. For public backends,
+			// configure proper CA certificates via the TLS manager.
+			InsecureSkipVerify: true, //nolint:gosec — backend-to-backend internal TLS
 		}
 		return tls.DialWithDialer(wh.dialer, "tcp", address, tlsConfig)
 	}

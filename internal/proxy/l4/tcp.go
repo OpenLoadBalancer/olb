@@ -4,7 +4,6 @@ package l4
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -191,28 +190,27 @@ func (p *TCPProxy) dialBackend(b *backend.Backend) (net.Conn, error) {
 
 // proxyConnections proxies data between client and backend.
 func (p *TCPProxy) proxyConnections(clientConn, backendConn net.Conn) {
-	errChan := make(chan error, 2)
+	var wg sync.WaitGroup
+	wg.Add(2)
 
 	// Client -> Backend
 	go func() {
-		err := p.copyWithTimeout(backendConn, clientConn)
-		if err != nil && !isNormalCloseError(err) {
-			errChan <- fmt.Errorf("client to backend: %w", err)
-		}
+		defer wg.Done()
+		p.copyWithTimeout(backendConn, clientConn)
+		// Signal backend that client is done sending
 		backendConn.Close()
 	}()
 
 	// Backend -> Client
 	go func() {
-		err := p.copyWithTimeout(clientConn, backendConn)
-		if err != nil && !isNormalCloseError(err) {
-			errChan <- fmt.Errorf("backend to client: %w", err)
-		}
+		defer wg.Done()
+		p.copyWithTimeout(clientConn, backendConn)
+		// Signal client that backend is done sending
 		clientConn.Close()
 	}()
 
 	// Wait for both directions to complete
-	<-errChan
+	wg.Wait()
 }
 
 // copyWithTimeout copies data with an idle timeout.
