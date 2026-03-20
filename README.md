@@ -1,5 +1,8 @@
 # OpenLoadBalancer
 
+> **Zero-dependency L4/L7 load balancer for any backend.** One binary. Written in pure Go.
+> Works with Node.js, Python, Java, Go, Rust, .NET, PHP — anything that speaks HTTP or TCP.
+
 <p align="center">
   <img src="olb.png" alt="OpenLoadBalancer" width="100%">
 </p>
@@ -74,15 +77,57 @@ Requires Go 1.25+. No other dependencies.
 
 **Proxy:** HTTP/HTTPS, WebSocket, gRPC, SSE, TCP (L4), UDP (L4), SNI routing, PROXY protocol v1/v2
 
-**Load Balancing:** 12 algorithms — Round Robin, Weighted RR, Least Connections, Least Response Time, IP Hash, Consistent Hash (Ketama), Maglev, Ring Hash, Power of Two, Random, Weighted Random, Sticky Sessions
+**Load Balancing:** 14 algorithms — Round Robin, Weighted RR, Least Connections, Weighted Least Connections, Least Response Time, Weighted Least Response Time, IP Hash, Consistent Hash (Ketama), Maglev, Ring Hash, Power of Two, Random, Weighted Random, Sticky Sessions
 
 **Security:** TLS termination + SNI, ACME/Let's Encrypt, mTLS, OCSP stapling, 6-layer WAF (IP ACL, rate limiting, request sanitizer, detection engine with SQLi/XSS/path traversal/CMDi/XXE/SSRF, bot detection with JA3 fingerprinting, response protection with security headers + data masking), circuit breaker
 
-**Middleware:** 19 components — WAF (6-layer security pipeline), rate limit, CORS, compression (gzip), IP filter, circuit breaker, retry, response cache, headers, request ID, real IP, access log, metrics
+**Middleware:** 16 components — Recovery, body limit, WAF (6-layer pipeline), IP filter, real IP, request ID, timeout, rate limit, circuit breaker, CORS, headers, compression (gzip), retry, cache, metrics, access log
 
 **Observability:** Web UI dashboard (8 pages), TUI (`olb top`), Prometheus metrics, structured JSON logging, admin REST API (15+ endpoints)
 
 **Operations:** Hot config reload (SIGHUP or API), Raft clustering + SWIM gossip, service discovery (Static/DNS/Consul/Docker/File), MCP server for AI integration, plugin system, 30+ CLI commands
+
+## MCP Integration (AI-Powered Management)
+
+OpenLoadBalancer includes a built-in [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server that enables AI agents (Claude, GPT, Copilot) to monitor, diagnose, and manage the load balancer.
+
+### Transport
+- **SSE** (Server-Sent Events): `GET /sse` for streaming + `POST /message` for commands — MCP spec compliant
+- **HTTP POST**: `POST /mcp` for simple request/response (backwards compatible)
+- **Stdio**: Line-delimited JSON-RPC over stdin/stdout for local CLI tools
+
+### Authentication
+```yaml
+admin:
+  mcp_address: ":8082"
+  mcp_token: "your-secret-token"   # Bearer token auth
+  mcp_audit: true                   # Log all tool calls
+```
+
+### 17 MCP Tools
+
+| Category | Tools |
+|----------|-------|
+| **Metrics** | `olb_query_metrics` — RPS, latency, error rates, connections |
+| **Backends** | `olb_list_backends`, `olb_modify_backend` — Add, remove, drain, enable/disable |
+| **Routes** | `olb_modify_route` — Add, update, remove routes with traffic splitting |
+| **Diagnostics** | `olb_diagnose` — Automated error/latency/capacity/health analysis |
+| **Config** | `olb_get_config`, `olb_get_logs`, `olb_cluster_status` |
+| **WAF** | `waf_status`, `waf_add_whitelist`, `waf_add_blacklist`, `waf_remove_whitelist`, `waf_remove_blacklist`, `waf_list_rules`, `waf_get_stats`, `waf_get_top_blocked_ips`, `waf_get_attack_timeline` |
+
+### Connect from Claude Desktop
+```json
+{
+  "mcpServers": {
+    "olb": {
+      "url": "http://localhost:8082/sse",
+      "headers": {
+        "Authorization": "Bearer your-secret-token"
+      }
+    }
+  }
+}
+```
 
 ## Performance
 
@@ -231,7 +276,7 @@ olb cluster status                   # Cluster info
                     │              OpenLoadBalancer                    │
   Clients ─────────┤                                                  │
   HTTP/S, WS,      │  Listeners → Middleware → Router → Balancer → Backends
-  gRPC, TCP, UDP   │  (L4/L7)     (19 types)   (trie)   (12 algos)  │
+  gRPC, TCP, UDP   │  (L4/L7)     (16 types)   (trie)   (14 algos)  │
                     │                                                  │
                     │  WAF (6 layers) │ TLS │ Cluster │ MCP │ Web UI  │
                     └─────────────────────────────────────────────────┘

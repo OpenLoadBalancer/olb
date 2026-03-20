@@ -1,6 +1,6 @@
 # Load Balancing Algorithms
 
-OLB includes 12 load balancing algorithms. This guide explains how each works and when to use it.
+OLB includes 14 load balancing algorithms. This guide explains how each works and when to use it.
 
 ## Overview
 

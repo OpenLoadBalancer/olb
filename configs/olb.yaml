@@ -6,7 +6,9 @@ version: "1"
 # Admin API
 admin:
   address: "127.0.0.1:8081"
-  mcp_address: "127.0.0.1:8082"  # MCP server for AI integration
+  mcp_address: "127.0.0.1:8082"  # MCP server (SSE + HTTP)
+  mcp_token: ""                   # Bearer token for MCP auth (empty = no auth)
+  mcp_audit: true                 # Log all MCP tool calls
 
 # Middleware configuration (all disabled by default)
 middleware:

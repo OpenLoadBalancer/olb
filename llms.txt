@@ -38,7 +38,7 @@ When working with this codebase, follow these rules:
 │       │                                                      │
 │  Router (radix trie, host/path/method/header matching)       │
 │       │                                                      │
-│  Load Balancer (12 algorithms) → Backend Pool → Backends     │
+│  Load Balancer (14 algorithms) → Backend Pool → Backends     │
 │                                                              │
 │  Support: TLS/ACME, Clustering, MCP, Web UI, CLI, Metrics   │
 └─────────────────────────────────────────────────────────────┘

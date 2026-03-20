@@ -74,7 +74,7 @@ const features = [
     icon: Bot,
     title: "MCP Integration",
     description:
-      "Built-in Model Context Protocol server with 20+ tools for AI-powered monitoring, analysis, and automated management.",
+      "SSE-compliant MCP server with 17 tools (8 core + 9 WAF) for AI-powered management. Bearer token auth, audit logging. Connect from Claude Desktop, Cursor, or any MCP client.",
   },
   {
     icon: RefreshCw,
@@ -167,8 +167,8 @@ export function Features() {
             </span>
           </h2>
           <p className="text-lg text-muted-foreground leading-relaxed">
-            A complete load balancing solution built from the ground up in Go,
-            designed for modern cloud-native applications.
+            A complete load balancing solution for any backend stack.
+            Written in pure Go with zero dependencies, designed for modern cloud-native infrastructure.
           </p>
         </div>
 

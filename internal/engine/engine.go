@@ -84,7 +84,7 @@ type Engine struct {
 
 	// Integrated subsystems
 	mcpServer    *mcp.Server
-	mcpTransport *mcp.HTTPTransport
+	mcpTransport *mcp.SSETransport
 	pluginMgr    *plugin.PluginManager
 	clusterMgr   *cluster.ClusterManager // optional, nil if not configured
 	raftCluster  *cluster.Cluster        // optional, nil if not configured
@@ -516,17 +516,35 @@ func (e *Engine) Start() error {
 		e.logger.Info("Passive health checker started")
 	}
 
-	// 9. Start MCP HTTP transport if admin address is available
+	// 9. Start MCP SSE transport (spec-compliant with auth + audit)
 	if e.mcpServer != nil {
 		mcpAddr := getMCPAddress(e.config)
 		if mcpAddr != "" {
-			e.mcpTransport = mcp.NewHTTPTransport(e.mcpServer, mcpAddr)
+			sseConfig := mcp.SSETransportConfig{
+				Addr:     mcpAddr,
+				AuditLog: e.config.Admin != nil && e.config.Admin.MCPAudit,
+			}
+			if e.config.Admin != nil && e.config.Admin.MCPToken != "" {
+				sseConfig.BearerToken = e.config.Admin.MCPToken
+			}
+			if sseConfig.AuditLog {
+				sseConfig.AuditFunc = func(tool, params, clientAddr string, dur time.Duration, err error) {
+					e.logger.Info("MCP tool call",
+						logging.String("tool", tool),
+						logging.String("client", clientAddr),
+						logging.String("duration", dur.String()),
+					)
+				}
+			}
+			e.mcpTransport = mcp.NewSSETransport(e.mcpServer, sseConfig)
 			if err := e.mcpTransport.Start(); err != nil {
-				e.logger.Warn("MCP HTTP transport start failed", logging.Error(err))
+				e.logger.Warn("MCP SSE transport start failed", logging.Error(err))
 				e.mcpTransport = nil
 			} else {
-				e.logger.Info("MCP HTTP transport started",
+				e.logger.Info("MCP SSE transport started",
 					logging.String("address", e.mcpTransport.Addr()),
+					logging.Bool("auth", sseConfig.BearerToken != ""),
+					logging.Bool("audit", sseConfig.AuditLog),
 				)
 			}
 		}

@@ -377,6 +377,8 @@ type Admin struct {
 	Address    string `yaml:"address" json:"address"`
 	Enabled    bool   `yaml:"enabled" json:"enabled"`
 	MCPAddress string `yaml:"mcp_address" json:"mcp_address"`
+	MCPToken   string `yaml:"mcp_token" json:"mcp_token"`
+	MCPAudit   bool   `yaml:"mcp_audit" json:"mcp_audit"`
 }
 
 // Logging represents logging configuration.

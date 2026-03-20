@@ -61,6 +61,91 @@ mcp:
     address: "127.0.0.1:9091"
 ```
 
+## SSE Transport
+
+The SSE (Server-Sent Events) transport implements the MCP specification's streaming protocol, enabling real-time bidirectional communication between AI agents and OLB.
+
+**How it works:**
+
+1. **Client opens SSE stream:** `GET /sse` opens a persistent HTTP connection. The server holds this connection open and pushes events as they occur.
+2. **Server sends endpoint event:** Immediately after connection, the server sends an `event: endpoint` message containing the URL for the client to POST commands to (e.g., `/message?sessionId=1`).
+3. **Client sends JSON-RPC messages:** The client sends MCP requests as JSON-RPC 2.0 messages via `POST /message?sessionId=N`. Each message includes a method name and parameters.
+4. **Server pushes responses via SSE:** Responses to tool calls, resource reads, and other operations are pushed back through the SSE stream as `event: message` events with JSON-RPC response payloads.
+5. **Keepalive:** The server sends a keepalive comment (`: keepalive`) every 30 seconds to prevent proxies and load balancers from closing idle connections.
+
+**Example SSE event flow:**
+
+```
+← event: endpoint
+← data: /message?sessionId=1
+
+→ POST /message?sessionId=1
+→ {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"olb_query_metrics","arguments":{"metric":"requests_per_second"}}}
+
+← event: message
+← data: {"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{\"metric\":\"requests_per_second\",\"value\":1247.5}"}]}}
+```
+
+## Authentication
+
+MCP endpoints support Bearer token authentication to secure access to load balancer management tools.
+
+**Configuration:**
+
+```yaml
+admin:
+  mcp_address: ":8082"
+  mcp_token: "your-secret-token"
+```
+
+**Behavior:**
+
+- When `mcp_token` is set, all MCP endpoints (`/sse`, `/message`, `/mcp`) require an `Authorization: Bearer <token>` header.
+- When `mcp_token` is empty or not set, authentication is disabled (suitable for local development only).
+- Token comparison uses constant-time comparison (`crypto/subtle.ConstantTimeCompare`) to prevent timing attacks.
+- Authentication failures return HTTP 401 with a JSON-RPC error response.
+
+**Example with curl:**
+
+```bash
+# SSE stream with auth
+curl -H "Authorization: Bearer your-secret-token" http://localhost:8082/sse
+
+# Tool call with auth
+curl -X POST -H "Authorization: Bearer your-secret-token" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"olb_query_metrics","arguments":{"metric":"requests_per_second"}}}' \
+  http://localhost:8082/message?sessionId=1
+```
+
+## Audit Logging
+
+MCP audit logging records all tool invocations for security monitoring and compliance.
+
+**Configuration:**
+
+```yaml
+admin:
+  mcp_audit: true
+```
+
+**What is logged:**
+
+- **Tool name:** The MCP tool that was called (e.g., `olb_modify_backend`, `waf_add_blacklist`).
+- **Client address:** The remote IP and port of the client making the request.
+- **Duration:** How long the tool call took to execute.
+- **Timestamp:** When the call was made.
+
+**Custom audit function:**
+
+OLB supports registering a custom audit function for advanced use cases such as forwarding audit events to external SIEM systems, alerting on sensitive operations, or applying additional access control logic. The audit function is called synchronously before the tool result is returned.
+
+**Example log output:**
+
+```
+{"level":"info","msg":"mcp tool call","tool":"olb_modify_backend","client":"10.0.1.5:43210","duration_ms":12,"timestamp":"2026-03-15T10:00:00Z"}
+```
+
 ## Available Tools
 
 ### olb_query_metrics

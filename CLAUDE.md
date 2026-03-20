@@ -111,7 +111,7 @@ waf:
 ## Common Patterns
 - Engine wiring: `internal/engine/engine.go` → `New()`, `Start()`, `Shutdown()`
 - Balancer switch: `initializePools()` — all 14 algorithms
-- Middleware chain: `createMiddlewareChain()` — all 15 middleware
+- Middleware chain: `createMiddlewareChain()` — all 16 middleware
 - Protocol detection: `proxy.go` → `proxyHandler()` checks WebSocket/gRPC/SSE headers
 - Backend state: `StateStarting` → set `StateUp` after creation
 - Backend ID: auto-generated from address if not specified
