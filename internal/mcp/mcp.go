@@ -11,6 +11,7 @@ package mcp
 import (
 	"bufio"
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1238,17 +1239,19 @@ func (t *StdioTransport) Run(ctx context.Context) error {
 
 // HTTPTransport implements MCP transport over HTTP.
 type HTTPTransport struct {
-	server   *Server
-	addr     string
-	listener net.Listener
-	httpSrv  *http.Server
+	server      *Server
+	addr        string
+	listener    net.Listener
+	httpSrv     *http.Server
+	bearerToken string
 }
 
 // NewHTTPTransport creates a new HTTP transport.
-func NewHTTPTransport(server *Server, addr string) *HTTPTransport {
+func NewHTTPTransport(server *Server, addr string, token string) *HTTPTransport {
 	return &HTTPTransport{
-		server: server,
-		addr:   addr,
+		server:      server,
+		addr:        addr,
+		bearerToken: token,
 	}
 }
 
@@ -1259,7 +1262,24 @@ func (t *HTTPTransport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
+	// Authenticate
+	if t.bearerToken != "" {
+		auth := r.Header.Get("Authorization")
+		if len(auth) < 7 || auth[:7] != "Bearer " {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="mcp"`)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		token := auth[7:]
+		if subtle.ConstantTimeCompare([]byte(token), []byte(t.bearerToken)) != 1 {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="mcp"`)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
+
+	// Limit request body to 1MB
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
 		return

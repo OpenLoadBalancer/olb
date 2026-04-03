@@ -182,7 +182,7 @@ func (sh *SSEHandler) streamSSEResponse(w http.ResponseWriter, resp *http.Respon
 	reader := bufio.NewReader(resp.Body)
 	for {
 		// Read line with timeout handling
-		line, err := sh.readLineWithTimeout(reader, sh.config.IdleTimeout)
+		line, err := sh.readLineWithTimeout(reader, sh.config.IdleTimeout, func() { resp.Body.Close() })
 		if err != nil {
 			if err == io.EOF {
 				return nil
@@ -210,9 +210,10 @@ func (sh *SSEHandler) streamSSEResponse(w http.ResponseWriter, resp *http.Respon
 }
 
 // readLineWithTimeout reads a line with a timeout.
-func (sh *SSEHandler) readLineWithTimeout(reader *bufio.Reader, timeout time.Duration) ([]byte, error) {
+// If a cancel function is provided, it is called on timeout so the caller
+// can unblock the underlying reader (e.g. by closing resp.Body).
+func (sh *SSEHandler) readLineWithTimeout(reader *bufio.Reader, timeout time.Duration, onCancel func()) ([]byte, error) {
 	if timeout > 0 {
-		// Use a channel for timeout
 		type result struct {
 			line []byte
 			err  error
@@ -224,10 +225,18 @@ func (sh *SSEHandler) readLineWithTimeout(reader *bufio.Reader, timeout time.Dur
 			ch <- result{line, err}
 		}()
 
+		timer := time.NewTimer(timeout)
+		defer timer.Stop()
+
 		select {
 		case res := <-ch:
 			return res.line, res.err
-		case <-time.After(timeout):
+		case <-timer.C:
+			if onCancel != nil {
+				onCancel()
+			}
+			// Drain the goroutine so it doesn't leak
+			go func() { <-ch }()
 			return nil, &timeoutError{}
 		}
 	}

@@ -3,6 +3,7 @@ package admin
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -291,6 +292,12 @@ func (s *Server) addBackend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate address format (host:port)
+	if _, err := net.ResolveTCPAddr("tcp", req.Address); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_ADDRESS", "backend address must be in host:port format")
+		return
+	}
+
 	// Check if backend already exists
 	if existing := pool.GetBackend(req.ID); existing != nil {
 		writeError(w, http.StatusConflict, "ALREADY_EXISTS", "backend already exists: "+req.ID)
@@ -308,7 +315,7 @@ func (s *Server) addBackend(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "ALREADY_EXISTS", err.Error())
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -344,7 +351,7 @@ func (s *Server) removeBackend(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "BACKEND_NOT_FOUND", err.Error())
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -395,9 +402,17 @@ func (s *Server) updateBackend(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	if req.Weight != nil {
+		if *req.Weight < 0 || *req.Weight > 1000 {
+			writeError(w, http.StatusBadRequest, "INVALID_WEIGHT", "weight must be between 0 and 1000")
+			return
+		}
 		b.Weight = *req.Weight
 	}
 	if req.MaxConns != nil {
+		if *req.MaxConns < 0 {
+			writeError(w, http.StatusBadRequest, "INVALID_MAX_CONNS", "max connections must be non-negative")
+			return
+		}
 		b.MaxConns = *req.MaxConns
 	}
 
@@ -438,7 +453,7 @@ func (s *Server) drainBackend(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "BACKEND_NOT_FOUND", err.Error())
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
 		return
 	}
 
@@ -535,7 +550,7 @@ func (s *Server) getHealthStatus(w http.ResponseWriter, r *http.Request) {
 				hcs.Latency = result.Latency.String()
 			}
 			if result.Error != nil {
-				hcs.Error = result.Error.Error()
+				hcs.Error = "unhealthy"
 			}
 		}
 

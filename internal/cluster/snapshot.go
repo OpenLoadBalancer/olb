@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -679,7 +680,11 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 				return
 			}
 			resp := t.handler.HandleRequestVote(&req)
-			respPayload, _ = json.Marshal(resp)
+			respPayload, err = json.Marshal(resp)
+			if err != nil {
+				log.Printf("raft: failed to marshal RequestVote response: %v", err)
+				return
+			}
 			respType = msgRequestVoteResp
 
 		case msgAppendEntries:
@@ -688,7 +693,11 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 				return
 			}
 			resp := t.handler.HandleAppendEntries(&req)
-			respPayload, _ = json.Marshal(resp)
+			respPayload, err = json.Marshal(resp)
+			if err != nil {
+				log.Printf("raft: failed to marshal AppendEntries response: %v", err)
+				return
+			}
 			respType = msgAppendEntriesRes
 
 		case msgInstallSnapshot:
@@ -697,7 +706,11 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 				return
 			}
 			resp := t.handler.HandleInstallSnapshot(&req)
-			respPayload, _ = json.Marshal(resp)
+			respPayload, err = json.Marshal(resp)
+			if err != nil {
+				log.Printf("raft: failed to marshal InstallSnapshot response: %v", err)
+				return
+			}
 			respType = msgInstallSnapResp
 
 		default:

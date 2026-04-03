@@ -1423,7 +1423,7 @@ func TestStdioTransport_ContextCancel(t *testing.T) {
 
 func TestHTTPTransport_Handler(t *testing.T) {
 	s := newTestServer()
-	transport := NewHTTPTransport(s, ":0")
+	transport := NewHTTPTransport(s, ":0", "")
 
 	// Test POST request
 	reqBody := makeRequest("initialize", nil)
@@ -1448,7 +1448,7 @@ func TestHTTPTransport_Handler(t *testing.T) {
 
 func TestHTTPTransport_MethodNotAllowed(t *testing.T) {
 	s := newTestServer()
-	transport := NewHTTPTransport(s, ":0")
+	transport := NewHTTPTransport(s, ":0", "")
 
 	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
 	w := httptest.NewRecorder()
@@ -1461,7 +1461,7 @@ func TestHTTPTransport_MethodNotAllowed(t *testing.T) {
 
 func TestHTTPTransport_StartStop(t *testing.T) {
 	s := newTestServer()
-	transport := NewHTTPTransport(s, "127.0.0.1:0")
+	transport := NewHTTPTransport(s, "127.0.0.1:0", "")
 
 	if err := transport.Start(); err != nil {
 		t.Fatalf("Start failed: %v", err)

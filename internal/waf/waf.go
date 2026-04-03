@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -424,8 +425,14 @@ func (l *JSONLogger) Log(match *Match, req *http.Request) {
 		UserAgent:  req.UserAgent(),
 	}
 
-	data, _ := json.Marshal(entry)
-	l.Writer.Write(append(data, '\n'))
+	data, err := json.Marshal(entry)
+	if err != nil {
+		log.Printf("waf: failed to marshal audit log entry: %v", err)
+		return
+	}
+	if _, err := l.Writer.Write(append(data, '\n')); err != nil {
+		log.Printf("waf: failed to write audit log entry: %v", err)
+	}
 }
 
 // truncate truncates a string to max length.

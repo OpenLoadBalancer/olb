@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"strconv"
@@ -201,7 +202,9 @@ func (p *DockerProvider) Start(ctx context.Context) error {
 
 	// Attempt initial container discovery; if Docker is not available,
 	// start anyway and rely on polling to pick up containers later.
-	_ = p.pollContainers()
+	if err := p.pollContainers(); err != nil {
+		log.Printf("docker: initial container poll failed: %v", err)
+	}
 
 	// Start background polling
 	p.wg.Add(1)
@@ -477,7 +480,9 @@ func (p *DockerProvider) pollLoop() {
 		case <-p.ctx.Done():
 			return
 		case <-ticker.C:
-			_ = p.pollContainers()
+			if err := p.pollContainers(); err != nil {
+				log.Printf("docker: container poll failed: %v", err)
+			}
 		}
 	}
 }
@@ -580,7 +585,9 @@ func (p *DockerProvider) handleEvent(event *dockerEvent) {
 		// A container started — refresh all containers to pick it up.
 		// This is simpler and more reliable than trying to reconstruct
 		// service info from the event alone.
-		_ = p.pollContainers()
+		if err := p.pollContainers(); err != nil {
+			log.Printf("docker: container poll on start event failed: %v", err)
+		}
 
 	case "stop", "die":
 		// Remove the service if we were tracking it

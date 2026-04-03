@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -194,10 +195,13 @@ func (s *Server) setupRoutes() {
 		mux.Handle("/", s.webUI)
 	}
 
-	// Apply auth middleware if configured
+	// Apply rate limiting before auth to prevent brute force attacks
 	var handler http.Handler = mux
+	handler = adminRateLimit(handler)
+
+	// Apply auth middleware if configured
 	if s.config != nil {
-		handler = AuthMiddleware(s.config)(mux)
+		handler = AuthMiddleware(s.config)(handler)
 	}
 
 	// Apply CORS for admin API (restricted to allowed origins)
@@ -321,6 +325,61 @@ func (m *defaultMetrics) PrometheusFormat() string {
 	handler := metrics.NewPrometheusHandler(m.registry)
 	handler.WriteMetrics(&buf)
 	return buf.String()
+}
+
+// adminRateLimit provides basic rate limiting for the admin API to prevent
+// brute-force attacks. Allows 30 requests per minute per source IP.
+func adminRateLimit(next http.Handler) http.Handler {
+	type visitor struct {
+		count    int
+		lastSeen time.Time
+	}
+	var (
+		mu       sync.Mutex
+		visitors = make(map[string]*visitor)
+		maxReqs  = 30
+		window   = time.Minute
+	)
+
+	// Cleanup stale entries periodically
+	go func() {
+		for {
+			time.Sleep(window)
+			mu.Lock()
+			for ip, v := range visitors {
+				if time.Since(v.lastSeen) > window {
+					delete(visitors, ip)
+				}
+			}
+			mu.Unlock()
+		}
+	}()
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			ip = r.RemoteAddr
+		}
+
+		mu.Lock()
+		v, exists := visitors[ip]
+		if !exists || time.Since(v.lastSeen) > window {
+			visitors[ip] = &visitor{count: 1, lastSeen: time.Now()}
+			mu.Unlock()
+			next.ServeHTTP(w, r)
+			return
+		}
+		v.count++
+		v.lastSeen = time.Now()
+		if v.count > maxReqs {
+			mu.Unlock()
+			w.Header().Set("Retry-After", "60")
+			http.Error(w, `{"error":"rate limit exceeded"}`, http.StatusTooManyRequests)
+			return
+		}
+		mu.Unlock()
+		next.ServeHTTP(w, r)
+	})
 }
 
 // adminCORS wraps a handler with CORS headers for the admin API.

@@ -2,7 +2,9 @@ package mcp
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -48,8 +49,7 @@ type SSETransport struct {
 
 	// SSE client management
 	mu      sync.RWMutex
-	clients map[uint64]*sseClient
-	nextID  atomic.Uint64
+	clients map[string]*sseClient
 
 	// Shutdown
 	done chan struct{}
@@ -57,7 +57,7 @@ type SSETransport struct {
 
 // sseClient represents a connected SSE client.
 type sseClient struct {
-	id       uint64
+	id       string
 	addr     string
 	messages chan []byte
 	done     chan struct{}
@@ -68,7 +68,7 @@ func NewSSETransport(server *Server, config SSETransportConfig) *SSETransport {
 	return &SSETransport{
 		server:  server,
 		config:  config,
-		clients: make(map[uint64]*sseClient),
+		clients: make(map[string]*sseClient),
 		done:    make(chan struct{}),
 	}
 }
@@ -107,7 +107,7 @@ func (t *SSETransport) Stop(ctx context.Context) error {
 	for _, c := range t.clients {
 		close(c.done)
 	}
-	t.clients = make(map[uint64]*sseClient)
+	t.clients = make(map[string]*sseClient)
 	t.mu.Unlock()
 
 	if t.httpSrv != nil {
@@ -162,8 +162,13 @@ func (t *SSETransport) handleSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Register SSE client
-	clientID := t.nextID.Add(1)
+	// Register SSE client with a cryptographically random ID
+	var clientIDBytes [16]byte
+	if _, err := rand.Read(clientIDBytes[:]); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	clientID := base64.RawURLEncoding.EncodeToString(clientIDBytes[:])
 	client := &sseClient{
 		id:       clientID,
 		addr:     r.RemoteAddr,
@@ -190,7 +195,7 @@ func (t *SSETransport) handleSSE(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 
 	// Send endpoint event — tells client where to POST messages
-	fmt.Fprintf(w, "event: endpoint\ndata: /message?sessionId=%d\n\n", clientID)
+	fmt.Fprintf(w, "event: endpoint\ndata: /message?sessionId=%s\n\n", clientID)
 	flusher.Flush()
 
 	// Keep-alive ticker
@@ -328,12 +333,8 @@ func (t *SSETransport) handleLegacy(w http.ResponseWriter, r *http.Request) {
 // --- Helpers ---
 
 func (t *SSETransport) broadcastToClient(sessionID string, data []byte) {
-	// Parse sessionID to uint64
-	var id uint64
-	fmt.Sscanf(sessionID, "%d", &id)
-
 	t.mu.RLock()
-	client, exists := t.clients[id]
+	client, exists := t.clients[sessionID]
 	t.mu.RUnlock()
 
 	if exists {
@@ -341,7 +342,7 @@ func (t *SSETransport) broadcastToClient(sessionID string, data []byte) {
 		case client.messages <- data:
 		default:
 			// Client buffer full — drop message to prevent blocking
-			log.Printf("mcp: SSE client %d buffer full, dropping message", id)
+			log.Printf("mcp: SSE client %s buffer full, dropping message", sessionID)
 		}
 	}
 }

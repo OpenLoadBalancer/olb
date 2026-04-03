@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"time"
 )
@@ -180,9 +181,11 @@ func (p *FileProvider) pollLoop() {
 		case <-p.ctx.Done():
 			return
 		case <-ticker.C:
-			// Errors during polling are silently ignored to keep the
-			// provider running. The last known good state is preserved.
-			_ = p.loadFile()
+			// Log errors but keep the provider running. The last known
+			// good state is preserved.
+			if err := p.loadFile(); err != nil {
+				log.Printf("file discovery: failed to reload %s: %v", p.filePath, err)
+			}
 		}
 	}
 }

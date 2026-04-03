@@ -3,6 +3,7 @@ package middleware
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
@@ -356,8 +357,10 @@ func (c *CacheMiddleware) revalidateInBackground(key string, next http.Handler, 
 	go func() {
 		defer c.revalidating.Delete(key)
 
-		// Clone the request so it can be used independently.
-		req := origReq.Clone(origReq.Context())
+		// Clone the request with a fresh context — the original request's
+		// context is canceled as soon as the handler returns, which would
+		// immediately kill the background revalidation.
+		req := origReq.Clone(context.Background())
 
 		rec := &responseCapturer{
 			ResponseWriter: &discardResponseWriter{header: make(http.Header)},

@@ -290,7 +290,7 @@ func TestMCPHTTPTransport(t *testing.T) {
 	}
 
 	srv := newTestServer()
-	transport := mcp.NewHTTPTransport(srv, "127.0.0.1:0")
+	transport := mcp.NewHTTPTransport(srv, "127.0.0.1:0", "")
 
 	if err := transport.Start(); err != nil {
 		t.Fatalf("HTTPTransport.Start: %v", err)
@@ -839,7 +839,7 @@ func TestMCPHTTPConcurrent(t *testing.T) {
 	}
 
 	srv := newTestServer()
-	transport := mcp.NewHTTPTransport(srv, "127.0.0.1:0")
+	transport := mcp.NewHTTPTransport(srv, "127.0.0.1:0", "")
 
 	if err := transport.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
