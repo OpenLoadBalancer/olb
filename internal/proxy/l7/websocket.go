@@ -283,6 +283,14 @@ func (wh *WebSocketHandler) proxyWebSocket(clientConn, backendConn net.Conn) err
 	// Client -> Backend
 	go func() {
 		defer wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				backendConn.Close()
+				clientConn.Close()
+				errChan <- fmt.Errorf("panic in client->backend copy: %v", r)
+				return
+			}
+		}()
 		err := wh.copyWithIdleTimeout(backendConn, clientConn, wh.config.IdleTimeout)
 		if err != nil && !isWebSocketCloseError(err) {
 			errChan <- fmt.Errorf("client to backend: %w", err)
@@ -293,6 +301,14 @@ func (wh *WebSocketHandler) proxyWebSocket(clientConn, backendConn net.Conn) err
 	// Backend -> Client
 	go func() {
 		defer wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				clientConn.Close()
+				backendConn.Close()
+				errChan <- fmt.Errorf("panic in backend->client copy: %v", r)
+				return
+			}
+		}()
 		err := wh.copyWithIdleTimeout(clientConn, backendConn, wh.config.IdleTimeout)
 		if err != nil && !isWebSocketCloseError(err) {
 			errChan <- fmt.Errorf("backend to client: %w", err)

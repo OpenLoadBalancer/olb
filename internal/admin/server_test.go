@@ -344,13 +344,13 @@ func TestAuthMiddleware_PublicEndpoints(t *testing.T) {
 	baseURL := fmt.Sprintf("http://%s", listener.Addr().String())
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	// GET request should work without auth
-	resp, err := client.Get(baseURL + "/api/v1/system/info")
+	// GET /api/v1/system/health should work without auth (public health endpoint)
+	resp, err := client.Get(baseURL + "/api/v1/system/health")
 	if err != nil {
 		t.Fatalf("failed to make request: %v", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200 for GET, got %d", resp.StatusCode)
+		t.Errorf("expected 200 for /api/v1/system/health, got %d", resp.StatusCode)
 	}
 
 	// POST request should require auth
@@ -2116,7 +2116,7 @@ func TestAuthMiddleware_PublicEndpoints_All(t *testing.T) {
 		t.Fatalf("failed to hash password: %v", err)
 	}
 
-	// Test with RequireAuthForRead = false
+	// Test with RequireAuthForRead = false — only health endpoints are public
 	authConfig := &AuthConfig{
 		Username:           "admin",
 		Password:           hash,
@@ -2142,70 +2142,54 @@ func TestAuthMiddleware_PublicEndpoints_All(t *testing.T) {
 	baseURL := fmt.Sprintf("http://%s", listener.Addr().String())
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	// GET /api/v1/system/info should work without auth
-	resp, err := client.Get(baseURL + "/api/v1/system/info")
+	// GET /api/v1/system/health should work without auth (public health endpoint)
+	resp, err := client.Get(baseURL + "/api/v1/system/health")
 	if err != nil {
 		t.Fatalf("failed to make request: %v", err)
 	}
 	resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200 for public GET, got %d", resp.StatusCode)
+		t.Errorf("expected 200 for /api/v1/system/health, got %d", resp.StatusCode)
 	}
 
-	// GET /api/v1/backends should work without auth
-	resp, err = client.Get(baseURL + "/api/v1/backends")
-	if err != nil {
-		t.Fatalf("failed to make request: %v", err)
-	}
-	resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200 for public GET, got %d", resp.StatusCode)
-	}
-
-	// GET /api/v1/routes should work without auth
-	resp, err = client.Get(baseURL + "/api/v1/routes")
-	if err != nil {
-		t.Fatalf("failed to make request: %v", err)
-	}
-	resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200 for public GET, got %d", resp.StatusCode)
-	}
-
-	// GET /api/v1/health should work without auth
+	// GET /api/v1/health should work without auth (public health endpoint)
 	resp, err = client.Get(baseURL + "/api/v1/health")
 	if err != nil {
 		t.Fatalf("failed to make request: %v", err)
 	}
 	resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200 for public GET, got %d", resp.StatusCode)
+		t.Errorf("expected 200 for /api/v1/health, got %d", resp.StatusCode)
 	}
 
-	// GET /api/v1/metrics should work without auth
-	resp, err = client.Get(baseURL + "/api/v1/metrics")
+	// GET /api/v1/system/info should require auth (not a health endpoint)
+	resp, err = client.Get(baseURL + "/api/v1/system/info")
 	if err != nil {
 		t.Fatalf("failed to make request: %v", err)
 	}
 	resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200 for public GET, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401 for /api/v1/system/info without auth, got %d", resp.StatusCode)
 	}
 
-	// GET /metrics should work without auth
+	// GET /api/v1/backends should require auth (not a health endpoint)
+	resp, err = client.Get(baseURL + "/api/v1/backends")
+	if err != nil {
+		t.Fatalf("failed to make request: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401 for /api/v1/backends without auth, got %d", resp.StatusCode)
+	}
+
+	// GET /metrics should require auth (not a health endpoint)
 	resp, err = client.Get(baseURL + "/metrics")
 	if err != nil {
 		t.Fatalf("failed to make request: %v", err)
 	}
 	resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200 for public GET, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401 for /metrics without auth, got %d", resp.StatusCode)
 	}
 }
 

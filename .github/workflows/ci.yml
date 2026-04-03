@@ -73,6 +73,18 @@ jobs:
       - name: Generate coverage report
         run: go tool cover -func=coverage.out
 
+      - name: Enforce coverage threshold
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          THRESHOLD=85
+          echo "Total coverage: ${COVERAGE}%"
+          echo "Required threshold: ${THRESHOLD}%"
+          if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
+            echo "::error::Coverage ${COVERAGE}% is below threshold ${THRESHOLD}%"
+            exit 1
+          fi
+          echo "Coverage check passed"
+
       - name: Upload coverage to Codecov
         if: matrix.go-version == env.GO_VERSION
         uses: codecov/codecov-action@v4

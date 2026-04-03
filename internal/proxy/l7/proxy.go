@@ -20,6 +20,7 @@ import (
 	"github.com/openloadbalancer/olb/internal/health"
 	"github.com/openloadbalancer/olb/internal/middleware"
 	"github.com/openloadbalancer/olb/internal/router"
+	"github.com/openloadbalancer/olb/internal/security"
 	olbErrors "github.com/openloadbalancer/olb/pkg/errors"
 )
 
@@ -198,6 +199,12 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // It detects protocol-specific requests (WebSocket, gRPC, SSE) and delegates
 // to the appropriate handler, falling back to standard HTTP proxying.
 func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request, reqCtx *middleware.RequestContext, routeMatch *router.RouteMatch) {
+	// Validate request for smuggling indicators before proxying
+	if err := security.ValidateRequest(r); err != nil {
+		p.errorHandler(w, r, olbErrors.Wrap(err, olbErrors.CodeInvalidRequest, "request validation failed"))
+		return
+	}
+
 	// Get backend pool
 	pool := p.poolManager.GetPool(routeMatch.Route.BackendPool)
 	if pool == nil {

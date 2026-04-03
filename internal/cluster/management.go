@@ -104,6 +104,12 @@ func DefaultClusterManagerConfig() *ClusterManagerConfig {
 	}
 }
 
+// ConnectionDrainer is implemented by the engine or connection manager
+// to provide active connection count for graceful drain.
+type ConnectionDrainer interface {
+	ActiveConnectionCount() int64
+}
+
 // ClusterManager wraps the Raft Cluster and DistributedState to provide
 // a high-level cluster management API including join, leave, and status operations.
 type ClusterManager struct {
@@ -117,8 +123,14 @@ type ClusterManager struct {
 	startTime time.Time
 	seedAddrs []string
 
-	stopCh chan struct{}
+	stopCh  chan struct{}
 	wg     sync.WaitGroup
+	drainer ConnectionDrainer
+}
+
+// SetDrainer sets the connection drainer for graceful drain during Leave.
+func (cm *ClusterManager) SetDrainer(d ConnectionDrainer) {
+	cm.drainer = d
 }
 
 // NewClusterManager creates a new cluster manager.
@@ -197,18 +209,39 @@ func (cm *ClusterManager) Leave() error {
 	cm.clusterSt = ClusterStateDraining
 	cm.mu.Unlock()
 
-	// Drain phase: wait for in-flight requests to complete
+	// Drain phase: wait for in-flight connections to complete
 	drainDone := make(chan struct{})
 	go func() {
-		// In a real implementation, this would wait for active connections to finish.
-		// For now, just wait a short period to simulate draining.
+		defer close(drainDone)
+
+		// If a connection drainer is available, poll until connections reach zero
+		// or the drain timeout expires.
+		if cm.drainer != nil {
+			deadline := time.Now().Add(cm.config.DrainTimeout)
+			ticker := time.NewTicker(500 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				if cm.drainer.ActiveConnectionCount() == 0 {
+					return
+				}
+				if time.Now().After(deadline) {
+					return
+				}
+				select {
+				case <-ticker.C:
+				case <-cm.stopCh:
+					return
+				}
+			}
+		}
+
+		// Fallback: wait for drain timeout
 		timer := time.NewTimer(cm.config.DrainTimeout)
 		defer timer.Stop()
 		select {
 		case <-timer.C:
 		case <-cm.stopCh:
 		}
-		close(drainDone)
 	}()
 
 	select {

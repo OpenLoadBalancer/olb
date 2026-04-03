@@ -89,6 +89,10 @@ type PROXYProtocolConfig struct {
 	AllowLocal bool
 	// OverrideTo allows overriding the destination address.
 	OverrideTo string
+	// TrustedNetworks is a list of CIDR ranges that are allowed to send PROXY headers.
+	// When non-empty, PROXY headers from sources outside these networks are rejected.
+	// This prevents IP spoofing from untrusted clients.
+	TrustedNetworks []string
 }
 
 // DefaultPROXYProtocolConfig returns a default configuration.
@@ -467,7 +471,9 @@ func (c *PROXYConn) OriginalDest() net.Addr {
 // PROXYListener wraps a listener with PROXY protocol support.
 type PROXYListener struct {
 	net.Listener
-	config *PROXYProtocolConfig
+	config       *PROXYProtocolConfig
+	trustedNets  []*net.IPNet
+	trustedReady bool
 }
 
 // NewPROXYListener creates a new PROXY protocol listener.
@@ -475,17 +481,64 @@ func NewPROXYListener(listener net.Listener, config *PROXYProtocolConfig) *PROXY
 	if config == nil {
 		config = DefaultPROXYProtocolConfig()
 	}
-	return &PROXYListener{
+	pl := &PROXYListener{
 		Listener: listener,
 		config:   config,
 	}
+	pl.initTrustedNets()
+	return pl
+}
+
+// initTrustedNets parses the TrustedNetworks CIDR list.
+func (l *PROXYListener) initTrustedNets() {
+	if len(l.config.TrustedNetworks) == 0 {
+		return
+	}
+	for _, cidr := range l.config.TrustedNetworks {
+		_, ipnet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+		l.trustedNets = append(l.trustedNets, ipnet)
+	}
+	l.trustedReady = len(l.trustedNets) > 0
+}
+
+// isTrustedSource checks if the remote address is in a trusted network.
+func (l *PROXYListener) isTrustedSource(remoteAddr net.Addr) bool {
+	if !l.trustedReady {
+		return true // No trusted networks configured — accept all
+	}
+	ip, _, err := net.SplitHostPort(remoteAddr.String())
+	if err != nil {
+		return false
+	}
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return false
+	}
+	for _, ipnet := range l.trustedNets {
+		if ipnet.Contains(parsedIP) {
+			return true
+		}
+	}
+	return false
 }
 
 // Accept accepts a connection and parses the PROXY header.
+// When TrustedNetworks is configured, PROXY headers from untrusted sources
+// are rejected to prevent IP spoofing.
 func (l *PROXYListener) Accept() (net.Conn, error) {
 	conn, err := l.Listener.Accept()
 	if err != nil {
 		return nil, err
+	}
+
+	// Check if source is trusted before reading PROXY header
+	if l.trustedReady && !l.isTrustedSource(conn.RemoteAddr()) {
+		// Not from a trusted network — return connection without PROXY protocol parsing.
+		// The connection will be treated as a regular connection with its real source IP.
+		return conn, nil
 	}
 
 	// Set read timeout for header parsing

@@ -373,44 +373,8 @@ func (c *Client) PollOrder(order *Order, timeout time.Duration) error {
 
 // FetchCertificate fetches the certificate chain.
 func (c *Client) FetchCertificate(certURL string) ([][]byte, error) {
-	req, err := http.NewRequest("POST", certURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	// Add JWS headers
-	nonce, err := c.getNonce()
-	if err != nil {
-		return nil, err
-	}
-
-	protected := map[string]interface{}{
-		"alg":   "ES256",
-		"kid":   c.account.URL,
-		"nonce": nonce,
-		"url":   certURL,
-	}
-
-	protectedJSON, _ := json.Marshal(protected)
-	protectedB64 := base64.RawURLEncoding.EncodeToString(protectedJSON)
-
-	// Sign empty payload
-	signature, err := c.sign([]byte(protectedB64), []byte{})
-	if err != nil {
-		return nil, err
-	}
-
-	jws := JWS{
-		Protected: protectedB64,
-		Payload:   "",
-		Signature: base64.RawURLEncoding.EncodeToString(signature),
-	}
-
-	body, _ := json.Marshal(jws)
-	req, _ = http.NewRequest("POST", certURL, strings.NewReader(string(body)))
-	req.Header.Set("Content-Type", "application/jose+json")
-
-	resp, err := c.httpClient.Do(req)
+	// Use postJWS for consistent signing — empty string payload per RFC 8555 POST-as-GET
+	resp, err := c.postJWS(certURL, "", false)
 	if err != nil {
 		return nil, err
 	}
@@ -510,8 +474,14 @@ func (c *Client) keyThumbprint() (string, error) {
 // postJWS makes a POST request with JWS signing.
 func (c *Client) postJWS(url string, payload interface{}, newAccount bool) (*http.Response, error) {
 	var payloadB64 string
-	if payload != "" {
-		payloadJSON, _ := json.Marshal(payload)
+	if str, ok := payload.(string); ok && str == "" {
+		// Empty string is a POST-as-GET (RFC 8555 §6.3) — payload is empty b64
+		payloadB64 = ""
+	} else {
+		payloadJSON, err := json.Marshal(payload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal payload: %w", err)
+		}
 		payloadB64 = base64.RawURLEncoding.EncodeToString(payloadJSON)
 	}
 
@@ -539,7 +509,10 @@ func (c *Client) postJWS(url string, payload interface{}, newAccount bool) (*htt
 		protected["kid"] = c.account.URL
 	}
 
-	protectedJSON, _ := json.Marshal(protected)
+	protectedJSON, err := json.Marshal(protected)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal protected header: %w", err)
+	}
 	protectedB64 := base64.RawURLEncoding.EncodeToString(protectedJSON)
 
 	signature, err := c.sign([]byte(protectedB64), []byte(payloadB64))
@@ -553,17 +526,26 @@ func (c *Client) postJWS(url string, payload interface{}, newAccount bool) (*htt
 		Signature: base64.RawURLEncoding.EncodeToString(signature),
 	}
 
-	body, _ := json.Marshal(jws)
-	req, _ := http.NewRequest("POST", url, strings.NewReader(string(body)))
+	body, err := json.Marshal(jws)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal JWS: %w", err)
+	}
+	req, err := http.NewRequest("POST", url, strings.NewReader(string(body)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
 	req.Header.Set("Content-Type", "application/jose+json")
 
 	return c.httpClient.Do(req)
 }
 
 // sign creates a signature for the protected header and payload.
+// Per RFC 8555, the signature input is SHA-256(protectedB64 || "." || payloadB64).
 func (c *Client) sign(protected, payload []byte) ([]byte, error) {
-	hash := sha256.Sum256(append(protected, []byte(".")...))
-	hash = sha256.Sum256(append(hash[:], payload...))
+	// Construct the signature input: protected || "." || payload
+	signInput := append(protected, '.')
+	signInput = append(signInput, payload...)
+	hash := sha256.Sum256(signInput)
 
 	r, s, err := ecdsa.Sign(rand.Reader, c.accountKey.(*ecdsa.PrivateKey), hash[:])
 	if err != nil {

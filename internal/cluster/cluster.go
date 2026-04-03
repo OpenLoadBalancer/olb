@@ -101,6 +101,7 @@ type Cluster struct {
 	heartbeatTimer *time.Ticker
 	stopCh         chan struct{}
 	commandCh      chan *Command
+	runDone        chan struct{} // closed when run() goroutine exits
 
 	// State machine
 	stateMachine StateMachine
@@ -180,6 +181,8 @@ func New(config *Config, stateMachine StateMachine) (*Cluster, error) {
 
 // Start starts the cluster.
 func (c *Cluster) Start() error {
+	c.runDone = make(chan struct{})
+
 	// Start election timer
 	c.resetElectionTimer()
 
@@ -201,11 +204,21 @@ func (c *Cluster) Stop() error {
 		c.heartbeatTimer.Stop()
 	}
 
+	// Wait for the run() goroutine to exit
+	if c.runDone != nil {
+		<-c.runDone
+	}
+
 	return nil
 }
 
 // run is the main processing loop.
 func (c *Cluster) run() {
+	defer func() {
+		if c.runDone != nil {
+			close(c.runDone)
+		}
+	}()
 	for {
 		select {
 		case <-c.stopCh:
@@ -429,6 +442,8 @@ func (c *Cluster) sendHeartbeats() {
 }
 
 // handleCommand handles a command to be applied.
+// The leader appends the entry to its log, replicates to followers via
+// AppendEntries RPCs, waits for majority acknowledgment, then commits and applies.
 func (c *Cluster) handleCommand(cmd *Command) {
 	if c.GetState() != StateLeader {
 		// Forward to leader
@@ -438,7 +453,7 @@ func (c *Cluster) handleCommand(cmd *Command) {
 		return
 	}
 
-	// Append to log
+	// Append to local log
 	entry := &LogEntry{
 		Index:   c.getLastLogIndex() + 1,
 		Term:    c.GetTerm(),
@@ -449,19 +464,125 @@ func (c *Cluster) handleCommand(cmd *Command) {
 	c.log = append(c.log, entry)
 	c.logMu.Unlock()
 
-	// Replicate to followers (simplified - in reality, wait for majority)
-	// Apply to state machine
-	output, err := c.stateMachine.Apply(cmd.Command)
+	// Self-acknowledgment counts as 1
+	successCount := 1
+	var successMu sync.Mutex
 
-	c.commitIndex.Add(1)
-	c.lastApplied.Add(1)
-
-	cmd.Result <- &CommandResult{
-		Output: output,
-		Error:  err,
-		Index:  entry.Index,
-		Term:   entry.Term,
+	// Collect peer addresses
+	c.nodesMu.RLock()
+	type peerInfo struct {
+		id      string
+		address string
 	}
+	var peers []peerInfo
+	for nodeID, node := range c.nodes {
+		if nodeID != c.config.NodeID {
+			peers = append(peers, peerInfo{id: nodeID, address: node.Address})
+		}
+	}
+	c.nodesMu.RUnlock()
+
+	// Calculate quorum size (majority of all nodes including self)
+	totalNodes := len(peers) + 1
+	quorum := totalNodes/2 + 1
+
+	// If single-node cluster, commit immediately
+	if len(peers) == 0 {
+		output, err := c.stateMachine.Apply(cmd.Command)
+		c.commitIndex.Store(entry.Index)
+		c.lastApplied.Store(entry.Index)
+		cmd.Result <- &CommandResult{
+			Output: output,
+			Error:  err,
+			Index:  entry.Index,
+			Term:   entry.Term,
+		}
+		return
+	}
+
+	// Replicate to followers and wait for majority
+	replicateDone := make(chan struct{})
+	var once sync.Once
+
+	replicatePeer := func(p peerInfo) {
+		if c.transport == nil {
+			// Local/test mode: simulate successful replication
+			successMu.Lock()
+			successCount++
+			sc := successCount
+			successMu.Unlock()
+			if sc >= quorum {
+				once.Do(func() { close(replicateDone) })
+			}
+			return
+		}
+
+		resp, err := c.transport.SendAppendEntries(p.address, &AppendEntries{
+			Term:         c.GetTerm(),
+			LeaderID:     c.config.NodeID,
+			PrevLogIndex: entry.Index - 1,
+			PrevLogTerm:  c.getLastLogTermForIndex(entry.Index - 1),
+			Entries:      []*LogEntry{entry},
+			LeaderCommit: c.commitIndex.Load(),
+		})
+		if err != nil {
+			return
+		}
+		if resp.Term > c.GetTerm() {
+			c.currentTerm.Store(resp.Term)
+			c.setState(StateFollower)
+			c.resetElectionTimer()
+			return
+		}
+		if resp.Success {
+			successMu.Lock()
+			successCount++
+			sc := successCount
+			successMu.Unlock()
+			if sc >= quorum {
+				once.Do(func() { close(replicateDone) })
+			}
+		}
+	}
+
+	for _, p := range peers {
+		go replicatePeer(p)
+	}
+
+	// Wait for quorum with timeout
+	select {
+	case <-replicateDone:
+		// Majority replicated — commit and apply
+		output, err := c.stateMachine.Apply(cmd.Command)
+		c.commitIndex.Store(entry.Index)
+		c.lastApplied.Store(entry.Index)
+		cmd.Result <- &CommandResult{
+			Output: output,
+			Error:  err,
+			Index:  entry.Index,
+			Term:   entry.Term,
+		}
+	case <-time.After(5 * time.Second):
+		cmd.Result <- &CommandResult{
+			Error: errors.New("replication timeout: failed to reach quorum"),
+			Index: entry.Index,
+			Term:  entry.Term,
+		}
+	}
+}
+
+// getLastLogTermForIndex returns the term of the log entry at the given index.
+// Returns 0 if index is 0 or out of range.
+func (c *Cluster) getLastLogTermForIndex(index uint64) uint64 {
+	if index == 0 {
+		return 0
+	}
+	c.logMu.RLock()
+	defer c.logMu.RUnlock()
+	if index > uint64(len(c.log)) {
+		return 0
+	}
+	return c.log[index-1].Term
 }
 
 // Propose proposes a command to be applied to the state machine.

@@ -4,6 +4,7 @@ package l4
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -196,6 +197,13 @@ func (p *TCPProxy) proxyConnections(clientConn, backendConn net.Conn) {
 	// Client -> Backend
 	go func() {
 		defer wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				// Panic recovered — close connections to prevent leak
+				backendConn.Close()
+				clientConn.Close()
+			}
+		}()
 		p.copyWithTimeout(backendConn, clientConn)
 		// Signal backend that client is done sending
 		backendConn.Close()
@@ -204,6 +212,13 @@ func (p *TCPProxy) proxyConnections(clientConn, backendConn net.Conn) {
 	// Backend -> Client
 	go func() {
 		defer wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				// Panic recovered — close connections to prevent leak
+				clientConn.Close()
+				backendConn.Close()
+			}
+		}()
 		p.copyWithTimeout(clientConn, backendConn)
 		// Signal client that backend is done sending
 		clientConn.Close()
@@ -466,6 +481,14 @@ func CopyBidirectional(conn1, conn2 net.Conn, idleTimeout time.Duration) (int64,
 
 	// Conn1 -> Conn2
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				conn2.Close()
+				conn1.Close()
+				errChan <- fmt.Errorf("panic in copy: %v", r)
+				return
+			}
+		}()
 		n, err := copyWithBuffer(conn2, conn1, idleTimeout)
 		bytes1to2 = n
 		errChan <- err
@@ -474,6 +497,14 @@ func CopyBidirectional(conn1, conn2 net.Conn, idleTimeout time.Duration) (int64,
 
 	// Conn2 -> Conn1
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				conn1.Close()
+				conn2.Close()
+				errChan <- fmt.Errorf("panic in copy: %v", r)
+				return
+			}
+		}()
 		n, err := copyWithBuffer(conn1, conn2, idleTimeout)
 		bytes2to1 = n
 		errChan <- err

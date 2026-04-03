@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "olb.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "olb.labels" . | nindent 4 }}
+data:
+  olb.yaml: |
+    {{- .Values.config | nindent 4 }}

@@ -3,6 +3,7 @@ package tls
 import (
 	"bytes"
 	"crypto"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
@@ -326,7 +327,8 @@ func fingerprint(cert *x509.Certificate) string {
 	if cert == nil || len(cert.Raw) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("%x", cert.Signature)
+	h := sha256.Sum256(cert.Raw)
+	return fmt.Sprintf("%x", h[:])
 }
 
 // GetCacheStats returns cache statistics.

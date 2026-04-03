@@ -273,10 +273,10 @@ func (mw *WAFMiddleware) Wrap(next http.Handler) http.Handler {
 
 		start := time.Now()
 
-		// Panic recovery — fail-open
+		// Panic recovery — fail-closed for security
 		defer func() {
 			if err := recover(); err != nil {
-				next.ServeHTTP(w, r)
+				http.Error(w, `{"error":"internal waf error","layer":"recovery"}`, http.StatusInternalServerError)
 			}
 		}()
 

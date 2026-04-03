@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: olb-config
+  namespace: default
+  labels:
+    app.kubernetes.io/name: olb
+    app.kubernetes.io/instance: olb
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: load-balancer
+    app.kubernetes.io/part-of: openloadbalancer
+    app.kubernetes.io/managed-by: kubectl
+data:
+  olb.yaml: |
+    # OpenLoadBalancer Configuration
+    # https://openloadbalancer.dev
+
+    listeners:
+      - name: http
+        address: ":80"
+        protocol: http
+        routes:
+          - path: /
+            pool: default-pool
+
+    pools:
+      - name: default-pool
+        algorithm: round_robin
+        backends:
+          - address: "127.0.0.1:3001"
+          - address: "127.0.0.1:3002"
+
+    admin:
+      address: ":8080"
+      enabled: true
+
+    health_check:
+      interval: 10s
+      timeout: 5s
+      unhealthy_threshold: 3
+      healthy_threshold: 2
+
+    logging:
+      level: info
+      format: json

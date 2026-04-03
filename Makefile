@@ -76,6 +76,18 @@ coverage: test
 coverage-text: test
 	go tool cover -func=coverage.out
 
+## coverage-check: Verify coverage meets minimum threshold (default 85%)
+coverage-check: test
+	@COVERAGE=$$(go tool cover -func=coverage.out | grep total | awk '{print $$3}' | sed 's/%//'); \
+	THRESHOLD=85; \
+	echo "Total coverage: $${COVERAGE}%"; \
+	echo "Required threshold: $${THRESHOLD}%"; \
+	if [ $$(echo "$$COVERAGE < $$THRESHOLD" | bc -l) -eq 1 ]; then \
+		echo "FAIL: Coverage $${COVERAGE}% is below threshold $${THRESHOLD}%"; \
+		exit 1; \
+	fi; \
+	echo "PASS: Coverage check passed"
+
 ## bench: Run benchmarks
 bench:
 	@echo "Running benchmarks..."

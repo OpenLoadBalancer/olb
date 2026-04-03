@@ -24,11 +24,15 @@ type AuthConfig struct {
 }
 
 // AuthMiddleware creates authentication middleware.
+// By default, all endpoints require authentication. When RequireAuthForRead
+// is explicitly false, GET requests to public health endpoints are allowed
+// without authentication for load balancer health probes.
 func AuthMiddleware(config *AuthConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Check if auth is required for this request
-			if !config.RequireAuthForRead && r.Method == http.MethodGet {
+			// When RequireAuthForRead is false, allow unauthenticated GET to
+			// public health endpoints only. All other GET requests still require auth.
+			if !config.RequireAuthForRead && r.Method == http.MethodGet && isPublicHealthEndpoint(r.URL.Path) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -123,4 +127,15 @@ func HashPassword(password string) (string, error) {
 func CheckPasswordHash(password, hash string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
 	return err == nil
+}
+
+// isPublicHealthEndpoint returns true for endpoints that are safe to expose
+// without authentication (used for load balancer health probes).
+func isPublicHealthEndpoint(path string) bool {
+	switch path {
+	case "/health", "/api/v1/system/health", "/api/v1/health":
+		return true
+	default:
+		return false
+	}
 }

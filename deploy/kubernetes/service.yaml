@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: olb
+  namespace: default
+  labels:
+    app.kubernetes.io/name: olb
+    app.kubernetes.io/instance: olb
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: load-balancer
+    app.kubernetes.io/part-of: openloadbalancer
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: olb
+    app.kubernetes.io/instance: olb
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+    - name: https
+      port: 443
+      targetPort: https
+      protocol: TCP
+    - name: admin
+      port: 8080
+      targetPort: admin
+      protocol: TCP
+  sessionAffinity: None

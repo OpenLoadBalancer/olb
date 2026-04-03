@@ -47,6 +47,9 @@ type Server struct {
 	config    *AuthConfig
 	startTime time.Time
 
+	// CORS
+	allowedOrigins []string
+
 	// Component references (interfaces)
 	poolManager   PoolManager
 	router        Router
@@ -77,6 +80,13 @@ type Config struct {
 	HealthChecker HealthChecker
 	Metrics       Metrics
 	OnReload      func() error
+
+	// CORS configuration
+	// AllowedOrigins restricts which origins can make cross-origin requests.
+	// When empty, defaults to same-origin only (no CORS headers).
+	// Use "*" to allow all origins (credentials won't be sent).
+	// Use specific origins like ["https://admin.example.com"] for production.
+	AllowedOrigins []string
 
 	// Optional components
 	ClusterAdmin ClusterAdmin // optional cluster management
@@ -119,16 +129,17 @@ func NewServer(config *Config) (*Server, error) {
 	}
 
 	s := &Server{
-		addr:          config.Address,
-		config:        config.Auth,
-		poolManager:   config.PoolManager,
-		router:        config.Router,
-		healthChecker: config.HealthChecker,
-		metrics:       config.Metrics,
-		onReload:      config.OnReload,
-		clusterAdmin:  config.ClusterAdmin,
-		webUI:         config.WebUI,
-		configGetter:  config.ConfigGetter,
+		addr:           config.Address,
+		config:         config.Auth,
+		poolManager:    config.PoolManager,
+		router:         config.Router,
+		healthChecker:  config.HealthChecker,
+		metrics:        config.Metrics,
+		onReload:       config.OnReload,
+		clusterAdmin:   config.ClusterAdmin,
+		webUI:          config.WebUI,
+		configGetter:   config.ConfigGetter,
+		allowedOrigins: config.AllowedOrigins,
 		certLister:    config.CertLister,
 		wafStatus:     config.WAFStatus,
 		startTime:     time.Now(),
@@ -189,8 +200,8 @@ func (s *Server) setupRoutes() {
 		handler = AuthMiddleware(s.config)(mux)
 	}
 
-	// Apply CORS for admin API (allows Web UI from any origin)
-	handler = adminCORS(handler)
+	// Apply CORS for admin API (restricted to allowed origins)
+	handler = adminCORS(s.allowedOrigins)(handler)
 
 	s.server = &http.Server{
 		Addr:         s.addr,
@@ -313,25 +324,41 @@ func (m *defaultMetrics) PrometheusFormat() string {
 }
 
 // adminCORS wraps a handler with CORS headers for the admin API.
-// This allows the embedded Web UI (or external dashboards) to call
-// the API from any origin.
-func adminCORS(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		origin := r.Header.Get("Origin")
-		if origin != "" {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-			w.Header().Set("Access-Control-Allow-Credentials", "true")
-			w.Header().Set("Access-Control-Max-Age", "86400")
+// When AllowedOrigins is configured, only those origins are reflected back.
+// When empty, no CORS headers are set (same-origin policy applies).
+func adminCORS(allowedOrigins []string) func(http.Handler) http.Handler {
+	// Build a set for O(1) lookup
+	originSet := make(map[string]bool, len(allowedOrigins))
+	allowAll := false
+	for _, o := range allowedOrigins {
+		if o == "*" {
+			allowAll = true
+			break
 		}
+		originSet[o] = true
+	}
 
-		// Handle preflight
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
 
-		next.ServeHTTP(w, r)
-	})
+			if origin != "" && (allowAll || originSet[origin]) {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+				if !allowAll {
+					w.Header().Set("Access-Control-Allow-Credentials", "true")
+				}
+				w.Header().Set("Access-Control-Max-Age", "86400")
+			}
+
+			// Handle preflight
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }

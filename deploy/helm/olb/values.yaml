@@ -1,0 +1,109 @@
+# Default values for olb
+
+replicaCount: 3
+
+image:
+  repository: openloadbalancer/olb
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: LoadBalancer
+  ports:
+    http: 80
+    https: 443
+    admin: 8080
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+livenessProbe:
+  httpGet:
+    path: /api/v1/system/health
+    port: admin
+  initialDelaySeconds: 10
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /api/v1/system/health
+    port: admin
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+terminationGracePeriodSeconds: 30
+
+# OpenLoadBalancer configuration (rendered as ConfigMap)
+config: |
+  listeners:
+    - name: http
+      address: ":80"
+      protocol: http
+      routes:
+        - path: /
+          pool: default-pool
+
+  pools:
+    - name: default-pool
+      algorithm: round_robin
+      backends:
+        - address: "127.0.0.1:3001"
+        - address: "127.0.0.1:3002"
+
+  admin:
+    address: ":8080"
+    enabled: true
+
+  health_check:
+    interval: 10s
+    timeout: 5s
+    unhealthy_threshold: 3
+    healthy_threshold: 2
+
+  logging:
+    level: info
+    format: json
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Extra environment variables
+extraEnv: []
+#  - name: OLB_LOG_LEVEL
+#    value: "debug"
+
+# Extra volume mounts
+extraVolumeMounts: []
+
+# Extra volumes
+extraVolumes: []
