@@ -116,7 +116,7 @@ func appendJSONString(buf []byte, s string) []byte {
 }
 
 // appendJSONValue appends a JSON value based on type.
-func appendJSONValue(buf []byte, v interface{}) []byte {
+func appendJSONValue(buf []byte, v any) []byte {
 	switch val := v.(type) {
 	case string:
 		return appendJSONString(buf, val)
@@ -211,7 +211,7 @@ func (o *TextOutput) Close() error {
 }
 
 // formatValue formats a value for text output.
-func formatValue(v interface{}) string {
+func formatValue(v any) string {
 	switch val := v.(type) {
 	case string:
 		// Quote if contains spaces or special chars

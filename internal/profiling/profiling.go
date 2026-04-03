@@ -201,11 +201,11 @@ func GetProcessStartTime() time.Time {
 
 // ReportMemStats returns a snapshot of selected runtime memory statistics as
 // a string-keyed map suitable for JSON serialization.
-func ReportMemStats() map[string]interface{} {
+func ReportMemStats() map[string]any {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
-	return map[string]interface{}{
+	return map[string]any{
 		// Heap
 		"heap_alloc_bytes":    m.HeapAlloc,
 		"heap_sys_bytes":      m.HeapSys,

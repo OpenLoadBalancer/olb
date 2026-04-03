@@ -8,7 +8,7 @@ import (
 // Response is the standard API response format.
 type Response struct {
 	Success bool        `json:"success"`
-	Data    interface{} `json:"data,omitempty"`
+	Data    any `json:"data,omitempty"`
 	Error   *ErrorInfo  `json:"error,omitempty"`
 }
 
@@ -91,7 +91,7 @@ func ErrorResponse(code, message string) *Response {
 }
 
 // SuccessResponse creates a success response with data.
-func SuccessResponse(data interface{}) *Response {
+func SuccessResponse(data any) *Response {
 	return &Response{
 		Success: true,
 		Data:    data,

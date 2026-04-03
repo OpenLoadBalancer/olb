@@ -294,7 +294,7 @@ func (m *RateLimitMiddleware) cleanupLoop() {
 func (m *RateLimitMiddleware) cleanup() {
 	cutoff := time.Now().Add(-m.config.CleanupTimeout)
 
-	m.buckets.Range(func(key, value interface{}) bool {
+	m.buckets.Range(func(key, value any) bool {
 		bucket := value.(*tokenBucket)
 		bucket.mu.Lock()
 		lastCheck := bucket.lastCheck

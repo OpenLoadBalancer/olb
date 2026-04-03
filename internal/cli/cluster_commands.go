@@ -131,7 +131,7 @@ func (c *ClusterJoinCommand) Run(args []string) error {
 
 	client := NewClient(fmt.Sprintf("http://%s", c.apiAddr))
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"seed_addrs": seedAddrs,
 	}
 

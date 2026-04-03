@@ -308,7 +308,7 @@ func (c *StatusCommand) Run(args []string) error {
 		return fmt.Errorf("system info API returned status %d", infoResp.StatusCode)
 	}
 
-	var info map[string]interface{}
+	var info map[string]any
 	if err := json.NewDecoder(infoResp.Body).Decode(&info); err != nil {
 		return fmt.Errorf("failed to decode system info: %w", err)
 	}
@@ -321,19 +321,19 @@ func (c *StatusCommand) Run(args []string) error {
 	}
 	defer healthResp.Body.Close()
 
-	var health map[string]interface{}
+	var health map[string]any
 	if healthResp.StatusCode == http.StatusOK {
 		if err := json.NewDecoder(healthResp.Body).Decode(&health); err != nil {
-			health = map[string]interface{}{"status": "unknown"}
+			health = map[string]any{"status": "unknown"}
 		}
 	} else {
-		health = map[string]interface{}{"status": "unhealthy"}
+		health = map[string]any{"status": "unhealthy"}
 	}
 
 	// Format and display output
 	switch c.format {
 	case "json":
-		output := map[string]interface{}{
+		output := map[string]any{
 			"info":   info,
 			"health": health,
 		}
@@ -490,7 +490,7 @@ func (c *BackendCommand) runList(args []string) error {
 		return fmt.Errorf("API returned status %d", resp.StatusCode)
 	}
 
-	var backends []map[string]interface{}
+	var backends []map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&backends); err != nil {
 		return fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -573,13 +573,13 @@ func (c *HealthCommand) runShow(args []string) error {
 	}
 	defer resp.Body.Close()
 
-	var health map[string]interface{}
+	var health map[string]any
 	if resp.StatusCode == http.StatusOK {
 		if err := json.NewDecoder(resp.Body).Decode(&health); err != nil {
 			return fmt.Errorf("failed to decode response: %w", err)
 		}
 	} else {
-		health = map[string]interface{}{
+		health = map[string]any{
 			"status": "unhealthy",
 			"code":   resp.StatusCode,
 		}
@@ -600,7 +600,7 @@ func (c *HealthCommand) runShow(args []string) error {
 		if msg, ok := health["message"].(string); ok && msg != "" {
 			fmt.Printf("Message: %s\n", msg)
 		}
-		if checks, ok := health["checks"].(map[string]interface{}); ok {
+		if checks, ok := health["checks"].(map[string]any); ok {
 			fmt.Println("\nChecks:")
 			for name, check := range checks {
 				fmt.Printf("  %s: %v\n", name, check)

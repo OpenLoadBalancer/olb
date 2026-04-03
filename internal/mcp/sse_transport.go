@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 )
@@ -344,10 +345,8 @@ func (t *SSETransport) corsOrigin(r *http.Request) string {
 		return ""
 	}
 	origin := r.Header.Get("Origin")
-	for _, allowed := range t.config.AllowedOrigins {
-		if origin == allowed {
-			return origin
-		}
+	if slices.Contains(t.config.AllowedOrigins, origin) {
+		return origin
 	}
 	return ""
 }

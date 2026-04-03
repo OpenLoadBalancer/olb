@@ -70,7 +70,7 @@ type RequestContext struct {
 
 	// Metadata holds arbitrary key-value data for middleware communication.
 	// Use Set() and Get() for thread-safe access.
-	metadata map[string]interface{}
+	metadata map[string]any
 
 	// mu protects metadata for concurrent access.
 	mu sync.RWMutex
@@ -78,9 +78,9 @@ type RequestContext struct {
 
 // pool for recycling RequestContext objects.
 var requestContextPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &RequestContext{
-			metadata: make(map[string]interface{}),
+			metadata: make(map[string]any),
 		}
 	},
 }
@@ -107,7 +107,7 @@ func NewRequestContext(req *http.Request, rw http.ResponseWriter) *RequestContex
 }
 
 // Set stores a value in the metadata map.
-func (c *RequestContext) Set(key string, value interface{}) {
+func (c *RequestContext) Set(key string, value any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.metadata[key] = value
@@ -115,7 +115,7 @@ func (c *RequestContext) Set(key string, value interface{}) {
 
 // Get retrieves a value from the metadata map.
 // Returns the value and true if found, nil and false otherwise.
-func (c *RequestContext) Get(key string) (interface{}, bool) {
+func (c *RequestContext) Get(key string) (any, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	val, ok := c.metadata[key]
@@ -232,10 +232,10 @@ func (c *RequestContext) Release() {
 }
 
 // AllMetadata returns a copy of all metadata.
-func (c *RequestContext) AllMetadata() map[string]interface{} {
+func (c *RequestContext) AllMetadata() map[string]any {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	result := make(map[string]interface{}, len(c.metadata))
+	result := make(map[string]any, len(c.metadata))
 	for k, v := range c.metadata {
 		result[k] = v
 	}

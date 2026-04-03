@@ -680,14 +680,14 @@ func Tokenize(input string) ([]Token, error) {
 }
 
 // ---------------------------------------------------------------------------
-// Parser — produces map[string]interface{}
+// Parser — produces map[string]any
 // ---------------------------------------------------------------------------
 
 // parser holds the state for parsing a TOML document.
 type parser struct {
 	tokens []Token
 	pos    int
-	result map[string]interface{}
+	result map[string]any
 	// implicitTables tracks tables created implicitly by dotted keys.
 	implicitTables map[string]bool
 	// definedTables tracks tables explicitly defined with [table].
@@ -699,7 +699,7 @@ type parser struct {
 func newParser(tokens []Token) *parser {
 	return &parser{
 		tokens:         tokens,
-		result:         make(map[string]interface{}),
+		result:         make(map[string]any),
 		implicitTables: make(map[string]bool),
 		definedTables:  make(map[string]bool),
 		arrayTables:    make(map[string]bool),
@@ -726,7 +726,7 @@ func (p *parser) skipNewlines() {
 }
 
 // parse processes the full TOML document.
-func (p *parser) parse() (map[string]interface{}, error) {
+func (p *parser) parse() (map[string]any, error) {
 	currentTable := []string{} // root
 
 	for {
@@ -885,7 +885,7 @@ func (p *parser) skipWhitespace() {
 }
 
 // parseValue parses a TOML value.
-func (p *parser) parseValue() (interface{}, error) {
+func (p *parser) parseValue() (any, error) {
 	tok := p.current()
 
 	switch tok.Type {
@@ -921,10 +921,10 @@ func (p *parser) parseValue() (interface{}, error) {
 }
 
 // parseArray parses [ val1, val2, ... ]
-func (p *parser) parseArray() (interface{}, error) {
+func (p *parser) parseArray() (any, error) {
 	p.advance() // skip [
 
-	var arr []interface{}
+	var arr []any
 
 	for {
 		p.skipNewlines()
@@ -956,10 +956,10 @@ func (p *parser) parseArray() (interface{}, error) {
 }
 
 // parseInlineTable parses { key = val, ... }
-func (p *parser) parseInlineTable() (interface{}, error) {
+func (p *parser) parseInlineTable() (any, error) {
 	p.advance() // skip {
 
-	tbl := make(map[string]interface{})
+	tbl := make(map[string]any)
 	first := true
 
 	for {
@@ -1010,7 +1010,7 @@ func (p *parser) parseInlineTable() (interface{}, error) {
 }
 
 // insertIntoMap inserts a value into a nested map using the given key path.
-func insertIntoMap(m map[string]interface{}, keys []string, val interface{}) error {
+func insertIntoMap(m map[string]any, keys []string, val any) error {
 	current := m
 	for i, key := range keys {
 		if i == len(keys)-1 {
@@ -1021,11 +1021,11 @@ func insertIntoMap(m map[string]interface{}, keys []string, val interface{}) err
 		} else {
 			next, ok := current[key]
 			if !ok {
-				sub := make(map[string]interface{})
+				sub := make(map[string]any)
 				current[key] = sub
 				current = sub
 			} else {
-				sub, ok := next.(map[string]interface{})
+				sub, ok := next.(map[string]any)
 				if !ok {
 					return fmt.Errorf("key %q already has a non-table value", key)
 				}
@@ -1037,7 +1037,7 @@ func insertIntoMap(m map[string]interface{}, keys []string, val interface{}) err
 }
 
 // insertValue inserts a value at the given full path in p.result.
-func (p *parser) insertValue(fullPath []string, val interface{}) error {
+func (p *parser) insertValue(fullPath []string, val any) error {
 	current := p.result
 	for i, key := range fullPath {
 		if i == len(fullPath)-1 {
@@ -1050,7 +1050,7 @@ func (p *parser) insertValue(fullPath []string, val interface{}) error {
 			// Intermediate key — traverse or create
 			next, ok := current[key]
 			if !ok {
-				sub := make(map[string]interface{})
+				sub := make(map[string]any)
 				current[key] = sub
 				current = sub
 
@@ -1059,12 +1059,12 @@ func (p *parser) insertValue(fullPath []string, val interface{}) error {
 				p.implicitTables[partialKey] = true
 			} else {
 				switch v := next.(type) {
-				case map[string]interface{}:
+				case map[string]any:
 					current = v
-				case []interface{}:
+				case []any:
 					// For arrays of tables, target the last element
 					if len(v) > 0 {
-						if lastMap, ok := v[len(v)-1].(map[string]interface{}); ok {
+						if lastMap, ok := v[len(v)-1].(map[string]any); ok {
 							current = lastMap
 						} else {
 							return fmt.Errorf("key %q is not a table", key)
@@ -1087,7 +1087,7 @@ func (p *parser) ensureTable(keys []string) error {
 	for i, key := range keys {
 		next, ok := current[key]
 		if !ok {
-			sub := make(map[string]interface{})
+			sub := make(map[string]any)
 			current[key] = sub
 			current = sub
 
@@ -1095,12 +1095,12 @@ func (p *parser) ensureTable(keys []string) error {
 			p.implicitTables[partialKey] = true
 		} else {
 			switch v := next.(type) {
-			case map[string]interface{}:
+			case map[string]any:
 				current = v
-			case []interface{}:
+			case []any:
 				// For arrays of tables, target the last element
 				if len(v) > 0 {
-					if lastMap, ok := v[len(v)-1].(map[string]interface{}); ok {
+					if lastMap, ok := v[len(v)-1].(map[string]any); ok {
 						current = lastMap
 					} else {
 						return fmt.Errorf("key %q is not a table", key)
@@ -1115,7 +1115,7 @@ func (p *parser) ensureTable(keys []string) error {
 }
 
 // ensureArrayTable ensures the array of tables and appends a new entry.
-func (p *parser) ensureArrayTable(keys []string) ([]interface{}, error) {
+func (p *parser) ensureArrayTable(keys []string) ([]any, error) {
 	current := p.result
 
 	// Traverse to parent
@@ -1123,16 +1123,16 @@ func (p *parser) ensureArrayTable(keys []string) ([]interface{}, error) {
 		key := keys[i]
 		next, ok := current[key]
 		if !ok {
-			sub := make(map[string]interface{})
+			sub := make(map[string]any)
 			current[key] = sub
 			current = sub
 		} else {
 			switch v := next.(type) {
-			case map[string]interface{}:
+			case map[string]any:
 				current = v
-			case []interface{}:
+			case []any:
 				if len(v) > 0 {
-					if lastMap, ok := v[len(v)-1].(map[string]interface{}); ok {
+					if lastMap, ok := v[len(v)-1].(map[string]any); ok {
 						current = lastMap
 					} else {
 						return nil, fmt.Errorf("key %q is not a table", key)
@@ -1145,16 +1145,16 @@ func (p *parser) ensureArrayTable(keys []string) ([]interface{}, error) {
 	}
 
 	lastKey := keys[len(keys)-1]
-	newEntry := make(map[string]interface{})
+	newEntry := make(map[string]any)
 
 	existing, ok := current[lastKey]
 	if !ok {
-		arr := []interface{}{newEntry}
+		arr := []any{newEntry}
 		current[lastKey] = arr
 		return arr, nil
 	}
 
-	arr, ok := existing.([]interface{})
+	arr, ok := existing.([]any)
 	if !ok {
 		return nil, fmt.Errorf("key %q already exists as non-array", lastKey)
 	}
@@ -1164,7 +1164,7 @@ func (p *parser) ensureArrayTable(keys []string) ([]interface{}, error) {
 }
 
 // pathForArrayTable returns the key path to use as currentTable after processing [[keys]].
-func (p *parser) pathForArrayTable(keys []string, arr []interface{}) []string {
+func (p *parser) pathForArrayTable(keys []string, arr []any) []string {
 	// The current table after [[a.b]] is effectively a.b pointing to the last element.
 	// We return keys as-is; insertValue will navigate through the array.
 	return keys
@@ -1244,8 +1244,8 @@ func parseDatetime(s string) (string, error) {
 // Public API
 // ---------------------------------------------------------------------------
 
-// Parse parses TOML data and returns a map[string]interface{}.
-func Parse(data []byte) (map[string]interface{}, error) {
+// Parse parses TOML data and returns a map[string]any.
+func Parse(data []byte) (map[string]any, error) {
 	tokens, err := Tokenize(string(data))
 	if err != nil {
 		return nil, fmt.Errorf("toml lexer: %w", err)
@@ -1256,7 +1256,7 @@ func Parse(data []byte) (map[string]interface{}, error) {
 }
 
 // Decode parses TOML data and stores the result in the value pointed to by v.
-func Decode(data []byte, v interface{}) error {
+func Decode(data []byte, v any) error {
 	m, err := Parse(data)
 	if err != nil {
 		return err
@@ -1271,7 +1271,7 @@ func Decode(data []byte, v interface{}) error {
 }
 
 // DecodeFile reads a file and decodes its TOML content into v.
-func DecodeFile(path string, v interface{}) error {
+func DecodeFile(path string, v any) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("failed to read file: %w", err)
@@ -1280,11 +1280,11 @@ func DecodeFile(path string, v interface{}) error {
 }
 
 // ---------------------------------------------------------------------------
-// Decoder — map[string]interface{} → Go struct/map/slice
+// Decoder — map[string]any → Go struct/map/slice
 // ---------------------------------------------------------------------------
 
 // decodeValue decodes a generic value into a reflect.Value.
-func decodeValue(src interface{}, dst reflect.Value) error {
+func decodeValue(src any, dst reflect.Value) error {
 	if src == nil {
 		return nil
 	}
@@ -1298,10 +1298,10 @@ func decodeValue(src interface{}, dst reflect.Value) error {
 	}
 
 	switch v := src.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		return decodeMap(v, dst)
 
-	case []interface{}:
+	case []any:
 		return decodeSlice(v, dst)
 
 	case string:
@@ -1323,7 +1323,7 @@ func decodeValue(src interface{}, dst reflect.Value) error {
 }
 
 // decodeMap decodes a map into a struct or map.
-func decodeMap(src map[string]interface{}, dst reflect.Value) error {
+func decodeMap(src map[string]any, dst reflect.Value) error {
 	switch dst.Kind() {
 	case reflect.Struct:
 		return decodeStruct(src, dst)
@@ -1341,7 +1341,7 @@ func decodeMap(src map[string]interface{}, dst reflect.Value) error {
 }
 
 // decodeStruct decodes a map into a Go struct.
-func decodeStruct(src map[string]interface{}, dst reflect.Value) error {
+func decodeStruct(src map[string]any, dst reflect.Value) error {
 	t := dst.Type()
 
 	// Build field map: lowercase tag name -> field index
@@ -1390,7 +1390,7 @@ func decodeStruct(src map[string]interface{}, dst reflect.Value) error {
 }
 
 // decodeGoMap decodes a map into a Go map.
-func decodeGoMap(src map[string]interface{}, dst reflect.Value) error {
+func decodeGoMap(src map[string]any, dst reflect.Value) error {
 	if dst.IsNil() {
 		dst.Set(reflect.MakeMap(dst.Type()))
 	}
@@ -1415,8 +1415,8 @@ func decodeGoMap(src map[string]interface{}, dst reflect.Value) error {
 	return nil
 }
 
-// decodeSlice decodes a []interface{} into a Go slice.
-func decodeSlice(src []interface{}, dst reflect.Value) error {
+// decodeSlice decodes a []any into a Go slice.
+func decodeSlice(src []any, dst reflect.Value) error {
 	switch dst.Kind() {
 	case reflect.Slice:
 		elemType := dst.Type().Elem()

@@ -141,27 +141,27 @@ func (r *Registry) Collect(
 	gaugeVecFn func(name string, gv *GaugeVec),
 	histogramVecFn func(name string, hv *HistogramVec),
 ) {
-	r.counters.Range(func(key, value interface{}) bool {
+	r.counters.Range(func(key, value any) bool {
 		counterFn(key.(string), value.(*Counter))
 		return true
 	})
-	r.gauges.Range(func(key, value interface{}) bool {
+	r.gauges.Range(func(key, value any) bool {
 		gaugeFn(key.(string), value.(*Gauge))
 		return true
 	})
-	r.histograms.Range(func(key, value interface{}) bool {
+	r.histograms.Range(func(key, value any) bool {
 		histogramFn(key.(string), value.(*Histogram))
 		return true
 	})
-	r.counterVecs.Range(func(key, value interface{}) bool {
+	r.counterVecs.Range(func(key, value any) bool {
 		counterVecFn(key.(string), value.(*CounterVec))
 		return true
 	})
-	r.gaugeVecs.Range(func(key, value interface{}) bool {
+	r.gaugeVecs.Range(func(key, value any) bool {
 		gaugeVecFn(key.(string), value.(*GaugeVec))
 		return true
 	})
-	r.histogramVecs.Range(func(key, value interface{}) bool {
+	r.histogramVecs.Range(func(key, value any) bool {
 		histogramVecFn(key.(string), value.(*HistogramVec))
 		return true
 	})

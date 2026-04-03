@@ -103,7 +103,7 @@ func (c *Client) SetBasicAuth(username, password string) {
 }
 
 // doRequest creates and executes an HTTP request with authentication.
-func (c *Client) doRequest(method, path string, body interface{}) (*http.Response, error) {
+func (c *Client) doRequest(method, path string, body any) (*http.Response, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		jsonBody, err := json.Marshal(body)
@@ -142,7 +142,7 @@ func (c *Client) doRequest(method, path string, body interface{}) (*http.Respons
 }
 
 // get performs a GET request and decodes the response.
-func (c *Client) get(path string, result interface{}) error {
+func (c *Client) get(path string, result any) error {
 	resp, err := c.doRequest(http.MethodGet, path, nil)
 	if err != nil {
 		return err
@@ -153,7 +153,7 @@ func (c *Client) get(path string, result interface{}) error {
 }
 
 // post performs a POST request and decodes the response.
-func (c *Client) post(path string, body, result interface{}) error {
+func (c *Client) post(path string, body, result any) error {
 	resp, err := c.doRequest(http.MethodPost, path, body)
 	if err != nil {
 		return err
@@ -179,7 +179,7 @@ func (c *Client) delete(path string) error {
 }
 
 // handleResponse processes the HTTP response and decodes JSON.
-func (c *Client) handleResponse(resp *http.Response, result interface{}) error {
+func (c *Client) handleResponse(resp *http.Response, result any) error {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("failed to read response body: %w", err)
@@ -291,8 +291,8 @@ func (c *Client) GetHealthStatus() (*HealthStatusInfo, error) {
 }
 
 // GetMetricsJSON retrieves metrics in JSON format.
-func (c *Client) GetMetricsJSON() (map[string]interface{}, error) {
-	var result map[string]interface{}
+func (c *Client) GetMetricsJSON() (map[string]any, error) {
+	var result map[string]any
 	if err := c.get("/metrics", &result); err != nil {
 		return nil, err
 	}

@@ -24,7 +24,7 @@ func NewDecoder(node *Node) *Decoder {
 }
 
 // Decode decodes the node into the target value.
-func (d *Decoder) Decode(v interface{}) error {
+func (d *Decoder) Decode(v any) error {
 	rv := reflect.ValueOf(v)
 	if rv.Kind() != reflect.Ptr || rv.IsNil() {
 		return errors.New("decode target must be a non-nil pointer")
@@ -82,8 +82,8 @@ func (d *Decoder) decodeMapping(node *Node, v reflect.Value) error {
 		return d.decodeMap(node, v)
 
 	case reflect.Interface:
-		// Create a map[string]interface{}
-		m := make(map[string]interface{})
+		// Create a map[string]any
+		m := make(map[string]any)
 		mv := reflect.ValueOf(&m).Elem()
 		if err := d.decodeMapToInterface(node, mv); err != nil {
 			return err
@@ -181,21 +181,21 @@ func (d *Decoder) decodeMap(node *Node, v reflect.Value) error {
 	return nil
 }
 
-// decodeMapToInterface decodes a mapping into map[string]interface{}.
+// decodeMapToInterface decodes a mapping into map[string]any.
 func (d *Decoder) decodeMapToInterface(node *Node, v reflect.Value) error {
-	m := make(map[string]interface{})
+	m := make(map[string]any)
 
 	for _, child := range node.Children {
 		if child.Key == "" {
 			continue
 		}
 
-		var val interface{}
+		var val any
 
 		// Decode based on node type
 		switch child.Type {
 		case NodeMapping:
-			childMap := make(map[string]interface{})
+			childMap := make(map[string]any)
 			childV := reflect.ValueOf(&childMap).Elem()
 			if err := d.decodeMapToInterface(child, childV); err != nil {
 				return err
@@ -203,7 +203,7 @@ func (d *Decoder) decodeMapToInterface(node *Node, v reflect.Value) error {
 			val = childMap
 
 		case NodeSequence:
-			var arr []interface{}
+			var arr []any
 			childV := reflect.ValueOf(&arr).Elem()
 			if err := d.decodeSequenceToInterface(child, childV); err != nil {
 				return err
@@ -234,8 +234,8 @@ func (d *Decoder) decodeSequence(node *Node, v reflect.Value) error {
 		return d.decodeArray(node, v)
 
 	case reflect.Interface:
-		// Create a []interface{}
-		arr := make([]interface{}, 0, len(node.Children))
+		// Create a []any
+		arr := make([]any, 0, len(node.Children))
 		arrV := reflect.ValueOf(&arr).Elem()
 		if err := d.decodeSequenceToInterface(node, arrV); err != nil {
 			return err
@@ -280,16 +280,16 @@ func (d *Decoder) decodeArray(node *Node, v reflect.Value) error {
 	return nil
 }
 
-// decodeSequenceToInterface decodes a sequence into []interface{}.
+// decodeSequenceToInterface decodes a sequence into []any.
 func (d *Decoder) decodeSequenceToInterface(node *Node, v reflect.Value) error {
-	arr := make([]interface{}, 0, len(node.Children))
+	arr := make([]any, 0, len(node.Children))
 
 	for _, child := range node.Children {
-		var val interface{}
+		var val any
 
 		switch child.Type {
 		case NodeMapping:
-			childMap := make(map[string]interface{})
+			childMap := make(map[string]any)
 			childV := reflect.ValueOf(&childMap).Elem()
 			if err := d.decodeMapToInterface(child, childV); err != nil {
 				return err
@@ -297,7 +297,7 @@ func (d *Decoder) decodeSequenceToInterface(node *Node, v reflect.Value) error {
 			val = childMap
 
 		case NodeSequence:
-			nestedArr := make([]interface{}, 0)
+			nestedArr := make([]any, 0)
 			childV := reflect.ValueOf(&nestedArr).Elem()
 			if err := d.decodeSequenceToInterface(child, childV); err != nil {
 				return err
@@ -397,7 +397,7 @@ func (d *Decoder) decodeScalar(s string, v reflect.Value) error {
 }
 
 // guessType tries to guess the type of a string value.
-func guessType(s string) interface{} {
+func guessType(s string) any {
 	// Try integer
 	if i, err := strconv.ParseInt(s, 10, 64); err == nil {
 		return i
@@ -417,7 +417,7 @@ func guessType(s string) interface{} {
 }
 
 // Unmarshal parses YAML data and stores the result in the value pointed to by v.
-func Unmarshal(data []byte, v interface{}) error {
+func Unmarshal(data []byte, v any) error {
 	node, err := Parse(string(data))
 	if err != nil {
 		return err
@@ -428,6 +428,6 @@ func Unmarshal(data []byte, v interface{}) error {
 }
 
 // UnmarshalString parses YAML string and stores the result in v.
-func UnmarshalString(s string, v interface{}) error {
+func UnmarshalString(s string, v any) error {
 	return Unmarshal([]byte(s), v)
 }

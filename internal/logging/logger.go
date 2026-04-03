@@ -82,7 +82,7 @@ func ParseLevel(s string) Level {
 // Field represents a structured logging field.
 type Field struct {
 	Key   string
-	Value interface{}
+	Value any
 }
 
 // String creates a string field.
@@ -131,7 +131,7 @@ func Time(key string, value time.Time) Field {
 }
 
 // Any creates a field with any value.
-func Any(key string, value interface{}) Field {
+func Any(key string, value any) Field {
 	return Field{Key: key, Value: value}
 }
 
@@ -271,42 +271,42 @@ func (l *Logger) Fatal(msg string, fields ...Field) {
 }
 
 // Tracef logs a formatted trace message.
-func (l *Logger) Tracef(format string, args ...interface{}) {
+func (l *Logger) Tracef(format string, args ...any) {
 	if l.Enabled(TraceLevel) {
 		l.Trace(fmt.Sprintf(format, args...))
 	}
 }
 
 // Debugf logs a formatted debug message.
-func (l *Logger) Debugf(format string, args ...interface{}) {
+func (l *Logger) Debugf(format string, args ...any) {
 	if l.Enabled(DebugLevel) {
 		l.Debug(fmt.Sprintf(format, args...))
 	}
 }
 
 // Infof logs a formatted info message.
-func (l *Logger) Infof(format string, args ...interface{}) {
+func (l *Logger) Infof(format string, args ...any) {
 	if l.Enabled(InfoLevel) {
 		l.Info(fmt.Sprintf(format, args...))
 	}
 }
 
 // Warnf logs a formatted warning message.
-func (l *Logger) Warnf(format string, args ...interface{}) {
+func (l *Logger) Warnf(format string, args ...any) {
 	if l.Enabled(WarnLevel) {
 		l.Warn(fmt.Sprintf(format, args...))
 	}
 }
 
 // Errorf logs a formatted error message.
-func (l *Logger) Errorf(format string, args ...interface{}) {
+func (l *Logger) Errorf(format string, args ...any) {
 	if l.Enabled(ErrorLevel) {
 		l.Error(fmt.Sprintf(format, args...))
 	}
 }
 
 // Fatalf logs a formatted fatal message and exits.
-func (l *Logger) Fatalf(format string, args ...interface{}) {
+func (l *Logger) Fatalf(format string, args ...any) {
 	l.Fatal(fmt.Sprintf(format, args...))
 }
 

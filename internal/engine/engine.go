@@ -1411,7 +1411,7 @@ func createMiddlewareChain(cfg *config.Config, logger *logging.Logger, registry 
 
 	// Panic Recovery (priority 1) — MUST be first to catch panics from all downstream middleware
 	chain.Use(middleware.NewRecoveryMiddleware(middleware.RecoveryConfig{
-		LogFunc: func(panicVal interface{}, stack string) {
+		LogFunc: func(panicVal any, stack string) {
 			logger.Error("panic recovered",
 				logging.String("panic", fmt.Sprintf("%v", panicVal)),
 				logging.String("stack", stack),

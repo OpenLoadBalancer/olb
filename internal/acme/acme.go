@@ -459,7 +459,7 @@ func (c *Client) keyThumbprint() (string, error) {
 		return "", errors.New("unsupported key type")
 	}
 
-	jwk := map[string]interface{}{
+	jwk := map[string]any{
 		"crv": "P-256",
 		"kty": "EC",
 		"x":   base64.RawURLEncoding.EncodeToString(pub.X.Bytes()),
@@ -475,7 +475,7 @@ func (c *Client) keyThumbprint() (string, error) {
 }
 
 // postJWS makes a POST request with JWS signing.
-func (c *Client) postJWS(url string, payload interface{}, newAccount bool) (*http.Response, error) {
+func (c *Client) postJWS(url string, payload any, newAccount bool) (*http.Response, error) {
 	var payloadB64 string
 	if str, ok := payload.(string); ok && str == "" {
 		// Empty string is a POST-as-GET (RFC 8555 §6.3) — payload is empty b64
@@ -493,7 +493,7 @@ func (c *Client) postJWS(url string, payload interface{}, newAccount bool) (*htt
 		return nil, err
 	}
 
-	protected := map[string]interface{}{
+	protected := map[string]any{
 		"alg":   "ES256",
 		"nonce": nonce,
 		"url":   url,
@@ -502,7 +502,7 @@ func (c *Client) postJWS(url string, payload interface{}, newAccount bool) (*htt
 	if newAccount {
 		// Use jwk for new account
 		pub := c.accountKey.Public().(*ecdsa.PublicKey)
-		protected["jwk"] = map[string]interface{}{
+		protected["jwk"] = map[string]any{
 			"crv": "P-256",
 			"kty": "EC",
 			"x":   base64.RawURLEncoding.EncodeToString(pub.X.Bytes()),

@@ -332,7 +332,7 @@ type Route struct {
 	Host       string                   `yaml:"host" json:"host"`
 	Methods    []string                 `yaml:"methods" json:"methods"`
 	Pool       string                   `yaml:"pool" json:"pool"`
-	Middleware []map[string]interface{} `yaml:"middleware" json:"middleware"`
+	Middleware []map[string]any `yaml:"middleware" json:"middleware"`
 }
 
 // Pool represents a backend pool.

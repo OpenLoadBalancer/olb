@@ -22,7 +22,7 @@ type engineConfigGetter struct {
 	engine *Engine
 }
 
-func (g *engineConfigGetter) GetConfig() interface{} {
+func (g *engineConfigGetter) GetConfig() any {
 	return g.engine.GetConfig()
 }
 
@@ -56,9 +56,9 @@ type engineMetricsProvider struct {
 	}
 }
 
-func (p *engineMetricsProvider) QueryMetrics(pattern string) map[string]interface{} {
+func (p *engineMetricsProvider) QueryMetrics(pattern string) map[string]any {
 	// Return basic info; full metrics integration can be extended later.
-	return map[string]interface{}{
+	return map[string]any{
 		"pattern": pattern,
 		"message": "metrics query via MCP",
 	}
@@ -131,7 +131,7 @@ type engineConfigProvider struct {
 	engine *Engine
 }
 
-func (p *engineConfigProvider) GetConfig() interface{} {
+func (p *engineConfigProvider) GetConfig() any {
 	return p.engine.GetConfig()
 }
 

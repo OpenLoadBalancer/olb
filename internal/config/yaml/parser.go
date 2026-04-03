@@ -87,28 +87,6 @@ func (p *Parser) advance() {
 	}
 }
 
-// consumeIndent consumes an INDENT token and returns the new indent level.
-func (p *Parser) consumeIndent() int {
-	if p.current().Type == TokenIndent {
-		level := 0
-		if v, err := strconv.Atoi(p.current().Value); err == nil {
-			level = v
-		}
-		p.advance()
-		return level
-	}
-	return p.indent
-}
-
-// skip skips specific token types.
-func (p *Parser) skip(types ...TokenType) {
-	for _, t := range types {
-		if p.current().Type == t {
-			p.advance()
-		}
-	}
-}
-
 // expect checks that the current token is of the expected type.
 func (p *Parser) expect(t TokenType) (Token, error) {
 	curr := p.current()

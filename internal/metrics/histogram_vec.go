@@ -94,7 +94,7 @@ func (hv *HistogramVec) Reset() {
 
 // Collect calls fn for each histogram in the vector.
 func (hv *HistogramVec) Collect(fn func(labels map[string]string, h *Histogram)) {
-	hv.histograms.Range(func(key, value interface{}) bool {
+	hv.histograms.Range(func(key, value any) bool {
 		labels := hv.parseKey(key.(string))
 		fn(labels, value.(*Histogram))
 		return true

@@ -350,7 +350,7 @@ func (cb *CircuitBreakerMiddleware) Reset(key string) {
 
 // ResetAll resets all circuit breakers back to the closed state.
 func (cb *CircuitBreakerMiddleware) ResetAll() {
-	cb.circuits.Range(func(key, _ interface{}) bool {
+	cb.circuits.Range(func(key, _ any) bool {
 		cb.circuits.Delete(key)
 		return true
 	})

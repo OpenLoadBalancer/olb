@@ -325,7 +325,7 @@ func extractIP(addr string) string {
 
 // logBufferPool is a pool for log entry buffers.
 var logBufferPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return make([]byte, 0, 512)
 	},
 }

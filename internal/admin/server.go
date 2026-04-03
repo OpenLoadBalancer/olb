@@ -26,7 +26,7 @@ type ClusterAdmin interface {
 
 // ConfigGetter returns the current configuration as a serializable value.
 type ConfigGetter interface {
-	GetConfig() interface{}
+	GetConfig() any
 }
 
 // CertLister lists loaded TLS certificates.
@@ -119,7 +119,7 @@ type HealthChecker interface {
 
 // Metrics interface for metrics operations.
 type Metrics interface {
-	GetAllMetrics() map[string]interface{}
+	GetAllMetrics() map[string]any
 	PrometheusFormat() string
 }
 
@@ -312,14 +312,14 @@ func NewDefaultMetrics(registry *metrics.Registry) Metrics {
 }
 
 // GetAllMetrics returns all metrics in JSON-compatible format.
-func (m *defaultMetrics) GetAllMetrics() map[string]interface{} {
-	result := make(map[string]interface{})
+func (m *defaultMetrics) GetAllMetrics() map[string]any {
+	result := make(map[string]any)
 
 	var buf bytes.Buffer
 	handler := metrics.NewJSONHandler(m.registry)
 	if err := handler.WriteMetrics(&buf); err == nil {
 		// Parse the JSON output
-		var metrics map[string]interface{}
+		var metrics map[string]any
 		if err := json.Unmarshal(buf.Bytes(), &metrics); err == nil {
 			return metrics
 		}

@@ -10,7 +10,7 @@ import (
 type RecoveryConfig struct {
 	// LogFunc is called with the panic value and stack trace.
 	// If nil, panics are silently recovered with a 500 response.
-	LogFunc func(panicVal interface{}, stack string)
+	LogFunc func(panicVal any, stack string)
 }
 
 // RecoveryMiddleware recovers from panics in downstream handlers and

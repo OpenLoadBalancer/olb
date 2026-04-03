@@ -51,7 +51,7 @@ type compressWriter struct {
 
 // gzipWriterPool pools gzip.Writer instances for reuse.
 var gzipWriterPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		// Create with default compression level, we'll reset with the correct level
 		w, _ := gzip.NewWriterLevel(io.Discard, gzip.DefaultCompression)
 		return w
@@ -60,7 +60,7 @@ var gzipWriterPool = sync.Pool{
 
 // flateWriterPool pools flate.Writer instances for reuse.
 var flateWriterPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		// Create with default compression level
 		w, _ := flate.NewWriter(io.Discard, flate.DefaultCompression)
 		return w
@@ -69,7 +69,7 @@ var flateWriterPool = sync.Pool{
 
 // bufferPool pools bytes.Buffer instances for buffering response content.
 var bufferPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return new(bytes.Buffer)
 	},
 }

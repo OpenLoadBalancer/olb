@@ -22,7 +22,7 @@ type radixNode struct {
 	isEndpoint bool
 
 	// value is the stored data for this route
-	value interface{}
+	value any
 
 	// paramName is set if this node is a parameter
 	paramName string
@@ -60,7 +60,7 @@ func NewRadixTrie() *RadixTrie {
 }
 
 // Insert adds a route to the trie with the given value.
-func (t *RadixTrie) Insert(path string, value interface{}) {
+func (t *RadixTrie) Insert(path string, value any) {
 	if path == "" {
 		return
 	}
@@ -82,7 +82,7 @@ func (t *RadixTrie) Insert(path string, value interface{}) {
 	t.insertSegments(t.root, segments, 0, value)
 }
 
-func (t *RadixTrie) insertSegments(node *radixNode, segments []string, index int, value interface{}) {
+func (t *RadixTrie) insertSegments(node *radixNode, segments []string, index int, value any) {
 	if index >= len(segments) {
 		node.isEndpoint = true
 		node.value = value
@@ -133,7 +133,7 @@ func (t *RadixTrie) insertSegments(node *radixNode, segments []string, index int
 // MatchResult holds the result of a path match.
 type MatchResult struct {
 	// Value is the stored route handler/data.
-	Value interface{}
+	Value any
 
 	// Params contains captured path parameters (e.g., :id -> "123")
 	Params map[string]string

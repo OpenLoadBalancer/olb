@@ -90,7 +90,7 @@ func (cv *CounterVec) Reset() {
 
 // Collect calls fn for each counter in the vector.
 func (cv *CounterVec) Collect(fn func(labels map[string]string, c *Counter)) {
-	cv.counters.Range(func(key, value interface{}) bool {
+	cv.counters.Range(func(key, value any) bool {
 		labels := cv.parseKey(key.(string))
 		fn(labels, value.(*Counter))
 		return true

@@ -425,7 +425,7 @@ type joinRequest struct {
 // apiResponse is the standard API response envelope.
 type apiResponse struct {
 	Success bool        `json:"success"`
-	Data    interface{} `json:"data,omitempty"`
+	Data    any `json:"data,omitempty"`
 	Error   *apiError   `json:"error,omitempty"`
 }
 
@@ -436,7 +436,7 @@ type apiError struct {
 }
 
 // writeJSON writes a JSON response with the given status code.
-func writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
+func writeJSON(w http.ResponseWriter, statusCode int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	resp := &apiResponse{

@@ -32,7 +32,7 @@ type responseWriter struct {
 
 // pool for recycling responseWriter objects.
 var responseWriterPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &responseWriter{}
 	},
 }

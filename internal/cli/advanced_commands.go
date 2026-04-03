@@ -354,7 +354,7 @@ func (c *RouteAddCommand) Run(args []string) error {
 
 	client := NewClient(fmt.Sprintf("http://%s", c.apiAddr))
 
-	route := map[string]interface{}{
+	route := map[string]any{
 		"path":         path,
 		"backend_pool": c.backend,
 		"priority":     c.priority,
@@ -452,7 +452,7 @@ func (c *RouteTestCommand) Run(args []string) error {
 	encodedPath := strings.ReplaceAll(path, "/", "%2F")
 	url := fmt.Sprintf("/routes/test?path=%s", encodedPath)
 
-	var result map[string]interface{}
+	var result map[string]any
 	if err := client.get(url, &result); err != nil {
 		return fmt.Errorf("failed to test route: %w", err)
 	}
@@ -505,7 +505,7 @@ func (c *CertListCommand) Run(args []string) error {
 
 	client := NewClient(fmt.Sprintf("http://%s", c.apiAddr))
 
-	var certs []map[string]interface{}
+	var certs []map[string]any
 	if err := client.get("/certificates", &certs); err != nil {
 		return fmt.Errorf("failed to list certificates: %w", err)
 	}
@@ -579,7 +579,7 @@ func (c *CertAddCommand) Run(args []string) error {
 
 	client := NewClient(fmt.Sprintf("http://%s", c.apiAddr))
 
-	req := map[string]interface{}{
+	req := map[string]any{
 		"domain": domain,
 		"auto":   c.auto,
 	}
@@ -735,7 +735,7 @@ func (c *CertInfoCommand) Run(args []string) error {
 	client := NewClient(fmt.Sprintf("http://%s", c.apiAddr))
 
 	url := fmt.Sprintf("/certificates/%s", domain)
-	var cert map[string]interface{}
+	var cert map[string]any
 	if err := client.get(url, &cert); err != nil {
 		return fmt.Errorf("failed to get certificate info: %w", err)
 	}
@@ -910,7 +910,7 @@ func (c *ConfigShowCommand) Run(args []string) error {
 
 	client := NewClient(fmt.Sprintf("http://%s", c.apiAddr))
 
-	var config map[string]interface{}
+	var config map[string]any
 	if err := client.get("/config", &config); err != nil {
 		return fmt.Errorf("failed to get config: %w", err)
 	}
@@ -933,26 +933,26 @@ func (c *ConfigShowCommand) Run(args []string) error {
 }
 
 // printYAML prints a map as YAML-like output
-func printYAML(data interface{}, indent int) {
+func printYAML(data any, indent int) {
 	prefix := strings.Repeat("  ", indent)
 	switch v := data.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		for key, val := range v {
 			switch val.(type) {
-			case map[string]interface{}, []interface{}:
+			case map[string]any, []any:
 				fmt.Printf("%s%s:\n", prefix, key)
 				printYAML(val, indent+1)
 			default:
 				fmt.Printf("%s%s: %v\n", prefix, key, val)
 			}
 		}
-	case []interface{}:
+	case []any:
 		for _, item := range v {
 			fmt.Printf("%s- ", prefix)
 			switch item.(type) {
-			case map[string]interface{}:
+			case map[string]any:
 				first := true
-				for k, val := range item.(map[string]interface{}) {
+				for k, val := range item.(map[string]any) {
 					if first {
 						fmt.Printf("%s: %v\n", k, val)
 						first = false
@@ -997,7 +997,7 @@ func (c *ConfigDiffCommand) Run(args []string) error {
 
 	client := NewClient(fmt.Sprintf("http://%s", c.apiAddr))
 
-	var runningConfig map[string]interface{}
+	var runningConfig map[string]any
 	if err := client.get("/config", &runningConfig); err != nil {
 		return fmt.Errorf("failed to get running config: %w", err)
 	}
@@ -1053,7 +1053,7 @@ func (c *ConfigValidateCommand) Run(args []string) error {
 	}
 
 	// Basic validation - check if it's valid YAML/JSON
-	var config map[string]interface{}
+	var config map[string]any
 	if err := json.Unmarshal(data, &config); err != nil {
 		// Try parsing as YAML-like structure
 		// For now, just check if file is not empty
@@ -1068,10 +1068,10 @@ func (c *ConfigValidateCommand) Run(args []string) error {
 	if version, ok := config["version"].(string); ok {
 		fmt.Printf("Version: %s\n", version)
 	}
-	if listeners, ok := config["listeners"].([]interface{}); ok {
+	if listeners, ok := config["listeners"].([]any); ok {
 		fmt.Printf("Listeners: %d\n", len(listeners))
 	}
-	if pools, ok := config["pools"].([]interface{}); ok {
+	if pools, ok := config["pools"].([]any); ok {
 		fmt.Printf("Pools: %d\n", len(pools))
 	}
 
@@ -1426,7 +1426,7 @@ complete -c olb -n "__fish_seen_subcommand_from health" -l format -d "Output for
 `
 
 // Helper method for Client.post (exported for use in commands)
-func (c *Client) Post(path string, body, result interface{}) error {
+func (c *Client) Post(path string, body, result any) error {
 	return c.post(path, body, result)
 }
 
@@ -1436,12 +1436,12 @@ func (c *Client) Delete(path string) error {
 }
 
 // Helper method for Client.get (exported for use in commands)
-func (c *Client) Get(path string, result interface{}) error {
+func (c *Client) Get(path string, result any) error {
 	return c.get(path, result)
 }
 
 // Helper method for Client.doRequest (exported for use in commands)
-func (c *Client) DoRequest(method, path string, body interface{}) (*http.Response, error) {
+func (c *Client) DoRequest(method, path string, body any) (*http.Response, error) {
 	return c.doRequest(method, path, body)
 }
 

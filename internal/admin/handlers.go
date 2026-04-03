@@ -23,7 +23,7 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 }
 
 // writeSuccess writes a success response with data.
-func writeSuccess(w http.ResponseWriter, data interface{}) {
+func writeSuccess(w http.ResponseWriter, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	resp := SuccessResponse(data)

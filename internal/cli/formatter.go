@@ -11,7 +11,7 @@ import (
 
 // Formatter formats output
 type Formatter interface {
-	Format(data interface{}) (string, error)
+	Format(data any) (string, error)
 }
 
 // JSONFormatter formats data as JSON
@@ -21,7 +21,7 @@ type JSONFormatter struct {
 
 // Format converts data to JSON format.
 // If Indent is true, the output will be pretty-printed with indentation.
-func (f *JSONFormatter) Format(data interface{}) (string, error) {
+func (f *JSONFormatter) Format(data any) (string, error) {
 	if data == nil {
 		return "null", nil
 	}
@@ -56,7 +56,7 @@ type TableFormatter struct {
 //   - []map[string]string: Each map is a row, keys must match Headers
 //   - []struct{} or []*struct{}: Struct fields are used as columns
 //   - map[string]string: Single row table with key-value pairs
-func (f *TableFormatter) Format(data interface{}) (string, error) {
+func (f *TableFormatter) Format(data any) (string, error) {
 	if data == nil {
 		return "", nil
 	}
@@ -209,7 +209,7 @@ func (f *TableFormatter) formatSingleColumn(data []string) (string, error) {
 }
 
 // formatWithHeaders attempts to format data using provided headers
-func (f *TableFormatter) formatWithHeaders(data interface{}) (string, error) {
+func (f *TableFormatter) formatWithHeaders(data any) (string, error) {
 	// Fallback to simple string representation
 	return fmt.Sprintf("%v", data), nil
 }
@@ -230,7 +230,7 @@ func NewFormatter(name string) (Formatter, error) {
 }
 
 // FormatToWriter formats data and writes it to the provided writer
-func FormatToWriter(w io.Writer, formatter Formatter, data interface{}) error {
+func FormatToWriter(w io.Writer, formatter Formatter, data any) error {
 	output, err := formatter.Format(data)
 	if err != nil {
 		return err
@@ -240,7 +240,7 @@ func FormatToWriter(w io.Writer, formatter Formatter, data interface{}) error {
 }
 
 // FormatWithGlobals formats data using the format specified in GlobalFlags
-func FormatWithGlobals(globals *GlobalFlags, data interface{}) (string, error) {
+func FormatWithGlobals(globals *GlobalFlags, data any) (string, error) {
 	formatter, err := NewFormatter(globals.Format)
 	if err != nil {
 		return "", err

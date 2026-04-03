@@ -1030,7 +1030,7 @@ func (l *Layout) Draw(s *Screen) {
 
 // Terminal provides low-level terminal control.
 type Terminal struct {
-	originalState interface{} // Platform-specific state
+	originalState any // Platform-specific state
 }
 
 // NewTerminal initializes the terminal for TUI mode.

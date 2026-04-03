@@ -72,16 +72,16 @@ type DiscoveryProvider interface {
 // --------------------------------------------------------------------------
 
 // MiddlewareFactory creates a Middleware from configuration.
-type MiddlewareFactory func(config map[string]interface{}) (Middleware, error)
+type MiddlewareFactory func(config map[string]any) (Middleware, error)
 
 // BalancerFactory creates a Balancer from configuration.
-type BalancerFactory func(config map[string]interface{}) (Balancer, error)
+type BalancerFactory func(config map[string]any) (Balancer, error)
 
 // HealthCheckFactory creates a HealthChecker from configuration.
-type HealthCheckFactory func(config map[string]interface{}) (HealthChecker, error)
+type HealthCheckFactory func(config map[string]any) (HealthChecker, error)
 
 // DiscoveryFactory creates a DiscoveryProvider from configuration.
-type DiscoveryFactory func(config map[string]interface{}) (DiscoveryProvider, error)
+type DiscoveryFactory func(config map[string]any) (DiscoveryProvider, error)
 
 // --------------------------------------------------------------------------
 // Plugin interface & info
@@ -130,7 +130,7 @@ type Event struct {
 	// Topic is the event topic name.
 	Topic string
 	// Data is the event payload.
-	Data interface{}
+	Data any
 	// Timestamp is when the event was published.
 	Timestamp time.Time
 }
@@ -187,7 +187,7 @@ func (eb *EventBus) Unsubscribe(id string) {
 
 // Publish sends an event to all subscribers of the given topic.
 // Handlers are called synchronously in the order they were registered.
-func (eb *EventBus) Publish(topic string, data interface{}) {
+func (eb *EventBus) Publish(topic string, data any) {
 	event := Event{
 		Topic:     topic,
 		Data:      data,
@@ -227,7 +227,7 @@ type PluginAPI interface {
 	// Subscribe subscribes to an event topic.
 	Subscribe(event string, handler EventHandler) string
 	// Publish publishes an event to a topic.
-	Publish(event string, data interface{})
+	Publish(event string, data any)
 }
 
 // pluginAPI is the concrete implementation of PluginAPI provided to plugins.
@@ -268,7 +268,7 @@ func (a *pluginAPI) Subscribe(event string, handler EventHandler) string {
 	return a.manager.eventBus.Subscribe(event, handler)
 }
 
-func (a *pluginAPI) Publish(event string, data interface{}) {
+func (a *pluginAPI) Publish(event string, data any) {
 	a.manager.eventBus.Publish(event, data)
 }
 

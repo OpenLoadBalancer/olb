@@ -90,7 +90,7 @@ func (gv *GaugeVec) Reset() {
 
 // Collect calls fn for each gauge in the vector.
 func (gv *GaugeVec) Collect(fn func(labels map[string]string, g *Gauge)) {
-	gv.gauges.Range(func(key, value interface{}) bool {
+	gv.gauges.Range(func(key, value any) bool {
 		labels := gv.parseKey(key.(string))
 		fn(labels, value.(*Gauge))
 		return true

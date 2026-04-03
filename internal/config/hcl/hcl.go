@@ -1,6 +1,6 @@
 // Package hcl provides an HCL (HashiCorp Configuration Language) parser
 // for OpenLoadBalancer. It implements a lexer, parser, and decoder with
-// zero external dependencies, producing map[string]interface{} or decoding
+// zero external dependencies, producing map[string]any or decoding
 // directly into Go structs via reflection.
 package hcl
 
@@ -860,12 +860,12 @@ func (p *Parser) parseObject() (*Node, error) {
 }
 
 // ---------------------------------------------------------------------------
-// Interpreter: AST → map[string]interface{}
+// Interpreter: AST → map[string]any
 // ---------------------------------------------------------------------------
 
-// interpret converts a body AST node into map[string]interface{}.
-func interpret(node *Node) (map[string]interface{}, error) {
-	result := make(map[string]interface{})
+// interpret converts a body AST node into map[string]any.
+func interpret(node *Node) (map[string]any, error) {
+	result := make(map[string]any)
 
 	for _, child := range node.Children {
 		switch child.Type {
@@ -883,13 +883,13 @@ func interpret(node *Node) (map[string]interface{}, error) {
 
 			// Blocks of the same type are collected into a slice.
 			if existing, ok := result[key]; ok {
-				if arr, ok := existing.([]interface{}); ok {
+				if arr, ok := existing.([]any); ok {
 					result[key] = append(arr, block)
 				} else {
-					result[key] = []interface{}{existing, block}
+					result[key] = []any{existing, block}
 				}
 			} else {
-				result[key] = []interface{}{block}
+				result[key] = []any{block}
 			}
 
 		default:
@@ -900,9 +900,9 @@ func interpret(node *Node) (map[string]interface{}, error) {
 	return result, nil
 }
 
-// interpretBlock converts a block node into map[string]interface{}.
-func interpretBlock(node *Node) map[string]interface{} {
-	m := make(map[string]interface{})
+// interpretBlock converts a block node into map[string]any.
+func interpretBlock(node *Node) map[string]any {
+	m := make(map[string]any)
 
 	// Attach labels
 	if len(node.Labels) > 0 {
@@ -923,13 +923,13 @@ func interpretBlock(node *Node) map[string]interface{} {
 			block := interpretBlock(child)
 			key := child.Key
 			if existing, ok := m[key]; ok {
-				if arr, ok := existing.([]interface{}); ok {
+				if arr, ok := existing.([]any); ok {
 					m[key] = append(arr, block)
 				} else {
-					m[key] = []interface{}{existing, block}
+					m[key] = []any{existing, block}
 				}
 			} else {
-				m[key] = []interface{}{block}
+				m[key] = []any{block}
 			}
 		}
 	}
@@ -938,7 +938,7 @@ func interpretBlock(node *Node) map[string]interface{} {
 }
 
 // evalNode evaluates an expression node to a Go value.
-func evalNode(node *Node) interface{} {
+func evalNode(node *Node) any {
 	switch node.Type {
 	case NodeLiteral:
 		if node.Quoted {
@@ -948,14 +948,14 @@ func evalNode(node *Node) interface{} {
 		return parseLiteralValue(node.Value)
 
 	case NodeList:
-		items := make([]interface{}, 0, len(node.Children))
+		items := make([]any, 0, len(node.Children))
 		for _, child := range node.Children {
 			items = append(items, evalNode(child))
 		}
 		return items
 
 	case NodeObject:
-		m := make(map[string]interface{})
+		m := make(map[string]any)
 		for _, child := range node.Children {
 			if child.Type == NodeAttribute && len(child.Children) > 0 {
 				m[child.Key] = evalNode(child.Children[0])
@@ -969,7 +969,7 @@ func evalNode(node *Node) interface{} {
 }
 
 // parseLiteralValue converts a literal string to a typed Go value.
-func parseLiteralValue(s string) interface{} {
+func parseLiteralValue(s string) any {
 	// Booleans
 	if s == "true" {
 		return true
@@ -1009,7 +1009,7 @@ func parseLiteralValue(s string) interface{} {
 
 // interpolate processes ${...} in a string value.
 // Supports ${ENV_VAR} as environment variable lookup.
-func interpolate(s string) interface{} {
+func interpolate(s string) any {
 	if !strings.Contains(s, "${") {
 		return s
 	}
@@ -1058,8 +1058,8 @@ func resolveInterpolation(expr string) string {
 // Public API
 // ---------------------------------------------------------------------------
 
-// Parse parses HCL data and returns a generic map[string]interface{}.
-func Parse(data []byte) (map[string]interface{}, error) {
+// Parse parses HCL data and returns a generic map[string]any.
+func Parse(data []byte) (map[string]any, error) {
 	tokens, err := Tokenize(string(data))
 	if err != nil {
 		return nil, fmt.Errorf("tokenize: %w", err)
@@ -1075,7 +1075,7 @@ func Parse(data []byte) (map[string]interface{}, error) {
 }
 
 // Decode parses HCL data and decodes it into the value pointed to by v.
-func Decode(data []byte, v interface{}) error {
+func Decode(data []byte, v any) error {
 	m, err := Parse(data)
 	if err != nil {
 		return err
@@ -1085,7 +1085,7 @@ func Decode(data []byte, v interface{}) error {
 }
 
 // DecodeFile reads an HCL file and decodes it into v.
-func DecodeFile(path string, v interface{}) error {
+func DecodeFile(path string, v any) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read file: %w", err)
@@ -1094,11 +1094,11 @@ func DecodeFile(path string, v interface{}) error {
 }
 
 // ---------------------------------------------------------------------------
-// Decoder: map[string]interface{} → Go struct
+// Decoder: map[string]any → Go struct
 // ---------------------------------------------------------------------------
 
-// decodeMap decodes a map[string]interface{} into a Go value via reflection.
-func decodeMap(m map[string]interface{}, v interface{}) error {
+// decodeMap decodes a map[string]any into a Go value via reflection.
+func decodeMap(m map[string]any, v any) error {
 	rv := reflect.ValueOf(v)
 	if rv.Kind() != reflect.Ptr || rv.IsNil() {
 		return errors.New("decode target must be a non-nil pointer")

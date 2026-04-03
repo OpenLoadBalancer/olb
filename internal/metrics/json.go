@@ -22,19 +22,19 @@ func NewJSONHandler(registry *Registry) *JSONHandler {
 
 // WriteTo writes JSON format metrics to w.
 func (h *JSONHandler) WriteMetrics(w io.Writer) error {
-	metrics := make(map[string]interface{})
+	metrics := make(map[string]any)
 
 	// Collect all metrics
 	h.registry.Collect(
 		func(name string, c *Counter) {
-			metrics[name] = map[string]interface{}{
+			metrics[name] = map[string]any{
 				"type":  "counter",
 				"help":  c.Help(),
 				"value": c.Get(),
 			}
 		},
 		func(name string, g *Gauge) {
-			metrics[name] = map[string]interface{}{
+			metrics[name] = map[string]any{
 				"type":  "gauge",
 				"help":  g.Help(),
 				"value": g.Get(),
@@ -50,7 +50,7 @@ func (h *JSONHandler) WriteMetrics(w io.Writer) error {
 			// +Inf bucket
 			buckets["+Inf"] = snap.Buckets[len(snap.Buckets)-1]
 
-			metrics[name] = map[string]interface{}{
+			metrics[name] = map[string]any{
 				"type":    "histogram",
 				"help":    hist.Help(),
 				"count":   snap.Count,
@@ -64,7 +64,7 @@ func (h *JSONHandler) WriteMetrics(w io.Writer) error {
 				key := formatLabelMap(labels)
 				vectors[key] = c.Get()
 			})
-			metrics[name] = map[string]interface{}{
+			metrics[name] = map[string]any{
 				"type":   "counter_vec",
 				"help":   cv.Help(),
 				"labels": cv.Labels(),
@@ -77,7 +77,7 @@ func (h *JSONHandler) WriteMetrics(w io.Writer) error {
 				key := formatLabelMap(labels)
 				vectors[key] = g.Get()
 			})
-			metrics[name] = map[string]interface{}{
+			metrics[name] = map[string]any{
 				"type":   "gauge_vec",
 				"help":   gv.Help(),
 				"labels": gv.Labels(),
@@ -85,7 +85,7 @@ func (h *JSONHandler) WriteMetrics(w io.Writer) error {
 			}
 		},
 		func(name string, hv *HistogramVec) {
-			vectors := make(map[string]interface{})
+			vectors := make(map[string]any)
 			hv.Collect(func(labels map[string]string, hist *Histogram) {
 				key := formatLabelMap(labels)
 				snap := hist.Snapshot()
@@ -95,13 +95,13 @@ func (h *JSONHandler) WriteMetrics(w io.Writer) error {
 				}
 				buckets["+Inf"] = snap.Buckets[len(snap.Buckets)-1]
 
-				vectors[key] = map[string]interface{}{
+				vectors[key] = map[string]any{
 					"count":   snap.Count,
 					"sum":     snap.Sum,
 					"buckets": buckets,
 				}
 			})
-			metrics[name] = map[string]interface{}{
+			metrics[name] = map[string]any{
 				"type":   "histogram_vec",
 				"help":   hv.Help(),
 				"labels": hv.Labels(),
