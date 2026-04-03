@@ -75,17 +75,19 @@ Requires Go 1.25+. No other dependencies.
 
 ## Features
 
-**Proxy:** HTTP/HTTPS, WebSocket, gRPC, SSE, TCP (L4), UDP (L4), SNI routing, PROXY protocol v1/v2
+**Proxy:** HTTP/HTTPS, WebSocket, gRPC, SSE, TCP (L4), UDP (L4), SNI routing, PROXY protocol v1/v2, Request Shadowing/Mirroring
 
 **Load Balancing:** 14 algorithms — Round Robin, Weighted RR, Least Connections, Weighted Least Connections, Least Response Time, Weighted Least Response Time, IP Hash, Consistent Hash (Ketama), Maglev, Ring Hash, Power of Two, Random, Weighted Random, Sticky Sessions
+
+**Geo-DNS Routing:** Geographic location-based traffic routing (country, region, city)
 
 **Security:** TLS termination + SNI, ACME/Let's Encrypt, mTLS, OCSP stapling, 6-layer WAF (IP ACL, rate limiting, request sanitizer, detection engine with SQLi/XSS/path traversal/CMDi/XXE/SSRF, bot detection with JA3 fingerprinting, response protection with security headers + data masking), circuit breaker
 
 **Middleware:** 16 components — Recovery, body limit, WAF (6-layer pipeline), IP filter, real IP, request ID, timeout, rate limit, circuit breaker, CORS, headers, compression (gzip), retry, cache, metrics, access log
 
-**Observability:** Web UI dashboard (8 pages), TUI (`olb top`), Prometheus metrics, structured JSON logging, admin REST API (15+ endpoints)
+**Observability:** Web UI dashboard (8 pages), TUI (`olb top`), Prometheus metrics, structured JSON logging, admin REST API (15+ endpoints), Grafana dashboard
 
-**Operations:** Hot config reload (SIGHUP or API), Raft clustering + SWIM gossip, service discovery (Static/DNS/Consul/Docker/File), MCP server for AI integration, plugin system, 30+ CLI commands
+**Operations:** Hot config reload (SIGHUP or API), Raft clustering + SWIM gossip, service discovery (Static/DNS/Consul/Docker/File), MCP server for AI integration, plugin system, 30+ CLI commands, distributed rate limiting, request shadowing/mirroring
 
 ## MCP Integration (AI-Powered Management)
 
@@ -254,6 +256,58 @@ pools:
 
 See [docs/configuration.md](docs/configuration.md) for all options.
 
+### Geo-DNS Routing Example
+
+```yaml
+geodns:
+  enabled: true
+  default_pool: default-pool
+  rules:
+    - id: us-traffic
+      country: US
+      pool: us-pool
+      fallback: default-pool
+    - id: eu-traffic
+      country: EU
+      pool: eu-pool
+    - id: asia-traffic
+      country: JP
+      region: Tokyo
+      pool: asia-pool
+```
+
+### Request Shadowing Example
+
+```yaml
+shadow:
+  enabled: true
+  percentage: 10.0  # Mirror 10% of traffic
+  copy_headers: true
+  copy_body: false
+  timeout: 30s
+  targets:
+    - pool: staging-pool
+      percentage: 100.0
+```
+
+### Distributed Rate Limiting Example
+
+```yaml
+waf:
+  enabled: true
+  rate_limit:
+    enabled: true
+    store:
+      type: redis
+      address: "localhost:6379"
+      database: 0
+    rules:
+      - id: per-ip
+        scope: ip
+        limit: 1000
+        window: 1m
+```
+
 ## CLI
 
 ```bash
@@ -279,6 +333,7 @@ olb cluster status                   # Cluster info
   gRPC, TCP, UDP   │  (L4/L7)     (16 types)   (trie)   (14 algos)  │
                     │                                                  │
                     │  WAF (6 layers) │ TLS │ Cluster │ MCP │ Web UI  │
+                    │  GeoDNS │ Shadow │ Discovery │ Prometheus      │
                     └─────────────────────────────────────────────────┘
 ```
 
@@ -288,6 +343,8 @@ olb cluster status                   # Cluster info
 |-------|-------------|
 | [Getting Started](docs/getting-started.md) | 5-minute quick start |
 | [Configuration](docs/configuration.md) | All config options |
+| [Production Deployment](docs/production-deployment.md) | Production deployment guide |
+| [Troubleshooting](docs/troubleshooting.md) | Troubleshooting playbook |
 | [Algorithms](docs/algorithms.md) | Algorithm details |
 | [API Reference](docs/api.md) | Admin REST API |
 | [Clustering](docs/clustering.md) | Multi-node setup |

@@ -21,6 +21,8 @@ type Config struct {
 	Middleware *MiddlewareConfig `yaml:"middleware" json:"middleware"`
 	WAF        *WAFConfig        `yaml:"waf" json:"waf"`
 	Profiling  *ProfilingConfig  `yaml:"profiling" json:"profiling"`
+	GeoDNS     *GeoDNSConfig     `yaml:"geodns" json:"geodns"`
+	Shadow     *ShadowConfig     `yaml:"shadow" json:"shadow"`
 }
 
 // ProfilingConfig represents profiling/debugging configuration.
@@ -146,9 +148,10 @@ type WAFAutoBanConfig struct {
 
 // WAFRateLimitConfig configures WAF-integrated rate limiting.
 type WAFRateLimitConfig struct {
-	Enabled      bool               `yaml:"enabled" json:"enabled"`
-	SyncInterval string             `yaml:"sync_interval" json:"sync_interval"` // e.g. "5s"
-	Rules        []WAFRateLimitRule `yaml:"rules" json:"rules"`
+	Enabled      bool                  `yaml:"enabled" json:"enabled"`
+	SyncInterval string                `yaml:"sync_interval" json:"sync_interval"` // e.g. "5s"
+	Store        *RateLimitStoreConfig `yaml:"store" json:"store"`
+	Rules        []WAFRateLimitRule    `yaml:"rules" json:"rules"`
 }
 
 type WAFRateLimitRule struct {
@@ -404,6 +407,49 @@ type ClusterConfig struct {
 	DataDir       string   `yaml:"data_dir" json:"data_dir"`
 	ElectionTick  string   `yaml:"election_tick" json:"election_tick"`
 	HeartbeatTick string   `yaml:"heartbeat_tick" json:"heartbeat_tick"`
+}
+
+// GeoDNSConfig represents Geo-DNS routing configuration.
+type GeoDNSConfig struct {
+	Enabled     bool         `yaml:"enabled" json:"enabled"`
+	DefaultPool string       `yaml:"default_pool" json:"default_pool"`
+	Rules       []GeoDNSRule `yaml:"rules" json:"rules"`
+}
+
+// GeoDNSRule defines a geographic routing rule.
+type GeoDNSRule struct {
+	ID       string            `yaml:"id" json:"id"`
+	Country  string            `yaml:"country" json:"country"` // ISO 3166-1 alpha-2 or "*"
+	Region   string            `yaml:"region" json:"region"`   // State/Province code
+	Pool     string            `yaml:"pool" json:"pool"`
+	Fallback string            `yaml:"fallback" json:"fallback"`
+	Weight   int               `yaml:"weight" json:"weight"`
+	Headers  map[string]string `yaml:"headers" json:"headers"`
+}
+
+// ShadowConfig represents request shadowing/mirroring configuration.
+type ShadowConfig struct {
+	Enabled     bool           `yaml:"enabled" json:"enabled"`
+	Targets     []ShadowTarget `yaml:"targets" json:"targets"`
+	Percentage  float64        `yaml:"percentage" json:"percentage"`
+	CopyHeaders bool           `yaml:"copy_headers" json:"copy_headers"`
+	CopyBody    bool           `yaml:"copy_body" json:"copy_body"`
+	Timeout     string         `yaml:"timeout" json:"timeout"`
+}
+
+// ShadowTarget defines a shadow/mirror target.
+type ShadowTarget struct {
+	Pool       string  `yaml:"pool" json:"pool"`
+	Percentage float64 `yaml:"percentage" json:"percentage"`
+}
+
+// RateLimitStoreConfig represents rate limit storage backend configuration.
+type RateLimitStoreConfig struct {
+	Type     string            `yaml:"type" json:"type"` // "memory", "redis"
+	Address  string            `yaml:"address" json:"address"`
+	Password string            `yaml:"password" json:"-"`
+	Database int               `yaml:"database" json:"database"`
+	Options  map[string]string `yaml:"options" json:"options"`
 }
 
 // ExpandEnv substitutes environment variables in a string.

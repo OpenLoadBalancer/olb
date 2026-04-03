@@ -117,3 +117,31 @@ logging:
 profiling:
   enabled: false
   pprof_addr: "localhost:6060"
+
+# Geo-DNS Routing (optional)
+geodns:
+  enabled: false
+  default_pool: default-pool
+  rules:
+    - id: us-traffic
+      country: US
+      pool: us-pool
+      fallback: default-pool
+    - id: eu-traffic
+      country: EU
+      pool: eu-pool
+    - id: asia-traffic
+      country: JP
+      region: Tokyo
+      pool: asia-pool
+
+# Request Shadowing/Mirroring (optional)
+shadow:
+  enabled: false
+  percentage: 10.0  # Mirror 10% of traffic
+  copy_headers: true
+  copy_body: false
+  timeout: 30s
+  targets:
+    - pool: staging-pool
+      percentage: 100.0

@@ -269,7 +269,71 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Job 8: Release (only on tags)
+  # Job 9: Security Scan
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: [build]
+    permissions:
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@master
+        with:
+          args: '-severity high -quiet ./...'
+
+      - name: Run Nancy (dependency vulnerability scanner)
+        run: |
+          go install github.com/sonatypecommunity/nancy@latest
+          go list -json -deps ./... | nancy sleuth
+        continue-on-error: true
+
+  # Job 10: Binary Analysis
+  binary:
+    name: Binary Analysis
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: bin/
+
+      - name: Binary size analysis
+        run: |
+          ls -lh bin/
+          for f in bin/olb-*; do
+            SIZE=$(stat -c%s "$f")
+            echo "$f: $SIZE bytes"
+            if [ "$SIZE" -gt 20971520 ]; then
+              echo "ERROR: $f exceeds 20MB limit"
+              exit 1
+            fi
+          done
+
+      - name: Binary verification
+        run: |
+          file bin/olb-linux-amd64
+          bin/olb-linux-amd64 version
+
+      - name: Check for debug symbols
+        run: |
+          if nm bin/olb-linux-amd64 2>/dev/null | head -5 | grep -q "T main"; then
+            echo "WARNING: Binary contains debug symbols"
+          else
+            echo "Debug symbols stripped: OK"
+          fi
+
+  # Job 11: Release
   release:
     name: Release
     runs-on: ubuntu-latest

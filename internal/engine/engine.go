@@ -20,6 +20,7 @@ import (
 	"github.com/openloadbalancer/olb/internal/config"
 	"github.com/openloadbalancer/olb/internal/conn"
 	"github.com/openloadbalancer/olb/internal/discovery"
+	"github.com/openloadbalancer/olb/internal/geodns"
 	"github.com/openloadbalancer/olb/internal/health"
 	"github.com/openloadbalancer/olb/internal/listener"
 	"github.com/openloadbalancer/olb/internal/logging"
@@ -90,6 +91,8 @@ type Engine struct {
 	raftCluster  *cluster.Cluster        // optional, nil if not configured
 	discoveryMgr *discovery.Manager
 	webUIHandler *webui.Handler
+	geoDNS       *geodns.GeoDNS    // optional, nil if not configured
+	shadowMgr    *l7.ShadowManager // optional, nil if not configured
 
 	// ACME/Let's Encrypt client
 	acmeClient *acme.Client
@@ -216,6 +219,40 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 	// Initialize discovery manager
 	discoveryMgr := discovery.NewManager()
 
+	// Initialize GeoDNS if configured
+	var geoDNSMgr *geodns.GeoDNS
+	if cfg.GeoDNS != nil && cfg.GeoDNS.Enabled {
+		geoDNSMgr = geodns.New(geodns.Config{
+			Enabled:     cfg.GeoDNS.Enabled,
+			DefaultPool: cfg.GeoDNS.DefaultPool,
+			Rules:       convertGeoDNSRules(cfg.GeoDNS.Rules),
+		})
+		logger.Info("GeoDNS initialized",
+			logging.Int("rules", len(cfg.GeoDNS.Rules)),
+		)
+	}
+
+	// Initialize shadow manager if configured
+	var shadowManager *l7.ShadowManager
+	if cfg.Shadow != nil && cfg.Shadow.Enabled {
+		timeout := 30 * time.Second
+		if cfg.Shadow.Timeout != "" {
+			if d, err := time.ParseDuration(cfg.Shadow.Timeout); err == nil {
+				timeout = d
+			}
+		}
+		shadowManager = l7.NewShadowManager(l7.ShadowConfig{
+			Enabled:     cfg.Shadow.Enabled,
+			Percentage:  cfg.Shadow.Percentage,
+			CopyHeaders: cfg.Shadow.CopyHeaders,
+			CopyBody:    cfg.Shadow.CopyBody,
+			Timeout:     timeout,
+		})
+		logger.Info("Shadow manager initialized",
+			logging.Float64("percentage", cfg.Shadow.Percentage),
+		)
+	}
+
 	// Create admin server
 	adminCfg := &admin.Config{
 		Address:       getAdminAddress(cfg),
@@ -250,6 +287,8 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 		pluginMgr:       pluginMgr,
 		discoveryMgr:    discoveryMgr,
 		webUIHandler:    webUIH,
+		geoDNS:          geoDNSMgr,
+		shadowMgr:       shadowManager,
 		state:           StateStopped,
 		stopCh:          make(chan struct{}),
 		reloadCh:        make(chan struct{}),
@@ -1568,4 +1607,21 @@ func parseDuration(s string, defaultVal time.Duration) time.Duration {
 		return defaultVal
 	}
 	return d
+}
+
+// convertGeoDNSRules converts config.GeoDNSRule to geodns.GeoRule.
+func convertGeoDNSRules(rules []config.GeoDNSRule) []geodns.GeoRule {
+	result := make([]geodns.GeoRule, 0, len(rules))
+	for _, r := range rules {
+		result = append(result, geodns.GeoRule{
+			ID:       r.ID,
+			Country:  r.Country,
+			Region:   r.Region,
+			Pool:     r.Pool,
+			Fallback: r.Fallback,
+			Weight:   r.Weight,
+			Headers:  r.Headers,
+		})
+	}
+	return result
 }

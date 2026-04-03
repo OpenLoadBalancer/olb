@@ -39,9 +39,13 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{/*
-Selector labels
+Create the name of the service account to use
 */}}
-{{- define "olb.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "olb.name" . }}
-app.kubernetes.io/instance: {{ .Release.Name }}
+{{- define "olb.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create }}
+{{- default (include "olb.fullname" .) .Values.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.serviceAccount.name }}
 {{- end }}
+{{- end }}
+

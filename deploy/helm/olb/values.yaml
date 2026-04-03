@@ -1,56 +1,46 @@
 # Default values for olb
+# This is a YAML-formatted file.
 
+# -- Number of OLB replicas
 replicaCount: 3
 
 image:
+  # -- Image repository
   repository: openloadbalancer/olb
+  # -- Image pull policy
   pullPolicy: IfNotPresent
-  tag: "latest"
+  # -- Image tag (defaults to chart appVersion)
+  tag: ""
 
+# -- Provide a name in place of olb
 nameOverride: ""
+# -- Provide a name to substitute for the full names of resources
 fullnameOverride: ""
 
-service:
-  type: LoadBalancer
-  ports:
-    http: 80
-    https: 443
-    admin: 8080
+# -- Image pull secrets
+imagePullSecrets: []
 
-resources:
-  requests:
-    cpu: 250m
-    memory: 256Mi
-  limits:
-    cpu: 500m
-    memory: 512Mi
+serviceAccount:
+  # -- Specifies whether a service account should be created
+  create: true
+  # -- Annotations to add to the service account
+  annotations: {}
+  # -- The name of the service account to use
+  name: ""
 
-livenessProbe:
-  httpGet:
-    path: /api/v1/system/health
-    port: admin
-  initialDelaySeconds: 10
-  periodSeconds: 15
-  timeoutSeconds: 5
-  failureThreshold: 3
+# -- Pod annotations
+podAnnotations: {}
 
-readinessProbe:
-  httpGet:
-    path: /api/v1/system/health
-    port: admin
-  initialDelaySeconds: 5
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 3
-
-securityContext:
-  runAsNonRoot: true
+# -- Pod security context
+podSecurityContext:
+  fsGroup: 1000
   runAsUser: 1000
   runAsGroup: 1000
-  fsGroup: 1000
+  runAsNonRoot: true
   seccompProfile:
     type: RuntimeDefault
 
+# -- Container security context
 containerSecurityContext:
   allowPrivilegeEscalation: false
   readOnlyRootFilesystem: true
@@ -58,52 +48,319 @@ containerSecurityContext:
     drop:
       - ALL
 
-terminationGracePeriodSeconds: 30
+service:
+  # -- Service type
+  type: LoadBalancer
+  # -- Service annotations (for cloud provider specific config)
+  annotations: {}
+  # -- HTTP port
+  http: 80
+  # -- HTTPS port
+  https: 443
+  # -- Admin API port
+  admin: 8081
+  # -- MCP port
+  mcp: 8082
+  # -- Target ports
+  targetPorts:
+    http: 8080
+    https: 8443
+    admin: 8081
+    mcp: 8082
 
-# OpenLoadBalancer configuration (rendered as ConfigMap)
-config: |
+# -- Ingress configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: olb.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# -- Resource requests and limits
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+# -- Liveness probe configuration
+livenessProbe:
+  httpGet:
+    path: /api/v1/status
+    port: admin
+  initialDelaySeconds: 10
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+# -- Readiness probe configuration
+readinessProbe:
+  httpGet:
+    path: /api/v1/status
+    port: admin
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+# -- Startup probe configuration
+startupProbe:
+  httpGet:
+    path: /api/v1/status
+    port: admin
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 30
+
+# -- Termination grace period
+terminationGracePeriodSeconds: 60
+
+# -- Horizontal Pod Autoscaler configuration
+hpa:
+  enabled: false
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+
+# -- Pod Disruption Budget
+pdb:
+  enabled: true
+  minAvailable: 2
+
+# -- Network Policy
+networkPolicy:
+  enabled: true
+  ingress:
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8443
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8081
+
+# -- Node selector
+nodeSelector: {}
+
+# -- Tolerations
+tolerations: []
+
+# -- Affinity rules
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - olb
+          topologyKey: kubernetes.io/hostname
+
+# -- Topology spread constraints
+topologySpreadConstraints: []
+
+# -- Extra environment variables
+extraEnv: []
+#  - name: GOMAXPROCS
+#    value: "4"
+
+# -- Extra volume mounts
+extraVolumeMounts: []
+
+# -- Extra volumes
+extraVolumes: []
+
+# -- Prometheus ServiceMonitor
+serviceMonitor:
+  enabled: false
+  interval: 15s
+  scrapeTimeout: 10s
+  namespace: ""
+  labels: {}
+  annotations: {}
+
+# -- PrometheusRule for alerts
+prometheusRule:
+  enabled: false
+  namespace: ""
+  labels: {}
+  annotations: {}
+  groups:
+    - name: olb
+      rules:
+        - alert: OLBDown
+          expr: up{job="olb"} == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "OpenLoadBalancer is down"
+        - alert: OLBHighErrorRate
+          expr: rate(olb_requests_total{status=~"5.."}[5m]) > 0.1
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High error rate detected"
+
+# -- Persistence for cluster state
+persistence:
+  enabled: false
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 10Gi
+  mountPath: /var/lib/olb
+
+# -- TLS certificate configuration
+tls:
+  enabled: false
+  # -- Use cert-manager
+  certManager:
+    enabled: false
+    issuerName: ""
+    issuerKind: ClusterIssuer
+  # -- Existing secret name
+  existingSecret: ""
+  # -- Certificate data (base64 encoded)
+  cert: ""
+  key: ""
+  ca: ""
+
+# -- Cluster configuration
+cluster:
+  enabled: false
+  bindPort: 7946
+  dataDir: /var/lib/olb/cluster
+
+# -- OpenLoadBalancer configuration (rendered as ConfigMap)
+config:
+  # -- OLB version
+  version: 1
+
+  # -- Admin configuration
+  admin:
+    address: ":8081"
+    enabled: true
+    mcp_address: ":8082"
+    mcp_audit: true
+
+  # -- Metrics configuration
+  metrics:
+    enabled: true
+    path: /metrics
+
+  # -- Logging configuration
+  logging:
+    level: info
+    output: stdout
+    format: json
+
+  # -- Listeners
   listeners:
     - name: http
-      address: ":80"
       protocol: http
+      address: ":8080"
       routes:
-        - path: /
+        - name: default
+          path: /
           pool: default-pool
 
+  # -- Backend pools
   pools:
     - name: default-pool
       algorithm: round_robin
+      health_check:
+        type: http
+        path: /health
+        interval: 10s
+        timeout: 5s
+        healthy_threshold: 2
+        unhealthy_threshold: 3
       backends:
-        - address: "127.0.0.1:3001"
-        - address: "127.0.0.1:3002"
+        - id: backend-1
+          address: "127.0.0.1:3001"
+        - id: backend-2
+          address: "127.0.0.1:3002"
 
-  admin:
-    address: ":8080"
-    enabled: true
+  # -- Middleware configuration
+  middleware:
+    rate_limit:
+      enabled: true
+      requests_per_second: 1000
+      burst_size: 2000
+    cors:
+      enabled: true
+      allowed_origins: ["*"]
+      allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    compression:
+      enabled: true
+      min_size: 1024
+      level: 6
 
-  health_check:
-    interval: 10s
-    timeout: 5s
-    unhealthy_threshold: 3
-    healthy_threshold: 2
+  # -- WAF configuration
+  waf:
+    enabled: false
+    mode: monitor
+    ip_acl:
+      enabled: true
+      whitelist: []
+      blacklist: []
+    rate_limit:
+      enabled: true
+      rules:
+        - id: per-ip
+          scope: ip
+          limit: 1000
+          window: "1m"
+    detection:
+      enabled: true
+      threshold:
+        block: 50
+        log: 25
 
-  logging:
-    level: info
-    format: json
+  # -- TLS configuration
+  tls:
+    cert_file: ""
+    key_file: ""
 
-nodeSelector: {}
-
-tolerations: []
-
-affinity: {}
-
-# Extra environment variables
-extraEnv: []
-#  - name: OLB_LOG_LEVEL
-#    value: "debug"
-
-# Extra volume mounts
-extraVolumeMounts: []
-
-# Extra volumes
-extraVolumes: []
+# -- Extra configuration files
+extraConfigFiles: {}
+#  custom-olb.yaml: |
+#    listeners:
+#      - name: tcp
+#        protocol: tcp
+#        address: ":5432"
+#        pool: postgres-pool

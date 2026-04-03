@@ -1,0 +1,177 @@
+# OpenLoadBalancer Prometheus Alerting Rules
+groups:
+  - name: olb-alerts
+    rules:
+      # High error rate
+      - alert: OLBCustomHighErrorRate
+        expr: |
+          (
+            sum(rate(olb_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(olb_requests_total[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: olb
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes"
+
+      # Critical error rate
+      - alert: OLBCustomCriticalErrorRate
+        expr: |
+          (
+            sum(rate(olb_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(olb_requests_total[5m]))
+          ) > 0.1
+        for: 3m
+        labels:
+          severity: critical
+          service: olb
+        annotations:
+          summary: "Critical error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} over the last 3 minutes"
+
+      # High latency
+      - alert: OLBCustomHighLatency
+        expr: |
+          histogram_quantile(0.99, 
+            sum(rate(olb_request_duration_seconds_bucket[5m])) by (le)
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          service: olb
+        annotations:
+          summary: "High latency detected"
+          description: "P99 latency is {{ $value }}s over the last 5 minutes"
+
+      # Backend down
+      - alert: OLBCustomBackendDown
+        expr: olb_backends_healthy == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: olb
+        annotations:
+          summary: "All backends are down"
+          description: "Pool {{ $labels.pool }} has no healthy backends"
+
+      # Low healthy backends
+      - alert: OLBCustomLowHealthyBackends
+        expr: |
+          (
+            olb_backends_healthy / olb_backends_total
+          ) < 0.5
+        for: 5m
+        labels:
+          severity: warning
+          service: olb
+        annotations:
+          summary: "Low healthy backend ratio"
+          description: "Only {{ $value | humanizePercentage }} of backends are healthy"
+
+      # Circuit breaker open
+      - alert: OLBCustomCircuitBreakerOpen
+        expr: olb_circuit_breaker_state == 1
+        for: 1m
+        labels:
+          severity: warning
+          service: olb
+        annotations:
+          summary: "Circuit breaker is open"
+          description: "Circuit breaker for {{ $labels.backend }} is open"
+
+      # WAF blocks spike
+      - alert: OLBCustomWAFBlockSpike
+        expr: |
+          (
+            sum(rate(olb_waf_blocks_total[5m]))
+            /
+            sum(rate(olb_requests_total[5m]))
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: olb
+        annotations:
+          summary: "High WAF block rate"
+          description: "WAF is blocking {{ $value | humanizePercentage }} of requests"
+
+      # Rate limit hits
+      - alert: OLBCustomRateLimitHits
+        expr: |
+          sum(rate(olb_rate_limit_hits_total[5m])) > 100
+        for: 5m
+        labels:
+          severity: info
+          service: olb
+        annotations:
+          summary: "High rate limit hits"
+          description: "Rate limit is being hit at {{ $value }} req/s"
+
+      # Instance resource usage
+      - alert: OLBCustomHighCPUUsage
+        expr: |
+          100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+          service: olb
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is {{ $value }}% on {{ $labels.instance }}"
+
+      - alert: OLBCustomHighMemoryUsage
+        expr: |
+          (
+            node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes
+          ) / node_memory_MemTotal_bytes * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+          service: olb
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value }}% on {{ $labels.instance }}"
+
+      # SSL certificate expiry
+      - alert: OLBCustomSSLCertificateExpiringSoon
+        expr: |
+          (
+            olb_ssl_certificate_expiry_timestamp - time()
+          ) / 86400 < 30
+        for: 1h
+        labels:
+          severity: warning
+          service: olb
+        annotations:
+          summary: "SSL certificate expiring soon"
+          description: "Certificate expires in {{ $value }} days"
+
+      - alert: OLBCustomSSLCertificateExpiringCritical
+        expr: |
+          (
+            olb_ssl_certificate_expiry_timestamp - time()
+          ) / 86400 < 7
+        for: 1h
+        labels:
+          severity: critical
+          service: olb
+        annotations:
+          summary: "SSL certificate expiring very soon"
+          description: "Certificate expires in {{ $value }} days"
+
+      # Cluster health
+      - alert: OLBCustomClusterDegraded
+        expr: |
+          olb_cluster_nodes_healthy / olb_cluster_nodes_total < 0.5
+        for: 5m
+        labels:
+          severity: critical
+          service: olb
+        annotations:
+          summary: "Cluster is degraded"
+          description: "Only {{ $value | humanizePercentage }} of cluster nodes are healthy"

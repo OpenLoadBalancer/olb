@@ -1,0 +1,357 @@
+// Package geodns provides Geo-location based DNS routing for OpenLoadBalancer.
+package geodns
+
+import (
+	"fmt"
+	"net"
+	"net/http"
+	"strings"
+	"sync"
+)
+
+// Location represents a geographic location.
+type Location struct {
+	Country   string // ISO 3166-1 alpha-2
+	Region    string // State/Province code
+	City      string
+	Latitude  float64
+	Longitude float64
+}
+
+// GeoRule defines routing rules based on geographic location.
+type GeoRule struct {
+	ID       string
+	Country  string            // "US", "EU", "*" for any
+	Region   string            // State/region code
+	Pool     string            // Target backend pool
+	Fallback string            // Fallback pool if this one is down
+	Weight   int               // Weight for this route
+	Headers  map[string]string // Headers to add for this region
+}
+
+// GeoDNS provides geographic routing capabilities.
+type GeoDNS struct {
+	mu          sync.RWMutex
+	rules       []GeoRule
+	defaultPool string
+
+	// GeoIP database (simplified - in production use MaxMind GeoIP2)
+	geoDB map[string]*Location // IP prefix -> Location
+
+	// Pool health status
+	poolHealth map[string]bool
+}
+
+// Config configures GeoDNS.
+type Config struct {
+	Enabled     bool
+	DefaultPool string
+	Rules       []GeoRule
+}
+
+// New creates a new GeoDNS router.
+func New(cfg Config) *GeoDNS {
+	g := &GeoDNS{
+		rules:       cfg.Rules,
+		defaultPool: cfg.DefaultPool,
+		geoDB:       make(map[string]*Location),
+		poolHealth:  make(map[string]bool),
+	}
+
+	// Load built-in geo data
+	g.loadDefaultGeoData()
+
+	return g
+}
+
+// Route determines the appropriate backend pool for a request based on client location.
+func (g *GeoDNS) Route(r *http.Request) (pool string, location *Location, err error) {
+	if g == nil {
+		return g.defaultPool, nil, nil
+	}
+
+	// Extract client IP
+	clientIP := g.extractClientIP(r)
+
+	// Lookup location
+	location = g.lookupLocation(clientIP)
+
+	// Find matching rule
+	g.mu.RLock()
+	rules := g.rules
+	poolHealth := g.poolHealth
+	defaultPool := g.defaultPool
+	g.mu.RUnlock()
+
+	for _, rule := range rules {
+		if g.matchesRule(location, &rule) {
+			// Check if pool is healthy
+			if healthy, ok := poolHealth[rule.Pool]; !ok || healthy {
+				return rule.Pool, location, nil
+			}
+			// Use fallback
+			if rule.Fallback != "" {
+				if healthy, ok := poolHealth[rule.Fallback]; !ok || healthy {
+					return rule.Fallback, location, nil
+				}
+			}
+		}
+	}
+
+	return defaultPool, location, nil
+}
+
+// AddRule adds a new GeoDNS rule.
+func (g *GeoDNS) AddRule(rule GeoRule) error {
+	if rule.ID == "" {
+		return fmt.Errorf("rule ID is required")
+	}
+	if rule.Pool == "" {
+		return fmt.Errorf("rule pool is required")
+	}
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	// Check for duplicate ID
+	for _, r := range g.rules {
+		if r.ID == rule.ID {
+			return fmt.Errorf("rule with ID %s already exists", rule.ID)
+		}
+	}
+
+	g.rules = append(g.rules, rule)
+	return nil
+}
+
+// RemoveRule removes a GeoDNS rule by ID.
+func (g *GeoDNS) RemoveRule(id string) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	for i, rule := range g.rules {
+		if rule.ID == id {
+			g.rules = append(g.rules[:i], g.rules[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
+// SetPoolHealth sets the health status of a pool.
+func (g *GeoDNS) SetPoolHealth(pool string, healthy bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.poolHealth[pool] = healthy
+}
+
+// AddGeoData adds custom geo-location data for an IP range.
+func (g *GeoDNS) AddGeoData(cidr string, loc *Location) error {
+	_, ipNet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return fmt.Errorf("invalid CIDR: %w", err)
+	}
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.geoDB[ipNet.String()] = loc
+	return nil
+}
+
+// Stats returns GeoDNS statistics.
+type Stats struct {
+	Rules      int
+	GeoEntries int
+}
+
+// Stats returns current statistics.
+func (g *GeoDNS) Stats() Stats {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	return Stats{
+		Rules:      len(g.rules),
+		GeoEntries: len(g.geoDB),
+	}
+}
+
+// extractClientIP extracts the real client IP from the request.
+func (g *GeoDNS) extractClientIP(r *http.Request) string {
+	// Check X-Forwarded-For header
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// Take the first IP (closest to client)
+		ips := strings.Split(xff, ",")
+		if len(ips) > 0 {
+			return strings.TrimSpace(ips[0])
+		}
+	}
+
+	// Check X-Real-IP header
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return xri
+	}
+
+	// Fall back to RemoteAddr
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+// lookupLocation looks up the geographic location for an IP.
+func (g *GeoDNS) lookupLocation(ip string) *Location {
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return nil
+	}
+
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	// Check if IP is in any known network
+	for cidr, loc := range g.geoDB {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+		if ipNet.Contains(parsedIP) {
+			return loc
+		}
+	}
+
+	// Try to determine from IP ranges (simplified)
+	return g.guessLocationFromIP(ip)
+}
+
+// matchesRule checks if a location matches a rule.
+func (g *GeoDNS) matchesRule(loc *Location, rule *GeoRule) bool {
+	if loc == nil {
+		return rule.Country == "*"
+	}
+
+	// Check country match
+	if rule.Country != "" && rule.Country != "*" {
+		if strings.ToUpper(loc.Country) != strings.ToUpper(rule.Country) {
+			return false
+		}
+	}
+
+	// Check region match
+	if rule.Region != "" {
+		if !strings.EqualFold(loc.Region, rule.Region) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// guessLocationFromIP attempts to determine location from IP address.
+// This is a simplified implementation. In production, use MaxMind GeoIP2.
+func (g *GeoDNS) guessLocationFromIP(ip string) *Location {
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return nil
+	}
+
+	// Simple heuristic based on RFC 1918 and common ranges
+	// Private IPs
+	if isPrivateIP(parsedIP) {
+		return &Location{
+			Country:   "PRIVATE",
+			Region:    "LOCAL",
+			City:      "Private",
+			Latitude:  0,
+			Longitude: 0,
+		}
+	}
+
+	// Loopback
+	if parsedIP.IsLoopback() {
+		return &Location{
+			Country:   "LOCAL",
+			Region:    "LOOPBACK",
+			City:      "Localhost",
+			Latitude:  0,
+			Longitude: 0,
+		}
+	}
+
+	// Known IP ranges (simplified)
+	ipInt := ipToInt(parsedIP)
+
+	// US ranges (simplified examples)
+	if ipInt >= ipToInt(net.ParseIP("3.0.0.0")) && ipInt <= ipToInt(net.ParseIP("3.255.255.255")) {
+		return &Location{Country: "US", Region: "", City: "", Latitude: 37.09, Longitude: -95.71}
+	}
+
+	// European ranges
+	if ipInt >= ipToInt(net.ParseIP("5.0.0.0")) && ipInt <= ipToInt(net.ParseIP("5.255.255.255")) {
+		return &Location{Country: "EU", Region: "", City: "", Latitude: 48.85, Longitude: 2.35}
+	}
+
+	// Default to unknown
+	return &Location{
+		Country:   "UNKNOWN",
+		Region:    "",
+		City:      "",
+		Latitude:  0,
+		Longitude: 0,
+	}
+}
+
+// isPrivateIP checks if an IP is private.
+func isPrivateIP(ip net.IP) bool {
+	privateRanges := []string{
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+		"169.254.0.0/16",
+		"127.0.0.0/8",
+		"fc00::/7",
+	}
+
+	for _, cidr := range privateRanges {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+		if ipNet.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// ipToInt converts an IP address to an integer.
+func ipToInt(ip net.IP) uint32 {
+	ip = ip.To4()
+	if ip == nil {
+		return 0
+	}
+	return uint32(ip[0])<<24 | uint32(ip[1])<<16 | uint32(ip[2])<<8 | uint32(ip[3])
+}
+
+// loadDefaultGeoData loads built-in geographic data.
+func (g *GeoDNS) loadDefaultGeoData() {
+	// Add some example ranges
+	// In production, this would load from MaxMind GeoIP2 or similar
+	g.geoDB["8.8.8.0/24"] = &Location{Country: "US", Region: "CA", City: "Mountain View", Latitude: 37.42, Longitude: -122.09}
+	g.geoDB["1.1.1.0/24"] = &Location{Country: "AU", Region: "NSW", City: "Sydney", Latitude: -33.87, Longitude: 151.21}
+}
+
+// Middleware returns an HTTP middleware that adds geo-location headers.
+func (g *GeoDNS) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, loc, _ := g.Route(r)
+		if loc != nil {
+			r.Header.Set("X-Geo-Country", loc.Country)
+			r.Header.Set("X-Geo-Region", loc.Region)
+			r.Header.Set("X-Geo-City", loc.City)
+			r.Header.Set("X-Geo-Lat", fmt.Sprintf("%f", loc.Latitude))
+			r.Header.Set("X-Geo-Lon", fmt.Sprintf("%f", loc.Longitude))
+		}
+		next.ServeHTTP(w, r)
+	})
+}
