@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: OpenLoadBalancer Documentation
+    url: https://openloadbalancer.dev/docs
+    about: Check the documentation before opening an issue
+  - name: OpenLoadBalancer Discussions
+    url: https://github.com/openloadbalancer/olb/discussions
+    about: Ask questions and discuss ideas here
+  - name: Security Issues
+    url: https://github.com/openloadbalancer/olb/security/advisories
+    about: Please report security vulnerabilities here
