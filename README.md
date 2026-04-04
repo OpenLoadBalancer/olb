@@ -12,8 +12,8 @@
   <a href="https://golang.org"><img src="https://img.shields.io/badge/go-1.25+-00ADD8?logo=go&logoColor=white" alt="Go"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License"></a>
   <a href="https://github.com/openloadbalancer/olb/releases"><img src="https://img.shields.io/github/v/release/openloadbalancer/olb" alt="Release"></a>
-  <a href="./"><img src="https://img.shields.io/badge/tests-138_files_%2B_3300__funcs-brightgreen" alt="Tests"></a>
-  <a href="./"><img src="https://img.shields.io/badge/coverage-90%25-brightgreen" alt="Coverage"></a>
+  <a href="./"><img src="https://img.shields.io/badge/tests-141_files-brightgreen" alt="Tests"></a>
+  <a href="./"><img src="https://img.shields.io/badge/coverage-87.7%25-brightgreen" alt="Coverage"></a>
   <a href="./"><img src="https://img.shields.io/badge/deps-zero-orange" alt="Zero Deps"></a>
 </p>
 
