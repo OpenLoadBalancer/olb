@@ -5,6 +5,7 @@ package backend
 
 import (
 	"net"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -48,6 +49,10 @@ type Backend struct {
 	// Metadata for the backend.
 	mu       sync.RWMutex
 	metadata map[string]string
+
+	// cachedURL is the parsed URL for this backend.
+	// Lazily initialized and cached for performance.
+	cachedURL atomic.Value // *url.URL
 }
 
 // NewBackend creates a new Backend with the given ID and address.
@@ -245,3 +250,26 @@ func (b *Backend) Dial(timeout time.Duration) (net.Conn, error) {
 func (b *Backend) String() string {
 	return b.ID + "@" + b.Address
 }
+
+// GetURL returns the parsed URL for this backend.
+// The URL is cached after first access for performance.
+func (b *Backend) GetURL() *url.URL {
+	// Fast path: check cached value
+	if cached := b.cachedURL.Load(); cached != nil {
+		return cached.(*url.URL)
+	}
+
+	// Slow path: parse and cache
+	u, err := url.Parse("http://" + b.Address)
+	if err != nil {
+		// Return a default URL if parsing fails
+		u = &url.URL{
+			Scheme: "http",
+			Host:   b.Address,
+		}
+	}
+
+	b.cachedURL.Store(u)
+	return u
+}
+

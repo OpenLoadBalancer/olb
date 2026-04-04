@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -368,11 +367,8 @@ func (p *HTTPProxy) prepareOutboundRequest(r *http.Request, b *backend.Backend) 
 	// Clone the request
 	outReq := r.Clone(r.Context())
 
-	// Set the URL to point to the backend
-	backendURL, err := url.Parse("http://" + b.Address)
-	if err != nil {
-		return nil, fmt.Errorf("invalid backend address: %w", err)
-	}
+	// Set the URL to point to the backend (using cached URL)
+	backendURL := b.GetURL()
 
 	outReq.URL.Scheme = backendURL.Scheme
 	outReq.URL.Host = backendURL.Host
