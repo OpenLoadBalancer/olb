@@ -1,0 +1,33 @@
+run:
+  timeout: 5m
+  go: '1.25'
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose
+    - contextcheck
+    - gocritic
+    - gosec
+    - misspell
+    - prealloc
+    - unconvert
+
+linters-settings:
+  gosec:
+    excludes:
+      - G104  # Audit errors not checked
+  errcheck:
+    check-blank: true
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gosec
+        - errcheck

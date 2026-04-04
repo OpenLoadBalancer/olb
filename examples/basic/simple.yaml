@@ -1,0 +1,46 @@
+# Simple HTTP Load Balancer
+# Basic round-robin load balancing for web servers
+
+listeners:
+  - name: http
+    address: ":80"
+    routes:
+      - path: /
+        pool: web
+
+pools:
+  - name: web
+    algorithm: round_robin
+    backends:
+      - address: "10.0.1.10:8080"
+        weight: 1
+      - address: "10.0.1.11:8080"
+        weight: 1
+      - address: "10.0.1.12:8080"
+        weight: 1
+    health_check:
+      type: http
+      path: /health
+      interval: 10s
+      timeout: 5s
+      healthy_threshold: 2
+      unhealthy_threshold: 3
+
+middleware:
+  rate_limit:
+    enabled: true
+    requests_per_second: 1000
+    burst_size: 2000
+  
+  compression:
+    enabled: true
+    min_size: 1024
+    level: 6
+
+admin:
+  address: "127.0.0.1:8081"
+
+logging:
+  level: info
+  format: json
+  output: stdout

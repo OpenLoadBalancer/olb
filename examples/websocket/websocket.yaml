@@ -1,0 +1,68 @@
+# WebSocket Load Balancer
+# Supports WebSocket, SSE, and gRPC
+
+listeners:
+  - name: websocket
+    address: ":80"
+    routes:
+      - path: /ws
+        pool: websocket
+      - path: /api
+        pool: api
+
+pools:
+  # WebSocket pool with sticky sessions
+  - name: websocket
+    algorithm: ip_hash  # Sticky sessions for WebSocket
+    backends:
+      - address: "ws1.internal:8080"
+      - address: "ws2.internal:8080"
+      - address: "ws3.internal:8080"
+    health_check:
+      type: http
+      path: /health
+      interval: 5s
+
+  # API pool with least connections
+  - name: api
+    algorithm: least_connections
+    backends:
+      - address: "api1.internal:8080"
+        weight: 2
+      - address: "api2.internal:8080"
+        weight: 2
+      - address: "api3.internal:8080"
+        weight: 1
+
+middleware:
+  rate_limit:
+    enabled: true
+    requests_per_second: 100
+    burst_size: 200
+
+  cors:
+    enabled: true
+    allowed_origins:
+      - "https://example.com"
+      - "https://app.example.com"
+    allowed_methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    allowed_headers:
+      - Authorization
+      - Content-Type
+      - X-Requested-With
+    max_age: 3600
+
+  timeout:
+    enabled: true
+    timeout: 300s  # Longer timeout for WebSocket
+
+admin:
+  address: "127.0.0.1:8081"
+
+logging:
+  level: info

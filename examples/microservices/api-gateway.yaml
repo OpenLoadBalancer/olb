@@ -1,0 +1,136 @@
+# API Gateway Configuration
+# Microservices with path-based routing
+
+listeners:
+  - name: api-gateway
+    address: ":80"
+    routes:
+      # User service
+      - path: /api/v1/users
+        strip_path: true
+        pool: user-service
+      
+      # Order service
+      - path: /api/v1/orders
+        strip_path: true
+        pool: order-service
+      
+      # Payment service
+      - path: /api/v1/payments
+        strip_path: true
+        pool: payment-service
+      
+      # Inventory service
+      - path: /api/v1/inventory
+        strip_path: true
+        pool: inventory-service
+      
+      # Default route
+      - path: /
+        pool: default
+
+pools:
+  - name: user-service
+    algorithm: round_robin
+    backends:
+      - address: "user1.internal:8080"
+      - address: "user2.internal:8080"
+    health_check:
+      type: http
+      path: /health
+      interval: 5s
+
+  - name: order-service
+    algorithm: least_connections
+    backends:
+      - address: "order1.internal:8080"
+      - address: "order2.internal:8080"
+      - address: "order3.internal:8080"
+    health_check:
+      type: http
+      path: /health
+      interval: 5s
+
+  - name: payment-service
+    algorithm: weighted_round_robin
+    backends:
+      - address: "payment1.internal:8080"
+        weight: 3
+      - address: "payment2.internal:8080"
+        weight: 1
+    health_check:
+      type: http
+      path: /health
+      interval: 5s
+
+  - name: inventory-service
+    algorithm: round_robin
+    backends:
+      - address: "inventory1.internal:8080"
+      - address: "inventory2.internal:8080"
+    health_check:
+      type: http
+      path: /health
+      interval: 5s
+
+  - name: default
+    algorithm: round_robin
+    backends:
+      - address: "default.internal:8080"
+
+middleware:
+  rate_limit:
+    enabled: true
+    requests_per_second: 100
+    burst_size: 200
+
+  circuit_breaker:
+    enabled: true
+    error_threshold: 50
+    timeout: 30s
+
+  retry:
+    enabled: true
+    attempts: 3
+    backoff: exponential
+    max_backoff: 5s
+
+  request_id:
+    enabled: true
+    header: X-Request-ID
+
+  headers:
+    enabled: true
+    request_add:
+      X-Forwarded-Proto: https
+    response_add:
+      X-API-Gateway: OpenLoadBalancer
+
+waf:
+  enabled: true
+  mode: enforce
+  detection:
+    enabled: true
+    threshold: {block: 50, log: 25}
+    detectors:
+      sqli: {enabled: true}
+      xss: {enabled: true}
+  rate_limit:
+    enabled: true
+    rules:
+      - id: per-ip
+        scope: ip
+        limit: 1000
+        window: 1m
+      - id: per-path
+        scope: path
+        limit: 500
+        window: 1m
+
+admin:
+  address: "127.0.0.1:8081"
+
+metrics:
+  enabled: true
+  path: /metrics
+  port: 8082

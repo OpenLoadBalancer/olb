@@ -1,0 +1,59 @@
+# Kubernetes Service Discovery Configuration
+# Automatically discovers backends from Kubernetes endpoints
+
+listeners:
+  - name: http
+    address: ":80"
+    routes:
+      - path: /
+        pool: app
+
+pools:
+  - name: app
+    algorithm: round_robin
+    # Static fallback if discovery fails
+    backends: []
+    # Service discovery from Kubernetes
+    discovery:
+      type: kubernetes
+      kubernetes:
+        namespace: default
+        service: my-app
+        port: http
+        # Use in-cluster config or kubeconfig
+        in_cluster: true
+
+  - name: api
+    algorithm: least_connections
+    discovery:
+      type: kubernetes
+      kubernetes:
+        namespace: production
+        service: api-service
+        port: 8080
+        in_cluster: true
+
+# Health checks for Kubernetes pods
+health_check:
+  type: http
+  path: /health
+  interval: 5s
+  timeout: 3s
+  healthy_threshold: 2
+  unhealthy_threshold: 3
+
+middleware:
+  rate_limit:
+    enabled: true
+    requests_per_second: 1000
+
+  compression:
+    enabled: true
+
+admin:
+  address: ":8081"
+
+# Prometheus metrics for monitoring
+metrics:
+  enabled: true
+  path: /metrics

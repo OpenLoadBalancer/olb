@@ -1,0 +1,57 @@
+# HTTPS Load Balancer with Let's Encrypt
+# Automatic SSL certificate management
+
+listeners:
+  - name: https
+    address: ":443"
+    protocol: https
+    tls:
+      cert_file: /etc/olb/certs/cert.pem
+      key_file: /etc/olb/certs/key.pem
+      # Enable automatic certificate rotation
+      auto_reload: true
+    routes:
+      - path: /
+        pool: web
+
+  # HTTP to HTTPS redirect
+  - name: http
+    address: ":80"
+    routes:
+      - path: /
+        redirect: https://$host$request_uri
+
+pools:
+  - name: web
+    algorithm: least_connections
+    backends:
+      - address: "backend1.example.com:8080"
+      - address: "backend2.example.com:8080"
+    health_check:
+      type: https
+      path: /health
+      interval: 10s
+      timeout: 5s
+
+# ACME/Let's Encrypt configuration
+acme:
+  enabled: true
+  email: admin@example.com
+  directory: https://acme-v02.api.letsencrypt.org/directory
+  storage: /var/lib/olb/acme.json
+  accept_tos: true
+
+middleware:
+  headers:
+    enabled: true
+    response_add:
+      Strict-Transport-Security: "max-age=31536000; includeSubDomains"
+      X-Frame-Options: DENY
+      X-Content-Type-Options: nosniff
+
+waf:
+  enabled: true
+  mode: enforce
+  detection:
+    enabled: true
+    threshold: {block: 50, log: 25}
