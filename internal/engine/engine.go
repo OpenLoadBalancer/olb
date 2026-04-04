@@ -1024,6 +1024,8 @@ func (e *Engine) initializePools() error {
 			bal = balancer.NewRingHash()
 		case "sticky":
 			bal = balancer.NewSticky(balancer.NewRoundRobin(), nil)
+		case "peak_ewma", "pewma":
+			bal = balancer.NewPeakEWMA()
 		default:
 			bal = balancer.NewRoundRobin()
 		}
