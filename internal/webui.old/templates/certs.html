@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Certificates - OpenLoadBalancer</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/certs.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <h1 class="logo">OLB</h1>
+                <span class="version">v{{.Version}}</span>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="/" class="nav-link">
+                        <span class="nav-icon">📊</span>
+                        <span class="nav-text">Dashboard</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/backends" class="nav-link">
+                        <span class="nav-icon">🖥️</span>
+                        <span class="nav-text">Backends</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/routes" class="nav-link">
+                        <span class="nav-icon">🛣️</span>
+                        <span class="nav-text">Routes</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/config" class="nav-link">
+                        <span class="nav-icon">⚙️</span>
+                        <span class="nav-text">Configuration</span>
+                    </a>
+                </li>
+                <li class="nav-item active">
+                    <a href="/certificates" class="nav-link">
+                        <span class="nav-icon">🔒</span>
+                        <span class="nav-text">Certificates</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/metrics" class="nav-link">
+                        <span class="nav-icon">📈</span>
+                        <span class="nav-text">Metrics</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/logs" class="nav-link">
+                        <span class="nav-icon">📋</span>
+                        <span class="nav-text">Logs</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="page-header">
+                <h1>Certificates</h1>
+                <div class="header-actions">
+                    <button id="refresh-certs" class="btn btn-secondary">
+                        <span class="btn-icon">🔄</span>
+                        Refresh
+                    </button>
+                    <button id="add-cert" class="btn btn-primary">
+                        <span class="btn-icon">+</span>
+                        Add Certificate
+                    </button>
+                </div>
+            </header>
+
+            <!-- Statistics Cards -->
+            <div class="stats-cards">
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-total">-</div>
+                    <div class="stat-label">Total Certificates</div>
+                </div>
+                <div class="stat-card stat-valid">
+                    <div class="stat-value" id="stat-valid">-</div>
+                    <div class="stat-label">Valid</div>
+                </div>
+                <div class="stat-card stat-warning">
+                    <div class="stat-value" id="stat-expiring">-</div>
+                    <div class="stat-label">Expiring Soon</div>
+                </div>
+                <div class="stat-card stat-danger">
+                    <div class="stat-value" id="stat-expired">-</div>
+                    <div class="stat-label">Expired</div>
+                </div>
+            </div>
+
+            <!-- Filter Controls -->
+            <div class="filter-controls">
+                <span class="filter-label">Filter:</span>
+                <button class="filter-btn active" data-filter="all">All</button>
+                <button class="filter-btn" data-filter="valid">Valid</button>
+                <button class="filter-btn" data-filter="expiring">Expiring Soon</button>
+                <button class="filter-btn" data-filter="expired">Expired</button>
+            </div>
+
+            <!-- Certificates Table -->
+            <div class="table-container">
+                <div id="certs-loading" class="loading-overlay" style="display: none;">
+                    <div class="spinner"></div>
+                    <span>Loading certificates...</span>
+                </div>
+                <table class="data-table certs-table">
+                    <thead>
+                        <tr>
+                            <th class="sortable" data-sort="domain">Domain ↕</th>
+                            <th class="sortable" data-sort="issuer">Issuer ↕</th>
+                            <th>Serial</th>
+                            <th>Valid From</th>
+                            <th>Valid To</th>
+                            <th class="sortable" data-sort="expiry">Days Left ↕</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="certs-table-body">
+                        <tr>
+                            <td colspan="8" class="empty-cell">Loading certificates...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <!-- Add Certificate Modal -->
+    <div id="add-cert-modal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3>Add Certificate</h3>
+                <button id="close-add-modal" class="modal-close">×</button>
+            </div>
+            <div class="modal-body">
+                <!-- Source Selection -->
+                <div class="form-section">
+                    <label class="form-label">Certificate Source</label>
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="radio" name="cert-source" value="upload" checked>
+                            <span>Upload PEM Files</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="cert-source" value="acme">
+                            <span>ACME (Let's Encrypt)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Upload Section -->
+                <div id="upload-section" class="source-section">
+                    <div id="drop-zone" class="drop-zone">
+                        <div class="drop-zone-icon">📁</div>
+                        <p>Drag and drop certificate files here</p>
+                        <p class="drop-zone-hint">or click to browse</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="cert-file">Certificate File (.crt, .pem)</label>
+                        <input type="file" id="cert-file" class="form-input" accept=".crt,.pem,.cert">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="key-file">Private Key File (.key)</label>
+                        <input type="file" id="key-file" class="form-input" accept=".key,.pem">
+                    </div>
+                </div>
+
+                <!-- ACME Section -->
+                <div id="acme-section" class="source-section" style="display: none;">
+                    <div class="info-box">
+                        <span class="info-icon">ℹ️</span>
+                        <p>ACME will automatically provision and renew certificates from Let's Encrypt.</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="acme-domain">Domain Name</label>
+                        <input type="text" id="acme-domain" class="form-input" placeholder="example.com">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="acme-email">Email Address</label>
+                        <input type="email" id="acme-email" class="form-input" placeholder="admin@example.com">
+                        <span class="form-hint">Used for Let's Encrypt account and expiry notifications</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="cancel-add" class="btn btn-secondary">Cancel</button>
+                <button id="save-cert" class="btn btn-primary">Add Certificate</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Certificate Details Modal -->
+    <div id="details-modal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3>Certificate Details</h3>
+                <button id="close-details-modal" class="modal-close">×</button>
+            </div>
+            <div class="modal-body">
+                <div id="cert-details-content" class="cert-details">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="close-details" class="btn btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Container -->
+    <div id="notification-container"></div>
+
+    <script type="module" src="/static/js/pages/certs.js"></script>
+</body>
+</html>

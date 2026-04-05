@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backends - OpenLoadBalancer</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/components.css">
+</head>
+<body>
+    <div class="app">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1 class="logo">OLB</h1>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="/" class="nav-item">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="14" width="7" height="7"></rect>
+                        <rect x="3" y="14" width="7" height="7"></rect>
+                    </svg>
+                    <span>Dashboard</span>
+                </a>
+                <a href="/backends" class="nav-item active">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 12h14M5 12a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2M5 12a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2m-2-4h.01M17 16h.01"></path>
+                    </svg>
+                    <span>Backends</span>
+                </a>
+                <a href="/routes" class="nav-item">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 20l-5.447-2.724A1 1 0 0 1 3 16.382V5.618a1 1 0 0 1 1.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0 0 21 18.382V7.618a1 1 0 0 0-.553-.894L15 4m0 13V4m0 0L9 7"></path>
+                    </svg>
+                    <span>Routes</span>
+                </a>
+                <a href="/config" class="nav-item">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                    <span>Configuration</span>
+                </a>
+                <a href="/logs" class="nav-item">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                        <polyline points="10 9 9 9 8 9"></polyline>
+                    </svg>
+                    <span>Logs</span>
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="page-header">
+                <div class="header-content">
+                    <h1>Backends</h1>
+                    <p class="text-muted">Manage backend pools and servers</p>
+                </div>
+                <div class="header-actions">
+                    <button id="refresh-backends" class="btn btn-secondary">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                        </svg>
+                        Refresh
+                    </button>
+                    <button id="add-backend-btn" class="btn btn-primary">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        Add Backend
+                    </button>
+                </div>
+            </header>
+
+            <!-- Pool Stats -->
+            <section id="pool-stats" class="stats-grid">
+                <!-- Stats will be rendered by JavaScript -->
+            </section>
+
+            <!-- Pool Selector -->
+            <section class="pool-selector-section">
+                <label for="pool-select" class="form-label">Backend Pool</label>
+                <select id="pool-select" class="form-control">
+                    <option value="">Select a pool...</option>
+                </select>
+            </section>
+
+            <!-- Bulk Actions -->
+            <div id="bulk-actions" class="bulk-actions-bar" style="display: none;">
+                <span class="selection-count">0 selected</span>
+                <div class="bulk-action-buttons">
+                    <button class="btn btn-sm btn-secondary bulk-action-btn" data-action="drain">
+                        Drain
+                    </button>
+                    <button class="btn btn-sm btn-secondary bulk-action-btn" data-action="enable">
+                        Enable
+                    </button>
+                    <button class="btn btn-sm btn-secondary bulk-action-btn" data-action="disable">
+                        Disable
+                    </button>
+                    <button class="btn btn-sm btn-danger bulk-action-btn" data-action="remove">
+                        Remove
+                    </button>
+                </div>
+            </div>
+
+            <!-- Search -->
+            <section class="search-section">
+                <div class="search-input-wrapper">
+                    <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <path d="m21 21-4.35-4.35"></path>
+                    </svg>
+                    <input type="text" id="backend-search" class="form-control" placeholder="Search backends by name, address, or state...">
+                </div>
+            </section>
+
+            <!-- Backend Table -->
+            <section class="table-section">
+                <table id="backend-table" class="data-table">
+                    <thead>
+                        <tr>
+                            <th class="checkbox-col">
+                                <input type="checkbox" id="select-all-backends">
+                            </th>
+                            <th class="sortable" data-sort="id">Backend</th>
+                            <th class="sortable" data-sort="state">State</th>
+                            <th class="sortable" data-sort="healthy">Health</th>
+                            <th class="sortable" data-sort="active_conns">Active Conns</th>
+                            <th class="sortable" data-sort="rps">RPS</th>
+                            <th class="sortable" data-sort="avg_latency">Latency</th>
+                            <th class="sortable" data-sort="weight">Weight</th>
+                            <th class="actions-col">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="backend-table-body">
+                        <!-- Table rows will be rendered by JavaScript -->
+                    </tbody>
+                </table>
+
+                <!-- Pagination -->
+                <div class="pagination-wrapper">
+                    <div id="page-info" class="page-info"></div>
+                    <div id="backend-pagination" class="pagination"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Add Backend Modal -->
+    <div id="add-backend-modal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Add Backend</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="add-backend-form">
+                    <div class="form-group">
+                        <label for="backend-id" class="form-label">Backend ID *</label>
+                        <input type="text" id="backend-id" name="backend-id" class="form-control" required
+                               placeholder="e.g., backend-01">
+                        <small class="form-help">Unique identifier for this backend</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="backend-address" class="form-label">Address *</label>
+                        <input type="text" id="backend-address" name="backend-address" class="form-control" required
+                               placeholder="e.g., 192.168.1.100:8080">
+                        <small class="form-help">IP address and port of the backend server</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="backend-weight" class="form-label">Weight</label>
+                        <input type="number" id="backend-weight" name="backend-weight" class="form-control"
+                               value="1" min="1" max="100">
+                        <small class="form-help">Load balancing weight (1-100, default: 1)</small>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
+                <button type="submit" form="add-backend-form" class="btn btn-primary">Add Backend</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Backend Detail Modal -->
+    <div id="backend-detail-modal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3 class="modal-title">Backend Details</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="backend-detail-content">
+                    <!-- Content will be rendered by JavaScript -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary modal-cancel">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirm-modal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Confirm Action</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="confirm-message"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
+                <button type="button" class="btn btn-danger confirm-btn">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="/static/js/pages/backends.js"></script>
+</body>
+</html>

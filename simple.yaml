@@ -1,0 +1,27 @@
+version: "1"
+
+admin:
+  address: ":18091"
+  mcp_address: ":18092"
+
+listeners:
+  - name: http
+    address: ":18090"
+    protocol: http
+    routes:
+      - path: /
+        pool: default
+
+pools:
+  - name: default
+    algorithm: round_robin
+    backends:
+      - address: "httpbin.org:80"
+
+middleware:
+  rate_limit:
+    enabled: true
+    requests_per_second: 100
+
+logging:
+  level: info

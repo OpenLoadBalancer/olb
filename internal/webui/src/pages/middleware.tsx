@@ -1,11 +1,9 @@
 import { useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
-import { Shield, Clock, Globe, Lock, Zap, ScrollText, Server, AlertTriangle } from "lucide-react"
+import { Clock, Globe, Lock, Zap, Server, ScrollText } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
@@ -105,7 +103,6 @@ export function MiddlewarePage() {
         </Button>
       </div>
 
-      {/* Category Filter */}
       <div className="flex gap-2">
         {categories.map(cat => (
           <Button
@@ -119,7 +116,6 @@ export function MiddlewarePage() {
         ))}
       </div>
 
-      {/* Middleware Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {filteredMiddleware.map((middleware) => (
           <Card key={middleware.id} className={cn(

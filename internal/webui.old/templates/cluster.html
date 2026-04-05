@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cluster - OpenLoadBalancer</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/cluster.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <h1 class="logo">OLB</h1>
+                <span class="version">v{{.Version}}</span>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="/" class="nav-link">
+                        <span class="nav-icon">&#x1f4ca;</span>
+                        <span class="nav-text">Dashboard</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/backends" class="nav-link">
+                        <span class="nav-icon">&#x1f5a5;&#xfe0f;</span>
+                        <span class="nav-text">Backends</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/routes" class="nav-link">
+                        <span class="nav-icon">&#x1f6e3;&#xfe0f;</span>
+                        <span class="nav-text">Routes</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/config" class="nav-link">
+                        <span class="nav-icon">&#x2699;&#xfe0f;</span>
+                        <span class="nav-text">Configuration</span>
+                    </a>
+                </li>
+                <li class="nav-item active">
+                    <a href="/cluster" class="nav-link">
+                        <span class="nav-icon">&#x1f310;</span>
+                        <span class="nav-text">Cluster</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/certificates" class="nav-link">
+                        <span class="nav-icon">&#x1f512;</span>
+                        <span class="nav-text">Certificates</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/metrics" class="nav-link">
+                        <span class="nav-icon">&#x1f4c8;</span>
+                        <span class="nav-text">Metrics</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/logs" class="nav-link">
+                        <span class="nav-icon">&#x1f4cb;</span>
+                        <span class="nav-text">Logs</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="page-header">
+                <h1>Cluster</h1>
+                <div class="header-actions">
+                    <button id="refresh-cluster" class="btn btn-secondary">
+                        <span class="btn-icon">&#x21bb;</span>
+                        Refresh
+                    </button>
+                    <button id="join-cluster-btn" class="btn btn-primary">
+                        <span class="btn-icon">+</span>
+                        Join Cluster
+                    </button>
+                    <button id="leave-cluster-btn" class="btn btn-secondary btn-danger-outline">
+                        <span class="btn-icon">&#x2717;</span>
+                        Leave Cluster
+                    </button>
+                </div>
+            </header>
+
+            <!-- Cluster Status Cards -->
+            <section id="cluster-stats" class="stats-cards">
+                <div class="stat-card" id="stat-node-id">
+                    <div class="stat-label">Node ID</div>
+                    <div class="stat-value" id="stat-node-id-value">--</div>
+                </div>
+                <div class="stat-card" id="stat-state">
+                    <div class="stat-label">State</div>
+                    <div class="stat-value" id="stat-state-value">--</div>
+                </div>
+                <div class="stat-card" id="stat-leader">
+                    <div class="stat-label">Leader</div>
+                    <div class="stat-value" id="stat-leader-value">--</div>
+                </div>
+                <div class="stat-card" id="stat-term">
+                    <div class="stat-label">Term</div>
+                    <div class="stat-value" id="stat-term-value">--</div>
+                </div>
+            </section>
+
+            <!-- Raft Log Info -->
+            <section class="raft-info-section">
+                <h2 class="section-title">Raft Log</h2>
+                <div class="raft-info-cards">
+                    <div class="raft-info-card">
+                        <div class="raft-info-label">Commit Index</div>
+                        <div class="raft-info-value" id="raft-commit-index">--</div>
+                    </div>
+                    <div class="raft-info-card">
+                        <div class="raft-info-label">Applied Index</div>
+                        <div class="raft-info-value" id="raft-applied-index">--</div>
+                    </div>
+                    <div class="raft-info-card">
+                        <div class="raft-info-label">Log Length</div>
+                        <div class="raft-info-value" id="raft-log-length">--</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Members Table -->
+            <section class="table-section">
+                <h2 class="section-title">Cluster Members</h2>
+                <div class="table-container">
+                    <div id="members-loading" class="loading-overlay" style="display: none;">
+                        <div class="spinner"></div>
+                        <span>Loading members...</span>
+                    </div>
+                    <table id="members-table" class="data-table">
+                        <thead>
+                            <tr>
+                                <th class="sortable" data-sort="id">Node ID</th>
+                                <th class="sortable" data-sort="address">Address</th>
+                                <th class="sortable" data-sort="state">State</th>
+                                <th class="sortable" data-sort="role">Role</th>
+                                <th class="sortable" data-sort="last_seen">Last Seen</th>
+                                <th>Health</th>
+                            </tr>
+                        </thead>
+                        <tbody id="members-table-body">
+                            <!-- Table rows will be rendered by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Join Cluster Modal -->
+    <div id="join-modal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Join Cluster</h3>
+                <button id="close-join-modal" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="info-box">
+                    <span class="info-icon">&#x2139;&#xfe0f;</span>
+                    <p>Enter the address of an existing cluster node to join. This node will synchronize with the cluster and begin participating in Raft consensus.</p>
+                </div>
+                <form id="join-cluster-form">
+                    <div class="form-group">
+                        <label for="seed-address" class="form-label">Seed Address *</label>
+                        <input type="text" id="seed-address" name="seed-address" class="form-input" required
+                               placeholder="e.g., 10.0.0.1:7946">
+                        <span class="form-hint">IP address and port of an existing cluster member</span>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button id="cancel-join" class="btn btn-secondary">Cancel</button>
+                <button id="confirm-join" class="btn btn-primary">Join Cluster</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leave Cluster Confirmation Modal -->
+    <div id="leave-modal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Leave Cluster</h3>
+                <button id="close-leave-modal" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="warning-icon">&#x26a0;&#xfe0f;</div>
+                <p>Are you sure you want to leave the cluster?</p>
+                <p class="modal-description">
+                    This node will gracefully depart from the cluster. It will stop participating
+                    in Raft consensus and will no longer receive cluster updates. You can rejoin later.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button id="cancel-leave" class="btn btn-secondary">Cancel</button>
+                <button id="confirm-leave" class="btn btn-primary btn-danger">Leave Cluster</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Container -->
+    <div id="notification-container"></div>
+
+    <script src="/static/js/pages/cluster.js"></script>
+</body>
+</html>

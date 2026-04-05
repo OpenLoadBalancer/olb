@@ -2,9 +2,7 @@ import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Shield, Plus, Trash2, Clock, CheckCircle, AlertCircle } from "lucide-react"
-import { toast } from "sonner"
-import { cn } from "@/lib/utils"
+import { Shield, Plus, Trash2, CheckCircle, AlertCircle } from "lucide-react"
 
 interface Certificate {
   id: string
@@ -38,13 +36,7 @@ const mockCertificates: Certificate[] = [
 ]
 
 export function CertificatesPage() {
-  const [certs, setCerts] = useState<Certificate[]>(mockCertificates)
-
-  const getExpiryColor = (days: number) => {
-    if (days < 7) return "text-red-500"
-    if (days < 30) return "text-amber-500"
-    return "text-green-500"
-  }
+  const [certs] = useState<Certificate[]>(mockCertificates)
 
   const getExpiryBg = (days: number) => {
     if (days < 7) return "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"

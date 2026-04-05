@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenLoadBalancer</title>
+    <link rel="stylesheet" href="/static/css/design.css">
+    <link rel="stylesheet" href="/static/css/components.css">
+    <link rel="stylesheet" href="/static/css/responsive.css">
+    <link rel="stylesheet" href="/static/css/accessibility.css">
+    <style>
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+        .status-icon {
+            font-size: 0.625rem;
+        }
+        .mobile-header {
+            display: none;
+            padding: 1rem;
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border-color);
+        }
+        @media (max-width: 768px) {
+            .mobile-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Skip to content link for keyboard navigation -->
+    <a href="#app-content" class="skip-link">Skip to main content</a>
+
+    <div class="app-layout">
+        <!-- Mobile Header -->
+        <div class="mobile-header" role="banner">
+            <button id="sidebar-toggle" class="btn btn-ghost btn-icon" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">☰</button>
+            <span class="font-semibold">OpenLoadBalancer</span>
+            <div id="mobile-status" role="status" aria-label="Connection status"></div>
+        </div>
+
+        <!-- Sidebar overlay (closes sidebar on mobile) -->
+        <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
+
+        <!-- Sidebar -->
+        <aside id="sidebar" class="sidebar" role="complementary" aria-label="Sidebar navigation">
+            <!-- Navigation rendered by nav.js -->
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content" role="main">
+            <!-- Page Header -->
+            <header class="page-header" role="banner">
+                <nav id="breadcrumbs" aria-label="Breadcrumb">
+                    <!-- Breadcrumbs rendered by nav.js -->
+                </nav>
+                <div class="flex items-center gap-4">
+                    <div id="connection-status" role="status" aria-label="Connection status" aria-live="polite"></div>
+                    <div class="dropdown">
+                        <button class="btn btn-ghost btn-icon" aria-label="User menu" aria-haspopup="true">👤</button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Page Content -->
+            <div id="app-content" class="page-content" role="region" aria-label="Page content" aria-live="polite">
+                <!-- Dynamic content rendered by SPA router -->
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container" role="alert" aria-live="assertive" aria-atomic="true"></div>
+
+    <!-- Scripts -->
+    <script src="/static/js/spa.js"></script>
+    <script src="/static/js/components.js"></script>
+    <script src="/static/js/nav.js"></script>
+    <script src="/static/js/ws.js"></script>
+    <script src="/static/js/pages/dashboard.js"></script>
+    <script src="/static/js/pages/backends.js"></script>
+    <script src="/static/js/pages/routes.js"></script>
+    <script src="/static/js/pages/metrics.js"></script>
+    <script src="/static/js/pages/logs.js"></script>
+    <script src="/static/js/pages/config.js"></script>
+    <script src="/static/js/pages/certs.js"></script>
+    <script src="/static/js/pages/waf.js"></script>
+
+    <script>
+        // Initialize application
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize navigation
+            Navigation.init();
+
+            // Initialize WebSocket
+            const wsClient = new WSClient({
+                url: (window.location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + window.location.host + '/ws',
+                debug: false
+            });
+
+            // Connection status indicator
+            const statusIndicator = new ConnectionStatus({
+                client: wsClient,
+                showLabel: false
+            });
+            statusIndicator.mount('#connection-status');
+
+            // Mobile status indicator
+            const mobileStatus = new ConnectionStatus({
+                client: wsClient,
+                showLabel: false
+            });
+            mobileStatus.mount('#mobile-status');
+
+            // Connect WebSocket
+            wsClient.connect();
+
+            // Handle WebSocket messages
+            wsClient.on('metrics', function(data) {
+                window.dispatchEvent(new CustomEvent('ws:metrics', { detail: data }));
+            });
+
+            wsClient.on('logs', function(data) {
+                window.dispatchEvent(new CustomEvent('ws:logs', { detail: data }));
+            });
+
+            wsClient.on('config_change', function(data) {
+                Components.Toast.info('Configuration updated', 'The configuration has been reloaded');
+                window.dispatchEvent(new CustomEvent('ws:config', { detail: data }));
+            });
+
+            wsClient.on('backend_status', function(data) {
+                window.dispatchEvent(new CustomEvent('ws:backend', { detail: data }));
+            });
+
+            // Define routes
+            OLBSPA.route('/dashboard', function(ctx) {
+                DashboardPage.render('#app-content');
+            }, { title: 'Dashboard' });
+
+            OLBSPA.route('/backends', function(ctx) {
+                BackendsPage.render('#app-content');
+            }, { title: 'Backends' });
+
+            OLBSPA.route('/backends/:id', function(ctx) {
+                BackendsPage.renderDetail('#app-content', ctx.params.id);
+            }, { title: 'Backend Details' });
+
+            OLBSPA.route('/routes', function(ctx) {
+                RoutesPage.render('#app-content');
+            }, { title: 'Routes' });
+
+            OLBSPA.route('/routes/:id', function(ctx) {
+                RoutesPage.renderDetail('#app-content', ctx.params.id);
+            }, { title: 'Route Details' });
+
+            OLBSPA.route('/metrics', function(ctx) {
+                MetricsPage.render('#app-content');
+            }, { title: 'Metrics' });
+
+            OLBSPA.route('/logs', function(ctx) {
+                LogsPage.render('#app-content');
+            }, { title: 'Logs' });
+
+            OLBSPA.route('/config', function(ctx) {
+                ConfigPage.render('#app-content');
+            }, { title: 'Configuration' });
+
+            OLBSPA.route('/certs', function(ctx) {
+                CertsPage.render('#app-content');
+            }, { title: 'Certificates' });
+
+            // Default route
+            OLBSPA.route('/', function(ctx) {
+                OLBSPA.navigate('/dashboard');
+            });
+
+            // 404 route
+            OLBSPA.route('/404', function(ctx) {
+                const container = document.getElementById('app-content');
+                if (container) {
+                    container.innerHTML = '';
+                    const emptyState = Components.EmptyState.render({
+                        icon: '404',
+                        title: 'Page Not Found',
+                        description: "The page you're looking for doesn't exist.",
+                        action: {
+                            label: 'Go to Dashboard',
+                            onClick: function() { OLBSPA.navigate('/dashboard'); }
+                        }
+                    });
+                    container.appendChild(emptyState);
+                }
+            }, { title: 'Not Found' });
+
+            // Initialize SPA router
+            OLBSPA.init();
+
+            // Handle API errors globally
+            window.addEventListener('error', function(e) {
+                console.error('Global error:', e);
+                Components.Toast.error('An error occurred', e.message || 'Unknown error');
+            });
+
+            // Sidebar toggle with overlay for mobile
+            var sidebarToggle = document.getElementById('sidebar-toggle');
+            var sidebarEl = document.getElementById('sidebar');
+            var sidebarOverlay = document.getElementById('sidebar-overlay');
+
+            function openSidebar() {
+                if (sidebarEl) sidebarEl.classList.add('open');
+                if (sidebarOverlay) {
+                    sidebarOverlay.classList.add('active');
+                    sidebarOverlay.setAttribute('aria-hidden', 'false');
+                }
+                if (sidebarToggle) sidebarToggle.setAttribute('aria-expanded', 'true');
+            }
+
+            function closeSidebar() {
+                if (sidebarEl) sidebarEl.classList.remove('open');
+                if (sidebarOverlay) {
+                    sidebarOverlay.classList.remove('active');
+                    sidebarOverlay.setAttribute('aria-hidden', 'true');
+                }
+                if (sidebarToggle) sidebarToggle.setAttribute('aria-expanded', 'false');
+            }
+
+            if (sidebarToggle) {
+                sidebarToggle.addEventListener('click', function() {
+                    var isOpen = sidebarEl && sidebarEl.classList.contains('open');
+                    if (isOpen) {
+                        closeSidebar();
+                    } else {
+                        openSidebar();
+                    }
+                });
+            }
+
+            if (sidebarOverlay) {
+                sidebarOverlay.addEventListener('click', closeSidebar);
+            }
+
+            // Close sidebar on Escape key
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && sidebarEl && sidebarEl.classList.contains('open')) {
+                    closeSidebar();
+                    if (sidebarToggle) sidebarToggle.focus();
+                }
+            });
+
+            // Expose globals for debugging
+            window.OLB = {
+                spa: OLBSPA,
+                nav: Navigation,
+                ws: wsClient,
+                components: Components
+            };
+        });
+    </script>
+</body>
+</html>
