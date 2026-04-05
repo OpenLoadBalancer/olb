@@ -18,7 +18,7 @@
     "@tanstack/react-query-devtools": "^5.62.11",
     "@tanstack/react-table": "^8.20.6",
     "cmdk": "^1.0.0",
-    "@hello-pangea/dnd": "^16.5.0",
+    "@hello-pangea/dnd": "^18.0.1",
     "axios": "^1.7.9",
     "lucide-react": "^0.469.0",
     "recharts": "^2.15.0",
