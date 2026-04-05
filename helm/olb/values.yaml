@@ -1,0 +1,153 @@
+# Default values for olb.
+# This is a YAML-formatted file.
+
+replicaCount: 2
+
+image:
+  repository: openloadbalancer/olb
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  seccompProfile:
+    type: RuntimeDefault
+
+service:
+  type: LoadBalancer
+  ports:
+    http: 80
+    https: 443
+    admin: 8081
+    mcp: 8082
+
+# Cluster configuration
+cluster:
+  enabled: false
+  join: []
+
+# Admin configuration
+admin:
+  enabled: true
+  address: "0.0.0.0:8081"
+  mcp:
+    enabled: true
+    address: "0.0.0.0:8082"
+
+# WAF configuration
+waf:
+  enabled: true
+  mode: enforce
+
+# Persistence for config and data
+persistence:
+  config:
+    enabled: true
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 1Gi
+  data:
+    enabled: true
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 5Gi
+
+# ConfigMap for OLB configuration
+config:
+  version: "1"
+  listeners:
+    - name: http
+      protocol: http
+      address: ":8080"
+      routes:
+        - name: default
+          path: /
+          pool: default
+  pools:
+    - name: default
+      algorithm: round_robin
+      backends: []
+
+# Health checks
+livenessProbe:
+  httpGet:
+    path: /api/v1/system/health
+    port: admin
+  initialDelaySeconds: 10
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /api/v1/system/health
+    port: admin
+  initialDelaySeconds: 5
+  periodSeconds: 5
+
+# Resources
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+# Autoscaling
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# Node selector
+nodeSelector: {}
+
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - olb
+          topologyKey: kubernetes.io/hostname
+
+# Monitoring
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+
+# Network policy
+networkPolicy:
+  enabled: false

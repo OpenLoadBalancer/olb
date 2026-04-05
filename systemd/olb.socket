@@ -1,0 +1,14 @@
+[Unit]
+Description=OpenLoadBalancer socket activation
+Documentation=https://openloadbalancer.dev/docs
+
+[Socket]
+ListenStream=8080
+ListenStream=8443
+ListenStream=8081
+BindIPv6Only=both
+NoDelay=true
+DeferAcceptSec=1
+
+[Install]
+WantedBy=sockets.target

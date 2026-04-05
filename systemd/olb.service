@@ -1,0 +1,40 @@
+[Unit]
+Description=OpenLoadBalancer - High-performance L4/L7 load balancer
+Documentation=https://openloadbalancer.dev/docs
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/olb --config /etc/olb/olb.yaml
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/olb /var/log/olb
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Environment
+Environment="OLB_CONFIG=/etc/olb/olb.yaml"
+Environment="OLB_DATA_DIR=/var/lib/olb"
+Environment="OLB_LOG_DIR=/var/log/olb"
+
+[Install]
+WantedBy=multi-user.target

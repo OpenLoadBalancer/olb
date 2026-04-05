@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "olb.fullname" . }}
+  labels:
+    {{- include "olb.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.ports.http }}
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: {{ .Values.service.ports.admin }}
+      targetPort: admin
+      protocol: TCP
+      name: admin
+    {{- if .Values.admin.mcp.enabled }}
+    - port: {{ .Values.service.ports.mcp }}
+      targetPort: mcp
+      protocol: TCP
+      name: mcp
+    {{- end }}
+  selector:
+    {{- include "olb.selectorLabels" . | nindent 4 }}

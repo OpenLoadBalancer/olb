@@ -1,0 +1,21 @@
+apiVersion: v2
+name: olb
+description: OpenLoadBalancer - High-performance L4/L7 load balancer
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - loadbalancer
+  - proxy
+  - ingress
+  - kubernetes
+home: https://openloadbalancer.dev
+sources:
+  - https://github.com/openloadbalancer/olb
+maintainers:
+  - name: OpenLoadBalancer Team
+    email: maintainers@openloadbalancer.dev
+dependencies:
+  - name: olb
+    version: "~1.0.0"
+    condition: cluster.enabled
+    alias: cluster

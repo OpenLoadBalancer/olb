@@ -1,0 +1,245 @@
+# This is an example .goreleaser.yaml file.
+# Make sure to check the documentation at https://goreleaser.com
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+uilds:
+  - id: olb
+    main: ./cmd/olb
+    binary: olb
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+      - freebsd
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "7"
+    ldflags:
+      - -s -w
+      - -X github.com/openloadbalancer/olb/pkg/version.Version={{.Version}}
+      - -X github.com/openloadbalancer/olb/pkg/version.Commit={{.Commit}}
+      - -X github.com/openloadbalancer/olb/pkg/version.Date={{.Date}}
+    flags:
+      - -trimpath
+    overrides:
+      - goos: darwin
+        goarch: arm64
+        env:
+          - CGO_ENABLED=1
+          - CC=o64-clang
+          - CXX=o64-clang++
+
+universal_binaries:
+  - id: olb
+    name_template: "olb_{{.Version}}_darwin_universal"
+    replace: true
+
+archives:
+  - id: olb
+    name_template: "{{.ProjectName}}_{{.Version}}_{{.Os}}_{{.Arch}}"
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - configs/*.example
+      - systemd/*
+      - scripts/*
+      - README.md
+      - CHANGELOG.md
+      - LICENSE
+    wrap_in_directory: true
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  name_template: "{{.Version}}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+      - "^style:"
+  groups:
+    - title: Features
+      regexp: "^feat[:\\(]"
+      order: 0
+    - title: Bug Fixes
+      regexp: "^fix[:\\(]"
+      order: 1
+    - title: Performance
+      regexp: "^perf[:\\(]"
+      order: 2
+    - title: Security
+      regexp: "^sec[:\\(]"
+      order: 3
+    - title: Others
+      order: 999
+
+release:
+  github:
+    owner: openloadbalancer
+    name: olb
+  name_template: "{{.ProjectName}} {{.Version}}"
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## OpenLoadBalancer {{.Version}}
+
+    **Full Changelog**: https://github.com/openloadbalancer/olb/compare/{{.PreviousTag}}...{{.Tag}}
+  footer: |
+    ## Docker Images
+
+    ```bash
+    docker pull openloadbalancer/olb:{{.Version}}
+    docker pull openloadbalancer/olb:latest
+    ```
+
+    ## Helm
+
+    ```bash
+    helm upgrade --install olb oci://ghcr.io/openloadbalancer/charts/olb --version {{.Version}}
+    ```
+
+    ## Verification
+
+    Verify checksums:
+    ```bash
+    sha256sum -c checksums.txt
+    ```
+
+    ## Quick Start
+
+    ```bash
+    # Binary
+    ./olb --config configs/olb.yaml
+
+    # Docker
+    docker run -p 8080:8080 -v $(pwd)/configs:/etc/olb openloadbalancer/olb:{{.Version}}
+    ```
+
+dockers:
+  - id: olb-amd64
+    image_templates:
+      - "openloadbalancer/olb:{{.Version}}-amd64"
+      - "openloadbalancer/olb:latest-amd64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+    goarch: amd64
+
+  - id: olb-arm64
+    image_templates:
+      - "openloadbalancer/olb:{{.Version}}-arm64"
+      - "openloadbalancer/olb:latest-arm64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+    goarch: arm64
+
+docker_manifests:
+  - name_template: "openloadbalancer/olb:{{.Version}}"
+    image_templates:
+      - "openloadbalancer/olb:{{.Version}}-amd64"
+      - "openloadbalancer/olb:{{.Version}}-arm64"
+  - name_template: "openloadbalancer/olb:latest"
+    image_templates:
+      - "openloadbalancer/olb:latest-amd64"
+      - "openloadbalancer/olb:latest-arm64"
+
+brews:
+  - name: olb
+    repository:
+      owner: openloadbalancer
+      name: homebrew-tap
+    directory: Formula
+    homepage: https://openloadbalancer.dev
+    description: High-performance zero-dependency L4/L7 load balancer
+    license: MIT
+    skip_upload: false
+    test: |
+      system "#{bin}/olb", "--version"
+    install: |
+      bin.install "olb"
+      etc.install "configs/olb.yaml.example" => "olb/olb.yaml" if File.exist?("configs/olb.yaml.example")
+      (var/"olb").mkpath
+
+nfpms:
+  - id: olb
+    package_name: olb
+    vendor: OpenLoadBalancer
+    homepage: https://openloadbalancer.dev
+    maintainer: OpenLoadBalancer Team <maintainers@openloadbalancer.dev>
+    description: High-performance zero-dependency L4/L7 load balancer
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - apk
+      - archlinux
+    dependencies:
+      - systemd
+    recommends:
+      - ca-certificates
+    suggests:
+      - logrotate
+    bindir: /usr/local/bin
+    contents:
+      - src: configs/olb.yaml.example
+        dst: /etc/olb/olb.yaml.example
+        type: config|noreplace
+      - src: systemd/olb.service
+        dst: /etc/systemd/system/olb.service
+      - src: systemd/olb.socket
+        dst: /etc/systemd/system/olb.socket
+      - src: scripts/health-check.sh
+        dst: /usr/local/bin/olb-health-check
+        mode: "0755"
+      - src: scripts/backup.sh
+        dst: /usr/local/bin/olb-backup
+        mode: "0755"
+      - src: README.md
+        dst: /usr/share/doc/olb/README.md
+      - src: CHANGELOG.md
+        dst: /usr/share/doc/olb/CHANGELOG.md
+    scripts:
+      postinstall: "scripts/postinstall.sh"
+      preremove: "scripts/preremove.sh"
+    deb:
+      lintian_overrides:
+        - static-binary
+    rpm:
+      compression: xz
+
+publishers:
+  - name: helm
+    cmd: |
+      helm package ./helm/olb --version {{.Version}} --app-version {{.Version}}
+      helm push olb-{{.Version}}.tgz oci://ghcr.io/openloadbalancer/charts
