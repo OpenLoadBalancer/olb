@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1055,6 +1056,11 @@ pools:
 // TestE2E_UDPProxy verifies that the UDP proxy forwards datagrams to a UDP
 // echo backend and returns responses to the client.
 func TestE2E_UDPProxy(t *testing.T) {
+	// Windows may reserve ephemeral ports (Hyper-V, WSL) causing bind failures
+	if runtime.GOOS == "windows" {
+		t.Skip("UDP proxy test skipped on Windows due to port reservation issues")
+	}
+
 	// Start a UDP echo server
 	udpBackend, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {

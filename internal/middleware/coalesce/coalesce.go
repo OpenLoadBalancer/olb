@@ -118,59 +118,50 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 		// Generate coalesce key
 		key := m.config.KeyFunc(r)
 
-		// Try to join existing inflight request
-		if inflight := m.joinInflight(key); inflight != nil {
+		// Atomically join existing inflight request or create a new one.
+		inflight, created := m.getOrCreateInflight(key)
+		if !created {
 			m.serveFromInflight(w, r, inflight)
 			return
 		}
-
-		// Create new inflight request
-		inflight := m.createInflight(key)
 
 		// Execute the actual request
 		m.executeRequest(w, r, next, inflight, key)
 	})
 }
 
-// joinInflight attempts to join an existing inflight request.
-func (m *Middleware) joinInflight(key string) *inflight {
-	m.mu.RLock()
-	inflight, exists := m.inflight[key]
-	m.mu.RUnlock()
+// getOrCreateInflight atomically checks for an existing inflight request
+// and joins it, or creates a new one if none exists. Returns the inflight
+// entry and whether this caller created it.
+func (m *Middleware) getOrCreateInflight(key string) (*inflight, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	if !exists {
-		return nil
-	}
-
-	inflight.mu.Lock()
-	defer inflight.mu.Unlock()
-
-	// Check if we can still join
-	select {
-	case <-inflight.done:
-		return nil // Request already completed
-	default:
-		// Check max requests limit
-		if m.config.MaxRequests > 0 && inflight.waiters >= m.config.MaxRequests {
-			return nil
+	// Check if there's an existing inflight request we can join
+	if existing, exists := m.inflight[key]; exists {
+		existing.mu.Lock()
+		select {
+		case <-existing.done:
+			// Already completed, create a new one
+			existing.mu.Unlock()
+		default:
+			if m.config.MaxRequests > 0 && existing.waiters >= m.config.MaxRequests {
+				existing.mu.Unlock()
+			} else {
+				existing.waiters++
+				existing.mu.Unlock()
+				return existing, false
+			}
 		}
-		inflight.waiters++
-		return inflight
 	}
-}
 
-// createInflight creates a new inflight request entry.
-func (m *Middleware) createInflight(key string) *inflight {
+	// Create new inflight entry
 	inflight := &inflight{
 		done:    make(chan struct{}),
 		waiters: 0,
 	}
-
-	m.mu.Lock()
 	m.inflight[key] = inflight
-	m.mu.Unlock()
-
-	return inflight
+	return inflight, true
 }
 
 // executeRequest executes the actual request and broadcasts the result.

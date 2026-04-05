@@ -9,6 +9,21 @@ import (
 	"time"
 )
 
+// barrier blocks all goroutines until Release is called, ensuring they start together.
+type barrier struct {
+	wg    sync.WaitGroup
+	ready chan struct{}
+}
+
+func newBarrier(n int) *barrier {
+	b := &barrier{ready: make(chan struct{})}
+	b.wg.Add(n)
+	return b
+}
+
+func (b *barrier) wait()    { b.wg.Done(); <-b.ready }
+func (b *barrier) release() { b.wg.Wait(); close(b.ready) }
+
 func TestCoalesce_Disabled(t *testing.T) {
 	config := DefaultConfig()
 	config.Enabled = false
@@ -103,10 +118,12 @@ func TestCoalesce_ConcurrentRequests(t *testing.T) {
 
 	// Send 5 concurrent requests
 	var wg sync.WaitGroup
+	bar := newBarrier(5)
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			bar.wait()
 			req := httptest.NewRequest("GET", "/test", nil)
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
@@ -116,6 +133,7 @@ func TestCoalesce_ConcurrentRequests(t *testing.T) {
 			}
 		}()
 	}
+	bar.release()
 
 	wg.Wait()
 
@@ -193,15 +211,18 @@ func TestCoalesce_MaxRequests(t *testing.T) {
 
 	// Send 5 concurrent requests (max 2 should coalesce)
 	var wg sync.WaitGroup
+	bar := newBarrier(5)
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			bar.wait()
 			req := httptest.NewRequest("GET", "/test", nil)
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
 		}()
 	}
+	bar.release()
 
 	wg.Wait()
 
@@ -231,15 +252,18 @@ func TestCoalesce_CustomKeyFunc(t *testing.T) {
 	// Different query params should be coalesced with custom key func
 	var wg sync.WaitGroup
 	urls := []string{"/test?a=1", "/test?a=2", "/test?a=3"}
+	bar := newBarrier(len(urls))
 	for _, url := range urls {
 		wg.Add(1)
 		go func(u string) {
 			defer wg.Done()
+			bar.wait()
 			req := httptest.NewRequest("GET", u, nil)
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
 		}(url)
 	}
+	bar.release()
 
 	wg.Wait()
 
@@ -263,10 +287,12 @@ func TestCoalesce_ResponseHeaders(t *testing.T) {
 	}))
 
 	var wg sync.WaitGroup
+	bar := newBarrier(3)
 	for i := 0; i < 3; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			bar.wait()
 			req := httptest.NewRequest("GET", "/test", nil)
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
@@ -279,6 +305,7 @@ func TestCoalesce_ResponseHeaders(t *testing.T) {
 			}
 		}()
 	}
+	bar.release()
 
 	wg.Wait()
 }
@@ -291,18 +318,27 @@ func TestCoalesce_HEADMethod(t *testing.T) {
 
 	callCount := int32(0)
 	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(50 * time.Millisecond) // Ensure concurrent requests have time to join
+		time.Sleep(100 * time.Millisecond) // Ensure concurrent requests have time to join
 		atomic.AddInt32(&callCount, 1)
 		w.Header().Set("Content-Length", "100")
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	// HEAD should be coalesced
+	// HEAD should be coalesced — use a ready channel to ensure first request
+	// registers as inflight before others attempt to join.
 	var wg sync.WaitGroup
+	started := make(chan struct{})
+	bar := newBarrier(3)
 	for i := 0; i < 3; i++ {
 		wg.Add(1)
-		go func() {
+		go func(idx int) {
 			defer wg.Done()
+			bar.wait()
+			if idx == 0 {
+				close(started) // signal first request is in the handler
+			} else {
+				<-started // wait for first request to be in-flight
+			}
 			req := httptest.NewRequest("HEAD", "/test", nil)
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
@@ -310,8 +346,9 @@ func TestCoalesce_HEADMethod(t *testing.T) {
 			if rec.Code != http.StatusOK {
 				t.Errorf("Expected status %d, got %d", http.StatusOK, rec.Code)
 			}
-		}()
+		}(i)
 	}
+	bar.release()
 
 	wg.Wait()
 

@@ -1220,10 +1220,18 @@ func TestHTTPListenerNilHandler(t *testing.T) {
 
 // TestHTTPListenerAddressInUse tests address already in use error
 func TestHTTPListenerAddressInUse(t *testing.T) {
+	// Allocate a dynamic port to avoid conflicts
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to allocate port: %v", err)
+	}
+	addr := ln.Addr().String()
+	ln.Close()
+
 	// Create first listener
 	opts1 := &Options{
 		Name:    "test-addr-in-use-1",
-		Address: "127.0.0.1:18080",
+		Address: addr,
 		Handler: testHandler(),
 	}
 
@@ -1240,7 +1248,7 @@ func TestHTTPListenerAddressInUse(t *testing.T) {
 	// Try to create second listener on same address
 	opts2 := &Options{
 		Name:    "test-addr-in-use-2",
-		Address: "127.0.0.1:18080",
+		Address: addr,
 		Handler: testHandler(),
 	}
 
