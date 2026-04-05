@@ -39,6 +39,7 @@ type ProfilingConfig struct {
 type MiddlewareConfig struct {
 	RateLimit      *RateLimitConfig      `yaml:"rate_limit" json:"rate_limit"`
 	CORS           *CORSConfig           `yaml:"cors" json:"cors"`
+	CSP            *CSPConfig            `yaml:"csp" json:"csp"`
 	Compression    *CompressionConfig    `yaml:"compression" json:"compression"`
 	CircuitBreaker *CircuitBreakerConfig `yaml:"circuit_breaker" json:"circuit_breaker"`
 	Retry          *RetryConfig          `yaml:"retry" json:"retry"`
@@ -47,6 +48,25 @@ type MiddlewareConfig struct {
 	Headers        *HeadersConfig        `yaml:"headers" json:"headers"`
 	Timeout        *TimeoutConfig        `yaml:"timeout" json:"timeout"`
 	MaxBodySize    *MaxBodySizeConfig    `yaml:"max_body_size" json:"max_body_size"`
+	Validator      *ValidatorConfig      `yaml:"validator" json:"validator"`
+	StripPrefix    *StripPrefixConfig    `yaml:"strip_prefix" json:"strip_prefix"`
+	JWT            *JWTConfig            `yaml:"jwt" json:"jwt"`
+	OAuth2         *OAuth2Config         `yaml:"oauth2" json:"oauth2"`
+	BasicAuth      *BasicAuthConfig      `yaml:"basic_auth" json:"basic_auth"`
+	APIKey         *APIKeyConfig         `yaml:"api_key" json:"api_key"`
+	HMAC           *HMACConfig           `yaml:"hmac" json:"hmac"`
+	Transformer    *TransformerConfig    `yaml:"transformer" json:"transformer"`
+	RequestID      *RequestIDConfig      `yaml:"request_id" json:"request_id"`
+	Logging        *LoggingConfig        `yaml:"logging" json:"logging"`
+	Metrics        *MetricsConfig        `yaml:"metrics" json:"metrics"`
+	Rewrite        *RewriteConfig        `yaml:"rewrite" json:"rewrite"`
+	ForceSSL       *ForceSSLConfig       `yaml:"forcessl" json:"forcessl"`
+	CSRF           *CSRFConfig           `yaml:"csrf" json:"csrf"`
+	SecureHeaders  *SecureHeadersConfig  `yaml:"secure_headers" json:"secure_headers"`
+	Coalesce       *CoalesceConfig       `yaml:"coalesce" json:"coalesce"`
+	BotDetection   *BotDetectionConfig   `yaml:"bot_detection" json:"bot_detection"`
+	RealIP         *RealIPConfig         `yaml:"real_ip" json:"real_ip"`
+	Trace          *TraceConfig          `yaml:"trace" json:"trace"`
 }
 
 // TimeoutConfig represents request timeout configuration.
@@ -59,6 +79,110 @@ type TimeoutConfig struct {
 type MaxBodySizeConfig struct {
 	Enabled bool  `yaml:"enabled" json:"enabled"`
 	MaxSize int64 `yaml:"max_size" json:"max_size"` // bytes, default 10MB
+}
+
+// JWTConfig represents JWT authentication configuration.
+type JWTConfig struct {
+	Enabled          bool                `yaml:"enabled" json:"enabled"`
+	Secret           string              `yaml:"secret" json:"secret"`                       // HMAC secret (for HS256/HS384/HS512)
+	PublicKey        string              `yaml:"public_key" json:"public_key"`               // Ed25519 public key path or base64 (for EdDSA)
+	Algorithm        string              `yaml:"algorithm" json:"algorithm"`                 // HS256, HS384, HS512, EdDSA
+	Header           string              `yaml:"header" json:"header"`                       // Authorization header name (default: "Authorization")
+	Prefix           string              `yaml:"prefix" json:"prefix"`                       // Token prefix (default: "Bearer ")
+	Required         bool                `yaml:"required" json:"required"`                   // Require JWT for all requests
+	ExcludePaths     []string            `yaml:"exclude_paths" json:"exclude_paths"`         // Paths to exclude from JWT validation
+	ClaimsValidation JWTClaimsValidation `yaml:"claims_validation" json:"claims_validation"` // Additional claim validation
+}
+
+// JWTClaimsValidation configures additional claim validation.
+type JWTClaimsValidation struct {
+	Issuer   string `yaml:"issuer" json:"issuer"`     // Expected issuer
+	Audience string `yaml:"audience" json:"audience"` // Expected audience
+}
+
+// BasicAuthConfig represents Basic Authentication configuration.
+type BasicAuthConfig struct {
+	Enabled      bool              `yaml:"enabled" json:"enabled"`
+	Users        map[string]string `yaml:"users" json:"users"`                 // username -> password (hashed or plain)
+	Realm        string            `yaml:"realm" json:"realm"`                 // Auth realm (default: "Restricted")
+	ExcludePaths []string          `yaml:"exclude_paths" json:"exclude_paths"` // Paths to exclude
+	Hash         string            `yaml:"hash" json:"hash"`                   // Password hash: "sha256", "plain" (default: "sha256")
+}
+
+// StripPrefixConfig represents path prefix stripping configuration.
+type StripPrefixConfig struct {
+	Enabled       bool   `yaml:"enabled" json:"enabled"`
+	Prefix        string `yaml:"prefix" json:"prefix"`                 // Prefix to strip from request path (e.g., "/api/v1")
+	RedirectSlash bool   `yaml:"redirect_slash" json:"redirect_slash"` // Redirect /prefix to /prefix/
+}
+
+// ValidatorConfig represents request/response validation configuration.
+type ValidatorConfig struct {
+	Enabled          bool              `yaml:"enabled" json:"enabled"`
+	ValidateRequest  bool              `yaml:"validate_request" json:"validate_request"`   // Validate incoming requests
+	ValidateResponse bool              `yaml:"validate_response" json:"validate_response"` // Validate outgoing responses
+	MaxBodySize      int64             `yaml:"max_body_size" json:"max_body_size"`         // Maximum body size to validate (default: 1MB)
+	ContentTypes     []string          `yaml:"content_types" json:"content_types"`         // Content types to validate
+	RequiredHeaders  map[string]string `yaml:"required_headers" json:"required_headers"`   // Header name -> regex pattern
+	ForbiddenHeaders []string          `yaml:"forbidden_headers" json:"forbidden_headers"` // Headers that must not be present
+	QueryRules       map[string]string `yaml:"query_rules" json:"query_rules"`             // Query param -> regex pattern
+	PathPatterns     map[string]string `yaml:"path_patterns" json:"path_patterns"`         // Path prefix -> pattern
+	ExcludePaths     []string          `yaml:"exclude_paths" json:"exclude_paths"`         // Paths to exclude from validation
+	RejectOnFailure  bool              `yaml:"reject_on_failure" json:"reject_on_failure"` // Reject request on validation failure
+	LogOnly          bool              `yaml:"log_only" json:"log_only"`                   // Only log violations, don't reject
+}
+
+// OAuth2Config represents OAuth2/OIDC authentication configuration.
+type OAuth2Config struct {
+	Enabled          bool     `yaml:"enabled" json:"enabled"`
+	IssuerURL        string   `yaml:"issuer_url" json:"issuer_url"`               // OIDC issuer URL
+	ClientID         string   `yaml:"client_id" json:"client_id"`                 // OAuth2 client ID
+	ClientSecret     string   `yaml:"client_secret" json:"-"`                     // OAuth2 client secret
+	JwksURL          string   `yaml:"jwks_url" json:"jwks_url"`                   // JWKS endpoint URL (optional)
+	Audience         string   `yaml:"audience" json:"audience"`                   // Expected audience
+	Scopes           []string `yaml:"scopes" json:"scopes"`                       // Required scopes
+	Header           string   `yaml:"header" json:"header"`                       // Authorization header name (default: "Authorization")
+	Prefix           string   `yaml:"prefix" json:"prefix"`                       // Token prefix (default: "Bearer ")
+	ExcludePaths     []string `yaml:"exclude_paths" json:"exclude_paths"`         // Paths to exclude
+	IntrospectionURL string   `yaml:"introspection_url" json:"introspection_url"` // Token introspection endpoint (optional)
+	CacheDuration    string   `yaml:"cache_duration" json:"cache_duration"`       // JWKS cache duration (default: "1h")
+}
+
+// APIKeyConfig represents API Key authentication configuration.
+type APIKeyConfig struct {
+	Enabled      bool              `yaml:"enabled" json:"enabled"`
+	Keys         map[string]string `yaml:"keys" json:"keys"`                   // key_id -> api_key (or hash)
+	Header       string            `yaml:"header" json:"header"`               // Header name (default: "X-API-Key")
+	QueryParam   string            `yaml:"query_param" json:"query_param"`     // Query parameter name (alternative)
+	ExcludePaths []string          `yaml:"exclude_paths" json:"exclude_paths"` // Paths to exclude
+	Hash         string            `yaml:"hash" json:"hash"`                   // Key hash: "sha256", "plain" (default: "sha256")
+}
+
+// HMACConfig represents HMAC signature verification configuration.
+type HMACConfig struct {
+	Enabled         bool     `yaml:"enabled" json:"enabled"`
+	Secret          string   `yaml:"secret" json:"-"`                          // HMAC secret key
+	Algorithm       string   `yaml:"algorithm" json:"algorithm"`               // Hash algorithm: "sha256", "sha512"
+	Header          string   `yaml:"header" json:"header"`                     // Signature header (default: "X-Signature")
+	Prefix          string   `yaml:"prefix" json:"prefix"`                     // Signature prefix (e.g., "sha256=")
+	Encoding        string   `yaml:"encoding" json:"encoding"`                 // Signature encoding: "hex", "base64"
+	UseBody         bool     `yaml:"use_body" json:"use_body"`                 // Include body in signature
+	ExcludePaths    []string `yaml:"exclude_paths" json:"exclude_paths"`       // Paths to exclude
+	TimestampHeader string   `yaml:"timestamp_header" json:"timestamp_header"` // Optional timestamp header
+	MaxAge          string   `yaml:"max_age" json:"max_age"`                   // Maximum age for timestamp
+}
+
+// TransformerConfig represents response transformation configuration.
+type TransformerConfig struct {
+	Enabled          bool              `yaml:"enabled" json:"enabled"`
+	Compress         bool              `yaml:"compress" json:"compress"`                     // Enable gzip compression
+	CompressLevel    int               `yaml:"compress_level" json:"compress_level"`         // Gzip level (1-9)
+	MinCompressSize  int               `yaml:"min_compress_size" json:"min_compress_size"`   // Minimum size to compress
+	AddHeaders       map[string]string `yaml:"add_headers" json:"add_headers"`               // Headers to add
+	RemoveHeaders    []string          `yaml:"remove_headers" json:"remove_headers"`         // Headers to remove
+	RewriteBody      map[string]string `yaml:"rewrite_body" json:"rewrite_body"`             // Pattern -> replacement
+	ExcludePaths     []string          `yaml:"exclude_paths" json:"exclude_paths"`           // Paths to exclude
+	ExcludeMIMETypes []string          `yaml:"exclude_mime_types" json:"exclude_mime_types"` // MIME types to exclude
 }
 
 type RateLimitConfig struct {
@@ -74,6 +198,194 @@ type CORSConfig struct {
 	AllowedHeaders   []string `yaml:"allowed_headers" json:"allowed_headers"`
 	AllowCredentials bool     `yaml:"allow_credentials" json:"allow_credentials"`
 	MaxAge           int      `yaml:"max_age" json:"max_age"`
+}
+
+// CSPConfig represents Content Security Policy configuration.
+type CSPConfig struct {
+	Enabled         bool     `yaml:"enabled" json:"enabled"`
+	DefaultSrc      []string `yaml:"default_src" json:"default_src"`           // default-src directive
+	ScriptSrc       []string `yaml:"script_src" json:"script_src"`             // script-src directive
+	StyleSrc        []string `yaml:"style_src" json:"style_src"`               // style-src directive
+	ImgSrc          []string `yaml:"img_src" json:"img_src"`                   // img-src directive
+	ConnectSrc      []string `yaml:"connect_src" json:"connect_src"`           // connect-src directive
+	FontSrc         []string `yaml:"font_src" json:"font_src"`                 // font-src directive
+	ObjectSrc       []string `yaml:"object_src" json:"object_src"`             // object-src directive
+	MediaSrc        []string `yaml:"media_src" json:"media_src"`               // media-src directive
+	FrameSrc        []string `yaml:"frame_src" json:"frame_src"`               // frame-src directive
+	FrameAncestors  []string `yaml:"frame_ancestors" json:"frame_ancestors"`   // frame-ancestors directive
+	FormAction      []string `yaml:"form_action" json:"form_action"`           // form-action directive
+	BaseURI         []string `yaml:"base_uri" json:"base_uri"`                 // base-uri directive
+	UpgradeInsecure bool     `yaml:"upgrade_insecure" json:"upgrade_insecure"` // upgrade-insecure-requests
+	BlockAllMixed   bool     `yaml:"block_all_mixed" json:"block_all_mixed"`   // block-all-mixed-content
+	ReportURI       string   `yaml:"report_uri" json:"report_uri"`             // report-uri directive
+	ReportTo        string   `yaml:"report_to" json:"report_to"`               // report-to directive
+	NonceScript     bool     `yaml:"nonce_script" json:"nonce_script"`         // Generate nonce for scripts
+	NonceStyle      bool     `yaml:"nonce_style" json:"nonce_style"`           // Generate nonce for styles
+	UnsafeInline    bool     `yaml:"unsafe_inline" json:"unsafe_inline"`       // Allow 'unsafe-inline'
+	UnsafeEval      bool     `yaml:"unsafe_eval" json:"unsafe_eval"`           // Allow 'unsafe-eval'
+	ExcludePaths    []string `yaml:"exclude_paths" json:"exclude_paths"`       // Paths to exclude
+}
+
+// RequestIDConfig represents request ID configuration.
+type RequestIDConfig struct {
+	Enabled      bool     `yaml:"enabled" json:"enabled"`                 // Enable request ID generation
+	Header       string   `yaml:"header" json:"header"`                   // Header name (default: X-Request-ID)
+	Generate     bool     `yaml:"generate" json:"generate"`               // Generate ID if not present
+	Length       int      `yaml:"length" json:"length"`                   // ID length in bytes (default: 16)
+	Response     bool     `yaml:"response" json:"response"`               // Include ID in response headers
+	ExcludePaths []string `yaml:"exclude_paths" json:"exclude_paths"`     // Paths to exclude
+}
+
+// LoggingConfig represents HTTP request logging configuration.
+type LoggingConfig struct {
+	Enabled         bool     `yaml:"enabled" json:"enabled"`                   // Enable request logging
+	Format          string   `yaml:"format" json:"format"`                     // Format: json, combined, common, custom
+	CustomFormat    string   `yaml:"custom_format" json:"custom_format"`       // Custom format template
+	Fields          []string `yaml:"fields" json:"fields"`                     // JSON fields to include
+	ExcludePaths    []string `yaml:"exclude_paths" json:"exclude_paths"`       // Paths to exclude from logging
+	ExcludeStatus   []int    `yaml:"exclude_status" json:"exclude_status"`     // Status codes to exclude
+	MinDuration     string   `yaml:"min_duration" json:"min_duration"`         // Only log slower requests (e.g., "100ms")
+	RequestHeaders  []string `yaml:"request_headers" json:"request_headers"`   // Request headers to log
+	ResponseHeaders []string `yaml:"response_headers" json:"response_headers"` // Response headers to log
+}
+
+// MetricsConfig represents HTTP request metrics configuration.
+type MetricsConfig struct {
+	Enabled        bool     `yaml:"enabled" json:"enabled"`                 // Enable metrics collection
+	Namespace      string   `yaml:"namespace" json:"namespace"`             // Metrics namespace prefix
+	Subsystem      string   `yaml:"subsystem" json:"subsystem"`             // Metrics subsystem
+	ExcludePaths   []string `yaml:"exclude_paths" json:"exclude_paths"`     // Paths to exclude
+	ExcludeMethods []string `yaml:"exclude_methods" json:"exclude_methods"` // HTTP methods to exclude
+	EnableLatency  bool     `yaml:"enable_latency" json:"enable_latency"`   // Enable latency histograms
+	EnableSize     bool     `yaml:"enable_size" json:"enable_size"`         // Enable size metrics
+	EnableActive   bool     `yaml:"enable_active" json:"enable_active"`     // Enable active requests gauge
+	LatencyBuckets []float64 `yaml:"latency_buckets" json:"latency_buckets"` // Latency buckets in seconds
+}
+
+// RewriteRule represents a single URL rewrite rule.
+type RewriteRule struct {
+	Pattern     string `yaml:"pattern" json:"pattern"`         // Regex pattern to match
+	Replacement string `yaml:"replacement" json:"replacement"` // Replacement string
+	Flag        string `yaml:"flag" json:"flag"`               // Flag: last, break, redirect, permanent
+}
+
+// RewriteConfig represents URL rewrite configuration.
+type RewriteConfig struct {
+	Enabled      bool          `yaml:"enabled" json:"enabled"`             // Enable URL rewriting
+	Rules        []RewriteRule `yaml:"rules" json:"rules"`                 // Rewrite rules
+	ExcludePaths []string      `yaml:"exclude_paths" json:"exclude_paths"` // Paths to exclude
+}
+
+// ForceSSLConfig represents HTTPS enforcement configuration.
+type ForceSSLConfig struct {
+	Enabled      bool     `yaml:"enabled" json:"enabled"`             // Enable HTTPS enforcement
+	Permanent    bool     `yaml:"permanent" json:"permanent"`         // Use 301 instead of 307
+	ExcludePaths []string `yaml:"exclude_paths" json:"exclude_paths"` // Paths to exclude
+	ExcludeHosts []string `yaml:"exclude_hosts" json:"exclude_hosts"` // Hosts to exclude
+	Port         int      `yaml:"port" json:"port"`                   // HTTPS port (default: 443)
+	HeaderKey    string   `yaml:"header_key" json:"header_key"`       // TLS termination header
+	HeaderValue  string   `yaml:"header_value" json:"header_value"`   // Expected header value
+}
+
+// CSRFConfig represents CSRF protection configuration.
+type CSRFConfig struct {
+	Enabled        bool     `yaml:"enabled" json:"enabled"`             // Enable CSRF protection
+	CookieName     string   `yaml:"cookie_name" json:"cookie_name"`     // CSRF cookie name
+	HeaderName     string   `yaml:"header_name" json:"header_name"`     // Header to check for token
+	FieldName      string   `yaml:"field_name" json:"field_name"`       // Form field name
+	ExcludePaths   []string `yaml:"exclude_paths" json:"exclude_paths"` // Paths to exclude
+	ExcludeMethods []string `yaml:"exclude_methods" json:"exclude_methods"` // Methods that don't require CSRF
+	CookiePath     string   `yaml:"cookie_path" json:"cookie_path"`     // Cookie path
+	CookieDomain   string   `yaml:"cookie_domain" json:"cookie_domain"` // Cookie domain
+	CookieMaxAge   int      `yaml:"cookie_max_age" json:"cookie_max_age"` // Cookie max age in seconds
+	CookieSecure   bool     `yaml:"cookie_secure" json:"cookie_secure"` // Secure cookie flag
+	CookieHTTPOnly bool     `yaml:"cookie_httponly" json:"cookie_httponly"` // HTTPOnly cookie flag
+	TokenLength    int      `yaml:"token_length" json:"token_length"`   // Token length in bytes
+}
+
+// SecureHeadersConfig represents security headers configuration.
+type SecureHeadersConfig struct {
+	Enabled                       bool     `yaml:"enabled" json:"enabled"`                                   // Enable security headers
+	XFrameOptions                 string   `yaml:"x_frame_options" json:"x_frame_options"`                   // X-Frame-Options
+	XContentTypeOptions           bool     `yaml:"x_content_type_options" json:"x_content_type_options"`     // X-Content-Type-Options
+	XXSSProtection                string   `yaml:"x_xss_protection" json:"x_xss_protection"`                 // X-XSS-Protection
+	ReferrerPolicy                string   `yaml:"referrer_policy" json:"referrer_policy"`                   // Referrer-Policy
+	ContentSecurityPolicy         string   `yaml:"content_security_policy" json:"content_security_policy"`   // Content-Security-Policy
+	StrictTransportPolicy         *HSTSConfig `yaml:"strict_transport_policy" json:"strict_transport_policy"` // HSTS config
+	XPermittedCrossDomainPolicies string   `yaml:"x_permitted_cross_domain_policies" json:"x_permitted_cross_domain_policies"`
+	XDownloadOptions              string   `yaml:"x_download_options" json:"x_download_options"`             // X-Download-Options
+	XDNSPrefetchControl           string   `yaml:"x_dns_prefetch_control" json:"x_dns_prefetch_control"`     // X-DNS-Prefetch-Control
+	PermissionsPolicy             string   `yaml:"permissions_policy" json:"permissions_policy"`             // Permissions-Policy
+	CrossOriginEmbedderPolicy     string   `yaml:"cross_origin_embedder_policy" json:"cross_origin_embedder_policy"` // COEP
+	CrossOriginOpenerPolicy       string   `yaml:"cross_origin_opener_policy" json:"cross_origin_opener_policy"`     // COOP
+	CrossOriginResourcePolicy     string   `yaml:"cross_origin_resource_policy" json:"cross_origin_resource_policy"` // CORP
+	CacheControl                  string   `yaml:"cache_control" json:"cache_control"`                       // Cache-Control
+	ExcludePaths                  []string `yaml:"exclude_paths" json:"exclude_paths"`                       // Paths to exclude
+}
+
+// HSTSConfig configures HTTP Strict Transport Security.
+type HSTSConfig struct {
+	MaxAge            int  `yaml:"max_age" json:"max_age"`                         // max-age in seconds
+	IncludeSubdomains bool `yaml:"include_subdomains" json:"include_subdomains"`     // includeSubDomains
+	Preload           bool `yaml:"preload" json:"preload"`                         // preload
+}
+
+// CoalesceConfig represents request coalescing configuration.
+type CoalesceConfig struct {
+	Enabled      bool          `yaml:"enabled" json:"enabled"`             // Enable request coalescing
+	TTL          string        `yaml:"ttl" json:"ttl"`                     // Coalescing window duration
+	MaxRequests  int           `yaml:"max_requests" json:"max_requests"`   // Maximum requests to coalesce
+	ExcludePaths []string      `yaml:"exclude_paths" json:"exclude_paths"` // Paths to exclude
+}
+
+// BotDetectionConfig represents bot detection middleware configuration.
+type BotDetectionConfig struct {
+	Enabled              bool                  `yaml:"enabled" json:"enabled"`                           // Enable bot detection
+	Action               string                `yaml:"action" json:"action"`                             // Action: allow, block, challenge, throttle, log
+	BlockKnownBots       bool                  `yaml:"block_known_bots" json:"block_known_bots"`         // Block known bad bots
+	AllowVerified        bool                  `yaml:"allow_verified" json:"allow_verified"`             // Allow verified good bots (Googlebot, etc.)
+	RequestRateThreshold int                   `yaml:"request_rate_threshold" json:"request_rate_threshold"` // Requests per minute threshold
+	JA3Fingerprints      []string              `yaml:"ja3_fingerprints" json:"ja3_fingerprints"`         // Known bot JA3 fingerprints
+	ChallengePath        string                `yaml:"challenge_path" json:"challenge_path"`             // Path to redirect challenges to
+	ExcludePaths         []string              `yaml:"exclude_paths" json:"exclude_paths"`               // Paths to exclude from detection
+	UserAgentRules       []BotUserAgentRule    `yaml:"user_agent_rules" json:"user_agent_rules"`         // User-Agent based rules
+	CustomHeaders        []BotHeaderRule       `yaml:"custom_headers" json:"custom_headers"`             // Header-based detection rules
+}
+
+// BotUserAgentRule defines a rule based on User-Agent string.
+type BotUserAgentRule struct {
+	Pattern string `yaml:"pattern" json:"pattern"` // Regex pattern
+	Action  string `yaml:"action" json:"action"`   // Action: allow, block, challenge, throttle, log
+	Name    string `yaml:"name" json:"name"`       // Rule name for logging
+}
+
+// BotHeaderRule defines a rule based on request headers.
+type BotHeaderRule struct {
+	Header  string `yaml:"header" json:"header"`   // Header name
+	Pattern string `yaml:"pattern" json:"pattern"` // Regex pattern to match
+	Action  string `yaml:"action" json:"action"`   // Action
+	Name    string `yaml:"name" json:"name"`       // Rule name
+}
+
+// RealIPConfig represents RealIP middleware configuration.
+type RealIPConfig struct {
+	Enabled         bool     `yaml:"enabled" json:"enabled"`                   // Enable RealIP extraction
+	Headers         []string `yaml:"headers" json:"headers"`                   // Headers to check (in order of preference)
+	TrustedProxies  []string `yaml:"trusted_proxies" json:"trusted_proxies"`   // CIDR ranges of trusted proxies
+	RejectUntrusted bool     `yaml:"reject_untrusted" json:"reject_untrusted"` // Reject requests from untrusted proxies
+}
+
+// TraceConfig represents distributed tracing configuration.
+type TraceConfig struct {
+	Enabled         bool     `yaml:"enabled" json:"enabled"`                   // Enable tracing
+	ServiceName     string   `yaml:"service_name" json:"service_name"`         // Service name for spans
+	ServiceVersion  string   `yaml:"service_version" json:"service_version"`   // Service version
+	Propagators     []string `yaml:"propagators" json:"propagators"`           // Propagation formats: w3c, b3, b3multi, jaeger
+	SampleRate      float64  `yaml:"sample_rate" json:"sample_rate"`           // Sampling rate (0.0 to 1.0)
+	BaggageHeaders  []string `yaml:"baggage_headers" json:"baggage_headers"`   // Headers to propagate as baggage
+	ExcludePaths    []string `yaml:"exclude_paths" json:"exclude_paths"`       // Paths to exclude from tracing
+	MaxBaggageItems int      `yaml:"max_baggage_items" json:"max_baggage_items"` // Max baggage items per request
+	MaxBaggageSize  int      `yaml:"max_baggage_size" json:"max_baggage_size"`   // Max total baggage size in bytes
 }
 
 type CompressionConfig struct {
@@ -96,9 +408,16 @@ type RetryConfig struct {
 }
 
 type CacheConfig struct {
-	Enabled    bool   `yaml:"enabled" json:"enabled"`
-	MaxEntries int    `yaml:"max_entries" json:"max_entries"`
-	DefaultTTL string `yaml:"default_ttl" json:"default_ttl"`
+	Enabled        bool              `yaml:"enabled" json:"enabled"`                   // Enable caching
+	MaxEntries     int               `yaml:"max_entries" json:"max_entries"`           // Max number of cached entries
+	DefaultTTL     string            `yaml:"default_ttl" json:"default_ttl"`           // Default cache TTL (e.g., "5m")
+	MaxSize        int64             `yaml:"max_size" json:"max_size"`                 // Max cache size in bytes
+	Methods        []string          `yaml:"methods" json:"methods"`                     // HTTP methods to cache
+	StatusCodes    []int             `yaml:"status_codes" json:"status_codes"`         // Status codes to cache
+	VaryHeaders    []string          `yaml:"vary_headers" json:"vary_headers"`         // Headers to vary cache on
+	ExcludePaths   []string          `yaml:"exclude_paths" json:"exclude_paths"`       // Paths to exclude from caching
+	CachePrivate   bool              `yaml:"cache_private" json:"cache_private"`       // Cache private responses
+	CacheCookies   bool              `yaml:"cache_cookies" json:"cache_cookies"`       // Cache responses with cookies
 }
 
 type IPFilterConfig struct {

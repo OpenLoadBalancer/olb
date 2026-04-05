@@ -12,6 +12,39 @@ admin:
 
 # Middleware configuration (all disabled by default)
 middleware:
+  trace:
+    enabled: false
+    service_name: "openloadbalancer"  # Service name for spans
+    service_version: "1.0.0"          # Service version
+    propagators:                      # Trace propagation formats
+      - w3c                           # W3C Trace Context (traceparent/tracestate)
+      - b3                            # B3 single header
+      # - b3multi                     # B3 multi-header (X-B3-*)
+      # - jaeger                      # Jaeger (uber-trace-id)
+    sample_rate: 1.0                  # Sampling rate (0.0 to 1.0, 1.0 = 100%)
+    baggage_headers:                  # Headers to propagate as baggage
+      - X-Request-ID
+      - X-User-ID
+      - X-Tenant-ID
+    exclude_paths:                    # Paths to exclude from tracing
+      - /health
+    max_baggage_items: 10             # Max baggage items per request
+    max_baggage_size: 8192            # Max total baggage size in bytes
+  real_ip:
+    enabled: false
+    headers:                    # Headers to check (in order of preference)
+      - CF-Connecting-IP        # Cloudflare
+      - X-Real-IP               # Nginx, Apache
+      - X-Forwarded-For         # Standard proxy header
+      - X-Original-Forwarded-For # AWS ALB
+      - True-Client-IP          # Akamai, Cloudflare Enterprise
+      - X-Client-IP             # Azure
+    trusted_proxies:            # CIDR ranges of trusted proxies (empty = trust private IPs)
+      - "10.0.0.0/8"
+      - "172.16.0.0/12"
+      - "192.168.0.0/16"
+      - "127.0.0.0/8"
+    reject_untrusted: false     # Reject requests from untrusted proxies
   rate_limit:
     enabled: true
     requests_per_second: 1000
@@ -26,10 +59,204 @@ middleware:
       - PUT
       - DELETE
       - OPTIONS
+  csp:
+    enabled: false
+    default_src:
+      - "'self'"
+    script_src:
+      - "'self'"
+    style_src:
+      - "'self'"
+    img_src:
+      - "'self'"
+      - "data:"
+    connect_src:
+      - "'self'"
+    font_src:
+      - "'self'"
+    object_src:
+      - "'none'"
+    frame_ancestors:
+      - "'self'"
+    form_action:
+      - "'self'"
+    upgrade_insecure: true
+    block_all_mixed: false
+    unsafe_inline: false
+    unsafe_eval: false
+    exclude_paths:
+      - /api/public
+  request_id:
+    enabled: false
+    header: "X-Request-ID"    # Header to read/write request ID
+    generate: true            # Generate ID if not present in request
+    length: 16                # ID length in bytes (32 hex chars)
+    response: true            # Include ID in response headers
+    exclude_paths:            # Paths to exclude
+      - /health
+  logging:
+    enabled: false
+    format: "combined"        # combined, common, json, custom
+    custom_format: ""         # Template: $method $path $status $duration_ms
+    fields:                   # JSON fields (for format: json)
+      - timestamp
+      - method
+      - path
+      - status
+      - duration
+      - bytes
+      - ip
+    exclude_paths:            # Don't log these paths
+      - /health
+      - /metrics
+    exclude_status: []        # Don't log these status codes
+    min_duration: ""          # Only log if slower than this (e.g., "100ms")
+    request_headers: []       # Headers to include in log
+    response_headers: []      # Response headers to include
+  metrics:
+    enabled: false
+    namespace: "olb"          # Metrics namespace prefix
+    subsystem: "http"         # Metrics subsystem
+    enable_latency: true      # Enable latency histograms
+    enable_size: true         # Enable request/response size metrics
+    enable_active: true       # Enable active requests gauge
+    latency_buckets:          # Latency histogram buckets (seconds)
+      - 0.001
+      - 0.005
+      - 0.01
+      - 0.025
+      - 0.05
+      - 0.1
+      - 0.25
+      - 0.5
+      - 1
+      - 2.5
+      - 5
+      - 10
+    exclude_paths:            # Paths to exclude from metrics
+      - /health
+      - /metrics
+    exclude_methods:          # Methods to exclude
+      - OPTIONS
+  rewrite:
+    enabled: false
+    rules:                    # URL rewrite rules (applied in order)
+      - pattern: "^/old-api/(.*)$"
+        replacement: "/api/v1/$1"
+        flag: "last"          # last=rewrite and continue, break=rewrite and stop
+      - pattern: "^/docs$"
+        replacement: "/documentation"
+        flag: "permanent"      # permanent=301 redirect, redirect=302 redirect
+    exclude_paths:            # Paths to exclude from rewriting
+      - /api/internal
+  forcessl:
+    enabled: false
+    permanent: true           # true=301 redirect, false=307 redirect
+    port: 443                 # HTTPS port (omit for default 443)
+    exclude_paths:            # Paths to exclude (e.g., health checks)
+      - /health
+      - /.well-known/acme-challenge
+    exclude_hosts:            # Hosts to exclude (e.g., localhost)
+      - localhost
+      - 127.0.0.1
+    header_key: "X-Forwarded-Proto"  # Header to check for TLS termination
+    header_value: "https"     # Expected header value for TLS
+  csrf:
+    enabled: false
+    cookie_name: "csrf_token" # CSRF cookie name
+    header_name: "X-CSRF-Token"  # Header to check for token
+    field_name: "csrf_token"  # Form field name
+    exclude_paths:            # Paths to exclude from CSRF check
+      - /api/public
+    exclude_methods:          # Methods that don't require CSRF
+      - GET
+      - HEAD
+      - OPTIONS
+      - TRACE
+    cookie_path: "/"          # Cookie path
+    cookie_max_age: 86400     # Cookie max age (24 hours)
+    cookie_secure: false      # Secure cookie (set to true in production)
+    cookie_httponly: true     # HTTPOnly cookie
+    token_length: 32          # Token length in bytes
+  secure_headers:
+    enabled: false
+    x_frame_options: "DENY"              # DENY, SAMEORIGIN, ALLOW-FROM uri
+    x_content_type_options: true         # nosniff
+    x_xss_protection: "1; mode=block"    # 0, 1, 1; mode=block
+    referrer_policy: "strict-origin-when-cross-origin"
+    content_security_policy: ""          # CSP (if CSP middleware not used)
+    strict_transport_policy:             # HSTS config
+      enabled: false
+      max_age: 31536000                  # 1 year in seconds
+      include_subdomains: true
+      preload: false
+    x_permitted_cross_domain_policies: "none"  # Adobe Flash/PDF
+    x_download_options: "noopen"         # IE download protection
+    x_dns_prefetch_control: "off"
+    permissions_policy: ""               # camera=(), microphone=()
+    cross_origin_embedder_policy: "require-corp"
+    cross_origin_opener_policy: "same-origin"
+    cross_origin_resource_policy: "same-origin"
+    cache_control: ""                    # Override Cache-Control
+    exclude_paths:                       # Paths to exclude
+      - /api/public
+  coalesce:
+    enabled: false
+    ttl: "100ms"              # Coalescing window duration
+    max_requests: 0           # Max requests to coalesce (0=unlimited)
+    exclude_paths:            # Paths to exclude
+      - /api/realtime
+  bot_detection:
+    enabled: false
+    action: "block"           # allow, block, challenge, throttle, log
+    block_known_bots: true    # Block known bad bots (scrapy, curl, etc.)
+    allow_verified: true      # Allow verified good bots (Googlebot, Bingbot, etc.)
+    request_rate_threshold: 100  # Requests per minute threshold for rate-based detection
+    challenge_path: "/challenge" # Path to redirect challenged requests
+    exclude_paths:            # Paths to exclude from bot detection
+      - /health
+      - /api/public
+    user_agent_rules:         # Custom User-Agent based rules
+      - pattern: "my-custom-bot"
+        action: "block"
+        name: "custom-bot-rule"
+    custom_headers:           # Header-based detection rules
+      - header: "X-Bot-Token"
+        pattern: "suspicious-.*"
+        action: "log"
+        name: "suspicious-token"
   compression:
     enabled: true
     min_size: 256
     level: 6
+  cache:
+    enabled: false
+    default_ttl: "5m"           # Default cache TTL
+    max_entries: 10000          # Max cached entries (0 = unlimited)
+    max_size: 104857600         # Max cache size in bytes (100 MB, 0 = unlimited)
+    methods:                    # HTTP methods to cache
+      - GET
+      - HEAD
+    status_codes:               # Status codes to cache
+      - 200
+      - 203
+      - 204
+      - 206
+      - 300
+      - 301
+      - 404
+      - 405
+      - 410
+      - 414
+      - 501
+    vary_headers:               # Headers to vary cache on
+      - Accept
+      - Accept-Encoding
+    exclude_paths:              # Paths to exclude from caching
+      - /api/live
+      - /api/ready
+    cache_private: false        # Cache responses with Cache-Control: private
+    cache_cookies: false        # Cache responses with cookies
   ip_filter:
     enabled: false
     default_action: allow
@@ -50,6 +277,107 @@ middleware:
     enabled: true
   cache:
     enabled: false
+  jwt:
+    enabled: false
+    secret: ""              # HMAC secret for HS256/HS384/HS512 algorithms
+    public_key: ""          # Path to Ed25519 public key file OR base64-encoded key (for EdDSA)
+    algorithm: "HS256"      # HS256, HS384, HS512, or EdDSA
+    header: "Authorization" # Header name containing the JWT
+    prefix: "Bearer "       # Token prefix to strip
+    required: true          # Reject requests without valid JWT
+    exclude_paths:          # Paths that skip JWT validation
+      - /health
+      - /api/public
+    claims_validation:
+      issuer: ""            # Expected issuer (iss claim)
+      audience: ""          # Expected audience (aud claim)
+  oauth2:
+    enabled: false
+    issuer_url: ""          # OIDC issuer URL (e.g., "https://accounts.google.com")
+    client_id: ""           # OAuth2 client ID
+    client_secret: ""       # OAuth2 client secret (for token introspection)
+    jwks_url: ""            # JWKS endpoint URL (optional, discovered from issuer)
+    audience: ""            # Expected audience
+    scopes: []              # Required scopes (e.g., ["openid", "profile"])
+    header: "Authorization" # Authorization header name
+    prefix: "Bearer "       # Token prefix to strip
+    exclude_paths:          # Paths that skip OAuth2
+      - /health
+    introspection_url: ""   # Token introspection endpoint (optional)
+    cache_duration: "1h"    # JWKS cache duration
+  hmac:
+    enabled: false
+    secret: ""              # HMAC secret key (keep secure!)
+    algorithm: "sha256"     # Hash algorithm: "sha256" or "sha512"
+    header: "X-Signature"   # Header containing signature
+    prefix: ""              # Signature prefix (e.g., "sha256=")
+    encoding: "hex"         # Signature encoding: "hex" or "base64"
+    use_body: true          # Include request body in signature
+    exclude_paths:          # Paths to skip HMAC verification
+      - /health
+      - /webhooks/public
+  basic_auth:
+    enabled: false
+    users:                  # username: password (use SHA256 hash in production)
+      admin: "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8"  # sha256("password")
+    realm: "Restricted"     # Auth realm displayed in browser prompt
+    exclude_paths:          # Paths that skip Basic Auth
+      - /health
+    hash: "sha256"          # Password hash: "sha256" or "plain"
+  strip_prefix:
+    enabled: false
+    prefix: "/api/v1"       # Prefix to strip from request path
+    redirect_slash: true    # Redirect /prefix to /prefix/
+  validator:
+    enabled: false
+    validate_request: true  # Validate incoming requests
+    validate_response: false # Validate outgoing responses
+    max_body_size: 1048576  # 1MB max body size to validate
+    content_types:          # Content types to validate
+      - "application/json"
+    required_headers:       # Headers that must be present (regex patterns)
+      X-Request-ID: "^[a-zA-Z0-9-]+$"
+    forbidden_headers:      # Headers that must not be present
+      - X-Internal-Token
+    query_rules:            # Query parameters that must match patterns
+      page: "^[0-9]+$"
+      limit: "^[0-9]+$"
+    path_patterns:          # Path patterns to validate
+      /api/v: "^/api/v[0-9]+/.*$"
+    exclude_paths:          # Paths to skip validation
+      - /health
+    reject_on_failure: true # Reject request on validation failure
+    log_only: false         # Only log violations, don't reject
+  api_key:
+    enabled: false
+    header: "X-API-Key"     # Header to check for API key
+    query_param: "api_key"  # Query parameter alternative
+    hash: "sha256"          # Key storage: "sha256" or "plain"
+    keys:                   # key_id: api_key (use SHA256 hash in production)
+      service-a: "a1b2c3d4e5f6"
+      service-b: "f6e5d4c3b2a1"
+    exclude_paths:
+      - /health
+      - /public
+  transformer:
+    enabled: false
+    compress: true          # Enable gzip compression
+    compress_level: 6       # Compression level (1-9)
+    min_compress_size: 1024 # Minimum response size to compress
+    add_headers:            # Headers to add to responses
+      X-Frame-Options: "DENY"
+      X-Content-Type-Options: "nosniff"
+    remove_headers:         # Headers to remove from responses
+      - X-Powered-By
+      - Server
+    rewrite_body:           # Regex patterns to rewrite in body
+      old-domain.com: new-domain.com
+    exclude_paths:          # Paths to exclude from transformation
+      - /health
+      - /metrics
+    exclude_mime_types:     # MIME types to exclude
+      - "image/"
+      - "application/pdf"
 
 # WAF (Web Application Firewall)
 waf:
