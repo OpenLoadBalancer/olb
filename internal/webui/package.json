@@ -22,7 +22,7 @@
     "axios": "^1.7.9",
     "lucide-react": "^0.469.0",
     "recharts": "^2.15.0",
-    "sonner": "^1.7.1",
+    "sonner": "^2.0.7",
     "zustand": "^5.0.2",
     "clsx": "^2.1.1",
     "tailwind-merge": "^2.6.0",
