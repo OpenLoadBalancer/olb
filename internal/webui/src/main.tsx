@@ -11,6 +11,8 @@ import { MiddlewarePage } from '@/pages/middleware'
 import { CertificatesPage } from '@/pages/certificates'
 import { WAFPage } from '@/pages/waf'
 import { MetricsPage } from '@/pages/metrics'
+import { LogsPage } from '@/pages/logs'
+import { ClusterPage } from '@/pages/cluster'
 import { SettingsPage } from '@/pages/settings'
 import { BackupRestorePage } from '@/pages/backup'
 import { ErrorBoundary } from '@/pages/error'
@@ -29,6 +31,8 @@ createRoot(document.getElementById('root')!).render(
             <Route path="/certificates" element={<CertificatesPage />} />
             <Route path="/waf" element={<WAFPage />} />
             <Route path="/metrics" element={<MetricsPage />} />
+            <Route path="/logs" element={<LogsPage />} />
+            <Route path="/cluster" element={<ClusterPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/backup" element={<BackupRestorePage />} />
             <Route path="*" element={<ErrorBoundary />} />
