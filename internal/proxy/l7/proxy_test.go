@@ -695,7 +695,7 @@ func TestHTTPProxy_MultipleBackendsRoundRobin(t *testing.T) {
 	}
 
 	// Make multiple requests
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 10; i++ {
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		rr := httptest.NewRecorder()
 		proxy.ServeHTTP(rr, req)

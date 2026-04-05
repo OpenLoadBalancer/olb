@@ -1430,7 +1430,9 @@ func TestSNIRouter_ProxyToBackend_Success(t *testing.T) {
 
 func TestSNIRouter_ProxyToBackend_ConnectionRefused(t *testing.T) {
 	router := NewSNIRouter(DefaultSNIRouterConfig())
-	be := backend.NewBackend("backend-1", "127.0.0.1:1") // Unreachable
+	// Use a port that is reliably unreachable (high random port with no listener)
+	be := backend.NewBackend("backend-1", "127.0.0.1:1")
+	be.SetState(backend.StateUp)
 
 	clientConn, serverConn := net.Pipe()
 	defer clientConn.Close()
