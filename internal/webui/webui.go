@@ -3,13 +3,14 @@ package webui
 
 import (
 	"embed"
-	"io/fs"
 	"net/http"
 	"path"
 	"strings"
 )
 
-//go:embed dist
+//go:embed all:assets
+//go:embed index.html
+//go:embed favicon.svg
 var distFS embed.FS
 
 // Handler serves the Web UI static files and SPA fallback.
@@ -19,14 +20,8 @@ type Handler struct {
 
 // NewHandler creates a new Web UI handler.
 func NewHandler() (*Handler, error) {
-	// Get the dist subdirectory from embedded FS
-	distSub, err := fs.Sub(distFS, "dist")
-	if err != nil {
-		return nil, err
-	}
-
 	return &Handler{
-		static: http.FS(distSub),
+		static: http.FS(distFS),
 	}, nil
 }
 
@@ -56,8 +51,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		cleanPath = "/" + cleanPath
 	}
 
+	// Remove leading / for filesystem lookup
+	fsPath := strings.TrimPrefix(cleanPath, "/")
+
 	// Try to serve the file
-	file, err := h.static.Open(cleanPath)
+	file, err := h.static.Open(fsPath)
 	if err != nil {
 		// File not found, serve index.html for SPA routing
 		h.serveIndex(w, r)
@@ -73,20 +71,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if stat.IsDir() {
-		// Try to serve index.html from the directory
-		indexPath := path.Join(cleanPath, "index.html")
-		indexFile, err := h.static.Open(indexPath)
-		if err != nil {
-			h.serveIndex(w, r)
-			return
-		}
-		indexFile.Close()
-		h.serveFile(w, r, indexPath)
+		h.serveIndex(w, r)
 		return
 	}
 
 	// Serve the file
-	h.serveFile(w, r, cleanPath)
+	h.serveFile(w, r, fsPath)
 }
 
 // serveFile serves a specific file from the static filesystem.
@@ -111,10 +101,9 @@ func (h *Handler) serveFile(w http.ResponseWriter, r *http.Request, filepath str
 	}
 
 	// Set caching headers for static assets
-	ext := strings.ToLower(path.Ext(filepath))
-	if strings.HasPrefix(filepath, "/assets/") || ext == ".css" || ext == ".js" {
+	if strings.HasPrefix(filepath, "assets/") || strings.HasSuffix(filepath, ".css") || strings.HasSuffix(filepath, ".js") {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	} else if ext == ".html" {
+	} else if strings.HasSuffix(filepath, ".html") {
 		w.Header().Set("Cache-Control", "no-cache")
 	}
 
@@ -128,7 +117,7 @@ func (h *Handler) serveIndex(w http.ResponseWriter, r *http.Request) {
 
 	file, err := h.static.Open("index.html")
 	if err != nil {
-		http.Error(w, "index.html not found", http.StatusInternalServerError)
+		http.Error(w, "index.html not found: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer file.Close()
