@@ -3,6 +3,10 @@
 
 version: 1
 
+# Admin API (separate port to avoid conflict with listeners)
+admin:
+  address: "127.0.0.1:9090"
+
 # Single HTTP listener on port 8080
 listeners:
   - name: http
@@ -24,9 +28,9 @@ pools:
       timeout: 5s
     backends:
       - id: backend-1
-        address: "127.0.0.1:8081"
+        address: "127.0.0.1:7091"
       - id: backend-2
-        address: "127.0.0.1:8082"
+        address: "127.0.0.1:7092"
 
 # Logging configuration
 logging:

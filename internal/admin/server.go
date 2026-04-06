@@ -163,6 +163,13 @@ func (s *Server) setupRoutes() {
 	mux.HandleFunc("/api/v1/system/health", s.getSystemHealth)
 	mux.HandleFunc("/api/v1/system/reload", s.reloadConfig)
 
+	// Version endpoint
+	mux.HandleFunc("/api/v1/version", s.getVersion)
+
+	// Pool endpoints
+	mux.HandleFunc("/api/v1/pools", s.listPools)
+	mux.HandleFunc("/api/v1/pools/", s.handlePoolDetail)
+
 	// Backend endpoints
 	mux.HandleFunc("/api/v1/backends", s.listBackends)
 	mux.HandleFunc("/api/v1/backends/", s.handleBackendDetail)
@@ -192,6 +199,11 @@ func (s *Server) setupRoutes() {
 	if s.clusterAdmin != nil {
 		s.clusterAdmin.RegisterAdminEndpoints(mux)
 	}
+
+	// API 404 fallback — returns JSON for any unmatched /api/ routes
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "endpoint not found: "+r.URL.Path)
+	})
 
 	// Web UI (optional) — serves static dashboard at root
 	if s.webUI != nil {
