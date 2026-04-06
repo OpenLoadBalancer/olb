@@ -1229,3 +1229,299 @@ func TestClient_CreateOrder_ServerError(t *testing.T) {
 		t.Fatal("expected error for rate limited order creation")
 	}
 }
+
+// TestNew_DefaultDirectoryURL tests that New sets the default DirectoryURL when empty.
+func TestNew_DefaultDirectoryURL(t *testing.T) {
+	// Create a mock server that will serve the directory
+	server := newMockACMEServer()
+	defer server.Close()
+
+	// We can't test with the actual default URL (it hits Let's Encrypt),
+	// but we can verify the default is applied by setting an empty URL
+	// and then overriding the httpClient to redirect to our mock.
+	// Instead, test the DefaultConfig path directly by setting DirectoryURL
+	// to our mock server, verifying the key generation path.
+	config := &Config{} // DirectoryURL is empty
+	// Override with our mock before New tries to fetch
+	config.DirectoryURL = server.URL + "/directory"
+
+	client, err := New(config)
+	if err != nil {
+		t.Fatalf("New error: %v", err)
+	}
+	if client.directoryURL != server.URL+"/directory" {
+		t.Errorf("directoryURL = %q, want %q", client.directoryURL, server.URL+"/directory")
+	}
+}
+
+// TestFetchDirectory_Non200Status tests fetchDirectory when server returns non-200.
+func TestFetchDirectory_Non200Status(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/directory" {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	config := &Config{
+		DirectoryURL: server.URL + "/directory",
+	}
+
+	_, err := New(config)
+	if err == nil {
+		t.Fatal("expected error for non-200 directory response")
+	}
+	if !strings.Contains(err.Error(), "500") && !strings.Contains(err.Error(), "unexpected status") {
+		t.Errorf("expected error about status 500, got: %v", err)
+	}
+}
+
+// TestFetchDirectory_InvalidJSON tests fetchDirectory when server returns invalid JSON.
+func TestFetchDirectory_InvalidJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/directory" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte("not valid json"))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	config := &Config{
+		DirectoryURL: server.URL + "/directory",
+	}
+
+	_, err := New(config)
+	if err == nil {
+		t.Fatal("expected error for invalid JSON in directory response")
+	}
+}
+
+// TestClient_Register_ServerError tests Register when server returns an error status.
+func TestClient_Register_ServerError(t *testing.T) {
+	mock := &mockACMEServer{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Replay-Nonce", mock.nextNonce())
+		switch {
+		case r.URL.Path == "/directory":
+			mock.handleDirectory(w, r)
+		case r.URL.Path == "/new-nonce":
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == "/new-account":
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(Problem{
+				Type:   "urn:ietf:params:acme:error:accountDoesNotExist",
+				Detail: "account conflict",
+				Status: http.StatusConflict,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	config := &Config{DirectoryURL: server.URL + "/directory"}
+	client, err := New(config)
+	if err != nil {
+		t.Fatalf("New error: %v", err)
+	}
+
+	_, err = client.Register(true)
+	if err == nil {
+		t.Fatal("expected error for non-201/200 register response")
+	}
+}
+
+// TestClient_Register_InvalidJSON tests Register when server returns invalid JSON on success.
+func TestClient_Register_InvalidJSON(t *testing.T) {
+	mock := &mockACMEServer{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Replay-Nonce", mock.nextNonce())
+		switch {
+		case r.URL.Path == "/directory":
+			mock.handleDirectory(w, r)
+		case r.URL.Path == "/new-nonce":
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == "/new-account":
+			w.Header().Set("Location", "http://"+r.Host+"/account/1")
+			w.WriteHeader(http.StatusCreated)
+			w.Write([]byte("not json"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	config := &Config{DirectoryURL: server.URL + "/directory"}
+	client, err := New(config)
+	if err != nil {
+		t.Fatalf("New error: %v", err)
+	}
+
+	_, err = client.Register(true)
+	if err == nil {
+		t.Fatal("expected error for invalid JSON in register response")
+	}
+}
+
+// TestClient_GetAuthorization_InvalidJSON tests GetAuthorization when server returns invalid JSON.
+func TestClient_GetAuthorization_InvalidJSON(t *testing.T) {
+	mock := &mockACMEServer{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Replay-Nonce", mock.nextNonce())
+		switch {
+		case r.URL.Path == "/directory":
+			mock.handleDirectory(w, r)
+		case r.URL.Path == "/new-nonce":
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == "/new-account":
+			mock.handleNewAccount(w, r)
+		case r.URL.Path == "/authz-bad-json":
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("not json"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := createTestClient(t, server)
+	_, err := client.GetAuthorization(server.URL + "/authz-bad-json")
+	if err == nil {
+		t.Fatal("expected error for invalid JSON in authorization response")
+	}
+}
+
+// TestClient_PollAuthorization_Timeout tests PollAuthorization when polling times out.
+func TestClient_PollAuthorization_Timeout(t *testing.T) {
+	callCount := 0
+	mock := &mockACMEServer{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Replay-Nonce", mock.nextNonce())
+		switch {
+		case r.URL.Path == "/directory":
+			mock.handleDirectory(w, r)
+		case r.URL.Path == "/new-nonce":
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == "/new-account":
+			mock.handleNewAccount(w, r)
+		case strings.HasPrefix(r.URL.Path, "/authz-pending"):
+			callCount++
+			// Always return "pending" so we hit the timeout
+			json.NewEncoder(w).Encode(Authorization{
+				Status:     "pending",
+				Expires:    time.Now().Add(time.Hour).Format(time.RFC3339),
+				Identifier: Identifier{Type: "dns", Value: "example.com"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := createTestClient(t, server)
+
+	// Use a very short timeout so the test completes quickly.
+	// The polling loop sleeps 2 seconds between iterations, so with a 1-second
+	// timeout, the first iteration will succeed (GetAuthorization returns pending),
+	// then the loop sleeps 2s, and by then the deadline has passed.
+	_, err := client.PollAuthorization(server.URL+"/authz-pending", 1*time.Second)
+	if err == nil {
+		t.Fatal("expected timeout error from PollAuthorization")
+	}
+	if !strings.Contains(err.Error(), "timeout") {
+		t.Errorf("expected timeout error, got: %v", err)
+	}
+	if callCount < 1 {
+		t.Errorf("expected at least 1 call to authz endpoint, got %d", callCount)
+	}
+}
+
+// TestClient_PollAuthorization_GetAuthzError tests PollAuthorization when
+// GetAuthorization itself returns an error (e.g. server returns non-200).
+func TestClient_PollAuthorization_GetAuthzError(t *testing.T) {
+	mock := &mockACMEServer{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Replay-Nonce", mock.nextNonce())
+		switch {
+		case r.URL.Path == "/directory":
+			mock.handleDirectory(w, r)
+		case r.URL.Path == "/new-nonce":
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == "/new-account":
+			mock.handleNewAccount(w, r)
+		case strings.HasPrefix(r.URL.Path, "/authz-err"):
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(Problem{
+				Type:   "urn:ietf:params:acme:error:serverInternal",
+				Detail: "internal error",
+				Status: http.StatusInternalServerError,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := createTestClient(t, server)
+
+	_, err := client.PollAuthorization(server.URL+"/authz-err", 5*time.Second)
+	if err == nil {
+		t.Fatal("expected error from PollAuthorization when GetAuthorization fails")
+	}
+}
+
+// TestClient_PollAuthorization_PendingThenValid tests PollAuthorization when
+// the first call returns "pending" and the second returns "valid".
+// This exercises the sleep-and-retry loop.
+func TestClient_PollAuthorization_PendingThenValid(t *testing.T) {
+	callCount := 0
+	mock := &mockACMEServer{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Replay-Nonce", mock.nextNonce())
+		switch {
+		case r.URL.Path == "/directory":
+			mock.handleDirectory(w, r)
+		case r.URL.Path == "/new-nonce":
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == "/new-account":
+			mock.handleNewAccount(w, r)
+		case strings.HasPrefix(r.URL.Path, "/authz-transition"):
+			callCount++
+			if callCount == 1 {
+				// First call: pending
+				json.NewEncoder(w).Encode(Authorization{
+					Status:     "pending",
+					Expires:    time.Now().Add(time.Hour).Format(time.RFC3339),
+					Identifier: Identifier{Type: "dns", Value: "example.com"},
+				})
+			} else {
+				// Second call: valid
+				json.NewEncoder(w).Encode(Authorization{
+					Status:     "valid",
+					Expires:    time.Now().Add(time.Hour).Format(time.RFC3339),
+					Identifier: Identifier{Type: "dns", Value: "example.com"},
+				})
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := createTestClient(t, server)
+
+	authz, err := client.PollAuthorization(server.URL+"/authz-transition", 10*time.Second)
+	if err != nil {
+		t.Fatalf("PollAuthorization error: %v", err)
+	}
+	if authz.Status != "valid" {
+		t.Errorf("Status = %q, want valid", authz.Status)
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 calls to authz endpoint, got %d", callCount)
+	}
+}

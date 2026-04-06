@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -81,6 +82,9 @@ func TestGossipConfigValidate(t *testing.T) {
 // ---- Node tests ----
 
 func TestGossipNodeCreation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipped on Windows: ephemeral port exhaustion in CI")
+	}
 	cfg := DefaultGossipConfig()
 	cfg.NodeID = "test-node-1"
 

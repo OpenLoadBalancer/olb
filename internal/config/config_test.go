@@ -986,3 +986,239 @@ pools:
 		t.Errorf("Listener.Protocol = %q, want %q", cfg.Listeners[0].Protocol, "tcp")
 	}
 }
+
+// ============================================================================
+// Tests for IsTLS
+// ============================================================================
+
+func TestListener_IsTLS(t *testing.T) {
+	tests := []struct {
+		name     string
+		listener *Listener
+		want     bool
+	}{
+		{
+			name:     "nil TLS",
+			listener: &Listener{Name: "http", Address: ":80"},
+			want:     false,
+		},
+		{
+			name:     "TLS disabled",
+			listener: &Listener{Name: "https", Address: ":443", TLS: &ListenerTLS{Enabled: false}},
+			want:     false,
+		},
+		{
+			name:     "TLS enabled",
+			listener: &Listener{Name: "https", Address: ":443", TLS: &ListenerTLS{Enabled: true}},
+			want:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.listener.IsTLS(); got != tt.want {
+				t.Errorf("IsTLS() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// ============================================================================
+// Tests for parseAddress
+// ============================================================================
+
+func TestParseAddress(t *testing.T) {
+	tests := []struct {
+		name     string
+		addr     string
+		wantHost string
+		wantPort string
+		wantErr  bool
+	}{
+		{
+			name:     "port only",
+			addr:     ":8080",
+			wantHost: "",
+			wantPort: "8080",
+		},
+		{
+			name:     "host and port",
+			addr:     "127.0.0.1:8080",
+			wantHost: "127.0.0.1",
+			wantPort: "8080",
+		},
+		{
+			name:     "hostname and port",
+			addr:     "example.com:443",
+			wantHost: "example.com",
+			wantPort: "443",
+		},
+		{
+			name:     "no colon - just host",
+			addr:     "localhost",
+			wantHost: "localhost",
+			wantPort: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			host, port, err := parseAddress(tt.addr)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parseAddress(%q) error = %v, wantErr %v", tt.addr, err, tt.wantErr)
+			}
+			if host != tt.wantHost {
+				t.Errorf("parseAddress(%q) host = %q, want %q", tt.addr, host, tt.wantHost)
+			}
+			if port != tt.wantPort {
+				t.Errorf("parseAddress(%q) port = %q, want %q", tt.addr, port, tt.wantPort)
+			}
+		})
+	}
+}
+
+// ============================================================================
+// Tests for Validate (additional edge cases)
+// ============================================================================
+
+func TestConfig_Validate_DefaultVersion(t *testing.T) {
+	cfg := &Config{
+		Listeners: []*Listener{
+			{Name: "http", Address: ":80"},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() failed: %v", err)
+	}
+	if cfg.Version != "1" {
+		t.Errorf("Version = %q, want %q after Validate()", cfg.Version, "1")
+	}
+}
+
+func TestConfig_Validate_DuplicateListenerNames(t *testing.T) {
+	cfg := &Config{
+		Listeners: []*Listener{
+			{Name: "http", Address: ":80"},
+			{Name: "http", Address: ":8080"},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() should fail with duplicate listener names")
+	}
+}
+
+func TestConfig_Validate_MissingListenerAddress(t *testing.T) {
+	cfg := &Config{
+		Listeners: []*Listener{
+			{Name: "http", Address: ""},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() should fail with missing listener address")
+	}
+}
+
+func TestConfig_Validate_MissingPoolName(t *testing.T) {
+	cfg := &Config{
+		Listeners: []*Listener{
+			{Name: "http", Address: ":80"},
+		},
+		Pools: []*Pool{
+			{Name: "", Backends: []*Backend{{Address: "10.0.0.1:8080"}}},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() should fail with missing pool name")
+	}
+}
+
+func TestConfig_Validate_DuplicatePoolNames(t *testing.T) {
+	cfg := &Config{
+		Listeners: []*Listener{
+			{Name: "http", Address: ":80"},
+		},
+		Pools: []*Pool{
+			{Name: "backend", Backends: []*Backend{{Address: "10.0.0.1:8080"}}},
+			{Name: "backend", Backends: []*Backend{{Address: "10.0.0.2:8080"}}},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() should fail with duplicate pool names")
+	}
+}
+
+func TestConfig_Validate_MissingBackendAddress(t *testing.T) {
+	cfg := &Config{
+		Listeners: []*Listener{
+			{Name: "http", Address: ":80"},
+		},
+		Pools: []*Pool{
+			{Name: "backend", Backends: []*Backend{{Address: ""}}},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() should fail with missing backend address")
+	}
+}
+
+func TestConfig_Validate_RouteMissingPool(t *testing.T) {
+	cfg := &Config{
+		Listeners: []*Listener{
+			{
+				Name:    "http",
+				Address: ":80",
+				Routes:  []*Route{{Path: "/", Pool: ""}},
+			},
+		},
+		Pools: []*Pool{
+			{Name: "backend", Backends: []*Backend{{Address: "10.0.0.1:8080"}}},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() should fail when route has empty pool")
+	}
+}
+
+func TestConfig_Validate_RouteReferencesNonExistentPool(t *testing.T) {
+	cfg := &Config{
+		Listeners: []*Listener{
+			{
+				Name:    "http",
+				Address: ":80",
+				Routes:  []*Route{{Path: "/", Pool: "nonexistent"}},
+			},
+		},
+		Pools: []*Pool{
+			{Name: "backend", Backends: []*Backend{{Address: "10.0.0.1:8080"}}},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() should fail when route references non-existent pool")
+	}
+}
+
+func TestConfig_Validate_ListenerReferencesNonExistentPool(t *testing.T) {
+	cfg := &Config{
+		Listeners: []*Listener{
+			{
+				Name:    "tcp-proxy",
+				Address: ":3306",
+				Pool:    "nonexistent",
+			},
+		},
+		Pools: []*Pool{
+			{Name: "backend", Backends: []*Backend{{Address: "10.0.0.1:8080"}}},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() should fail when listener references non-existent pool")
+	}
+}

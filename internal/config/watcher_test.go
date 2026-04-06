@@ -220,6 +220,30 @@ func TestWatcher_MinimumInterval(t *testing.T) {
 	}
 }
 
+func TestWatcher_StopIdempotent(t *testing.T) {
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "test.yaml")
+
+	content := []byte("version: \"1\"\n")
+	if err := os.WriteFile(configFile, content, 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	watcher, err := NewWatcher(configFile, 50*time.Millisecond, nil, nil)
+	if err != nil {
+		t.Fatalf("Failed to create watcher: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	watcher.Start(ctx)
+
+	// Stop twice -- second call should be a no-op and not panic
+	watcher.Stop()
+	watcher.Stop()
+}
+
 func TestWatcher_InitialFileNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "nonexistent.yaml")
