@@ -1,6 +1,7 @@
 # OpenLoadBalancer
 
-> **Zero-dependency L4/L7 load balancer for any backend.** One binary. Written in pure Go.
+> **Minimal-dependency L4/L7 load balancer for any backend.** One binary. Written in pure Go.
+> Only stdlib + golang.org/x/{crypto,net,text} — no external frameworks.
 > Works with Node.js, Python, Java, Go, Rust, .NET, PHP — anything that speaks HTTP or TCP.
 
 <p align="center">
@@ -14,7 +15,7 @@
   <a href="https://github.com/openloadbalancer/olb/releases"><img src="https://img.shields.io/github/v/release/openloadbalancer/olb" alt="Release"></a>
   <a href="./"><img src="https://img.shields.io/badge/tests-141_files-brightgreen" alt="Tests"></a>
   <a href="./"><img src="https://img.shields.io/badge/coverage-87.7%25-brightgreen" alt="Coverage"></a>
-  <a href="./"><img src="https://img.shields.io/badge/deps-zero-orange" alt="Zero Deps"></a>
+  <a href="./"><img src="https://img.shields.io/badge/deps-3_(x/crypto,x/net,x/text)-orange" alt="Minimal Deps"></a>
 </p>
 
 ## Quick Start
@@ -71,13 +72,13 @@ brew tap openloadbalancer/olb && brew install olb
 git clone https://github.com/openloadbalancer/olb.git && cd olb && make build
 ```
 
-Requires Go 1.25+. No other dependencies.
+Requires Go 1.25+. Only stdlib + golang.org/x/{crypto,net,text}.
 
 ## Features
 
 **Proxy:** HTTP/HTTPS, WebSocket, gRPC, SSE, TCP (L4), UDP (L4), SNI routing, PROXY protocol v1/v2, Request Shadowing/Mirroring
 
-**Load Balancing:** 14 algorithms — Round Robin, Weighted RR, Least Connections, Weighted Least Connections, Least Response Time, Weighted Least Response Time, IP Hash, Consistent Hash (Ketama), Maglev, Ring Hash, Power of Two, Random, Weighted Random, Sticky Sessions
+**Load Balancing:** 16 algorithms — Round Robin, Weighted RR, Least Connections, Weighted Least Connections, Least Response Time, Weighted Least Response Time, IP Hash, Consistent Hash (Ketama), Maglev, Ring Hash, Power of Two, Random, Weighted Random, Rendezvous Hash, Peak EWMA, Sticky Sessions
 
 **Geo-DNS Routing:** Geographic location-based traffic routing (country, region, city)
 
@@ -142,7 +143,7 @@ Benchmarked on AMD Ryzen 9 9950X3D:
 | RoundRobin.Next | **3.5 ns/op**, 0 allocs |
 | Middleware overhead | **< 3%** (full stack vs none) |
 | WAF overhead (6-layer) | **~35μs** per request, **< 3%** at proxy scale |
-| Binary size | **9 MB** |
+| Binary size | **~13 MB** |
 | P99 latency (50 conc.) | **22ms** |
 | Success rate | **100%** across all tests |
 
@@ -330,7 +331,7 @@ olb cluster status                   # Cluster info
                     │              OpenLoadBalancer                    │
   Clients ─────────┤                                                  │
   HTTP/S, WS,      │  Listeners → Middleware → Router → Balancer → Backends
-  gRPC, TCP, UDP   │  (L4/L7)     (16 types)   (trie)   (14 algos)  │
+  gRPC, TCP, UDP   │  (L4/L7)     (16 types)   (trie)   (16 algos)  │
                     │                                                  │
                     │  WAF (6 layers) │ TLS │ Cluster │ MCP │ Web UI  │
                     │  GeoDNS │ Shadow │ Discovery │ Prometheus      │
@@ -358,7 +359,7 @@ olb cluster status                   # Cluster info
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Key rules:
 
-1. **Zero external deps** — stdlib only
+1. **Minimal external deps** — stdlib + golang.org/x/{crypto,net,text} only
 2. **Tests required** — 85% coverage, don't lower it
 3. **All features wired** — no dead code in engine.go
 4. **gofmt + go vet** — CI enforced
