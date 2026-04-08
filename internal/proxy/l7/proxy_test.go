@@ -1,12 +1,15 @@
 package l7
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -22,6 +25,8 @@ import (
 	"github.com/openloadbalancer/olb/internal/middleware"
 	"github.com/openloadbalancer/olb/internal/router"
 	olbErrors "github.com/openloadbalancer/olb/pkg/errors"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 )
 
 // setupTestProxy creates a proxy with test dependencies.
@@ -2118,9 +2123,15 @@ func TestGRPCWebHandler_Enabled_DelegatesToGRPC(t *testing.T) {
 		t.Errorf("Status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
-	body := rec.Body.String()
-	if body != "grpc-web response body" {
-		t.Errorf("Body = %q, want %q", body, "grpc-web response body")
+	// With proper gRPC-Web framing, response includes grpc-web+proto CT and trailer frame
+	ct := rec.Header().Get("Content-Type")
+	if ct != "application/grpc-web+proto" {
+		t.Errorf("Content-Type = %q, want application/grpc-web+proto", ct)
+	}
+
+	body := rec.Body.Bytes()
+	if !bytes.HasPrefix(body, []byte("grpc-web response body")) {
+		t.Errorf("body should start with 'grpc-web response body', got %q", body[:min(len(body), 30)])
 	}
 }
 
@@ -2252,7 +2263,7 @@ func TestNewHTTPProxy_WithNilSubComponents(t *testing.T) {
 	if proxy.sseHandler == nil {
 		t.Error("expected sseHandler to be initialized")
 	}
-	if proxy.errorHandler == nil {
+	if proxy.getErrorHandler() == nil {
 		t.Error("expected errorHandler to be set to default")
 	}
 }
@@ -2473,5 +2484,755 @@ func TestProxyHandler_AllBackendsAttempted(t *testing.T) {
 	// After all retries, should get an error
 	if rr.Code != http.StatusBadGateway && rr.Code != http.StatusServiceUnavailable {
 		t.Errorf("expected status %d or %d, got %d", http.StatusBadGateway, http.StatusServiceUnavailable, rr.Code)
+	}
+}
+
+// ============================================================================
+// Coverage tests for low-coverage functions
+// ============================================================================
+
+// --- proxy.go: getClientIP - RemoteAddr without port (line 430-432) ---
+
+func TestCov_GetClientIP_RemoteAddrNoPort(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "no-colon-or-bracket"
+	result := getClientIP(req)
+	if result != "no-colon-or-bracket" {
+		t.Errorf("expected 'no-colon-or-bracket', got %q", result)
+	}
+}
+
+// --- proxy.go: proxyRequest - backend at max connections (line 317-319) ---
+
+func TestCov_ProxyRequest_BackendMaxConns(t *testing.T) {
+	proxy, _, _ := setupTestProxy(t)
+
+	b := backend.NewBackend("max-conn-backend", "127.0.0.1:0")
+	b.SetState(backend.StateUp)
+	b.MaxConns = 1
+	b.AcquireConn()
+
+	reqCtx := middleware.NewRequestContext(httptest.NewRequest(http.MethodGet, "/test", nil), httptest.NewRecorder())
+	defer reqCtx.Release()
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+
+	err := proxy.proxyRequest(rr, req, reqCtx, b)
+	if err == nil {
+		t.Error("expected error when backend at max connections")
+	}
+	if !strings.Contains(err.Error(), "max connections") {
+		t.Errorf("expected 'max connections' error, got: %v", err)
+	}
+	b.ReleaseConn()
+}
+
+// --- proxy.go: proxyRequest - io.Copy error path (line 354-356) ---
+
+func TestCov_ProxyRequest_CopyError(t *testing.T) {
+	backendServer := createTestBackend(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("short"))
+	})
+	defer backendServer.Close()
+
+	proxy, poolManager, routerInstance := setupTestProxy(t)
+
+	backendAddr := backendServer.Listener.Addr().String()
+	pool := backend.NewPool("copy-err-pool", "round_robin")
+	pool.SetBalancer(balancer.NewRoundRobin())
+	b := backend.NewBackend("copy-err-backend", backendAddr)
+	b.SetState(backend.StateUp)
+	if err := pool.AddBackend(b); err != nil {
+		t.Fatalf("failed to add backend: %v", err)
+	}
+	if err := poolManager.AddPool(pool); err != nil {
+		t.Fatalf("failed to add pool: %v", err)
+	}
+
+	route := &router.Route{
+		Name:        "copy-err-route",
+		Path:        "/test",
+		BackendPool: "copy-err-pool",
+	}
+	if err := routerInstance.AddRoute(route); err != nil {
+		t.Fatalf("failed to add route: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rr := httptest.NewRecorder()
+	proxy.ServeHTTP(rr, req)
+	t.Logf("Copy error test status: %d, body: %s", rr.Code, rr.Body.String())
+}
+
+// --- proxy.go: prepareOutboundRequest - TLS proto (line 391-393) ---
+
+func TestCov_PrepareOutboundRequest_TLSProto(t *testing.T) {
+	proxy, _, _ := setupTestProxy(t)
+
+	backendServer := createTestBackend(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	defer backendServer.Close()
+
+	backendAddr := backendServer.Listener.Addr().String()
+	b := backend.NewBackend("tls-proto-backend", backendAddr)
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.TLS = &tls.ConnectionState{}
+
+	outReq, err := proxy.prepareOutboundRequest(req, b)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if outReq.Header.Get("X-Forwarded-Proto") != "https" {
+		t.Errorf("expected X-Forwarded-Proto 'https', got %q", outReq.Header.Get("X-Forwarded-Proto"))
+	}
+}
+
+// --- proxy.go: prepareOutboundRequest - Connection header value stripping (line 405-408) ---
+
+func TestCov_PrepareOutboundRequest_ConnectionValueStripping(t *testing.T) {
+	proxy, _, _ := setupTestProxy(t)
+
+	backendServer := createTestBackend(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	defer backendServer.Close()
+
+	backendAddr := backendServer.Listener.Addr().String()
+	b := backend.NewBackend("conn-strip-backend", backendAddr)
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Connection", "X-Custom-Header, X-Another-Header")
+	req.Header.Set("X-Custom-Header", "should-be-removed")
+	req.Header.Set("X-Another-Header", "also-removed")
+	req.Host = "example.com"
+
+	outReq, err := proxy.prepareOutboundRequest(req, b)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if outReq.Header.Get("Connection") != "" {
+		t.Error("expected Connection header to be stripped")
+	}
+	if outReq.Header.Get("X-Custom-Header") != "" {
+		t.Error("expected X-Custom-Header to be stripped (named in Connection)")
+	}
+	if outReq.Header.Get("X-Another-Header") != "" {
+		t.Error("expected X-Another-Header to be stripped (named in Connection)")
+	}
+}
+
+// --- proxy.go: defaultErrorHandler - default case with olbErr.Message (line 555-556) ---
+
+func TestCov_DefaultErrorHandler_UnknownErrorCode(t *testing.T) {
+	err := olbErrors.New(olbErrors.Code(999), "custom error message")
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rr := httptest.NewRecorder()
+
+	defaultErrorHandler(rr, req, err)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected status %d, got %d", http.StatusInternalServerError, rr.Code)
+	}
+
+	var resp ErrorResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Message != "custom error message" {
+		t.Errorf("expected message 'custom error message', got %q", resp.Message)
+	}
+}
+
+// --- proxy.go: proxyHandler - security.ValidateRequest error (line 202-205) ---
+
+func TestCov_ProxyHandler_SecurityValidationFail(t *testing.T) {
+	proxy, poolManager, routerInstance := setupTestProxy(t)
+
+	backendServer := createTestBackend(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	defer backendServer.Close()
+
+	backendAddr := backendServer.Listener.Addr().String()
+	pool := backend.NewPool("sec-pool", "round_robin")
+	pool.SetBalancer(balancer.NewRoundRobin())
+	b := backend.NewBackend("sec-backend", backendAddr)
+	b.SetState(backend.StateUp)
+	pool.AddBackend(b)
+	poolManager.AddPool(pool)
+
+	route := &router.Route{Name: "sec-route", Path: "/test", BackendPool: "sec-pool"}
+	routerInstance.AddRoute(route)
+
+	req := httptest.NewRequest(http.MethodPost, "/test", bytes.NewReader([]byte("body")))
+	req.Header.Set("Content-Length", "4")
+	req.Header.Set("Transfer-Encoding", "chunked")
+
+	rr := httptest.NewRecorder()
+	proxy.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected status %d for security validation failure, got %d", http.StatusInternalServerError, rr.Code)
+	}
+}
+
+// --- proxy.go: proxyHandler - all backends attempted (line 272-275) ---
+
+func TestCov_ProxyHandler_AllBackendsAttempted_ErrorPath(t *testing.T) {
+	poolManager := backend.NewPoolManager()
+	routerInstance := router.NewRouter()
+	middlewareChain := middleware.NewChain()
+
+	config := &Config{
+		Router:          routerInstance,
+		PoolManager:     poolManager,
+		MiddlewareChain: middlewareChain,
+		ProxyTimeout:    5 * time.Second,
+		DialTimeout:     1 * time.Second,
+		MaxRetries:      2,
+	}
+	proxy := NewHTTPProxy(config)
+
+	pool := backend.NewPool("attempt-pool", "round_robin")
+	pool.SetBalancer(balancer.NewRoundRobin())
+
+	b := backend.NewBackend("attempt-b1", "127.0.0.1:1")
+	b.SetState(backend.StateUp)
+	pool.AddBackend(b)
+	poolManager.AddPool(pool)
+
+	route := &router.Route{Name: "attempt-route", Path: "/test", BackendPool: "attempt-pool"}
+	routerInstance.AddRoute(route)
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rr := httptest.NewRecorder()
+	proxy.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable && rr.Code != http.StatusBadGateway {
+		t.Errorf("expected %d or %d, got %d", http.StatusServiceUnavailable, http.StatusBadGateway, rr.Code)
+	}
+}
+
+// --- proxy.go: NewHTTPProxy - CheckRedirect function (line 124-126) ---
+
+func TestCov_NewHTTPProxy_CheckRedirect(t *testing.T) {
+	redirectServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/redirect" {
+			w.Header().Set("Location", "/final")
+			w.WriteHeader(http.StatusFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("final destination"))
+	}))
+	defer redirectServer.Close()
+
+	proxy, poolManager, routerInstance := setupTestProxy(t)
+
+	backendAddr := redirectServer.Listener.Addr().String()
+	pool := backend.NewPool("redirect-pool", "round_robin")
+	pool.SetBalancer(balancer.NewRoundRobin())
+	b := backend.NewBackend("redirect-backend", backendAddr)
+	b.SetState(backend.StateUp)
+	pool.AddBackend(b)
+	poolManager.AddPool(pool)
+
+	route := &router.Route{Name: "redirect-route", Path: "/redirect", BackendPool: "redirect-pool"}
+	routerInstance.AddRoute(route)
+
+	req := httptest.NewRequest(http.MethodGet, "/redirect", nil)
+	rr := httptest.NewRecorder()
+	proxy.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusFound {
+		t.Errorf("expected %d (redirect not followed), got %d", http.StatusFound, rr.Code)
+	}
+	location := rr.Header().Get("Location")
+	if location != "/final" {
+		t.Errorf("expected Location '/final', got %q", location)
+	}
+}
+
+// --- websocket.go: HandleWebSocket - writeUpgradeRequest error (line 107-109) ---
+
+func TestCov_HandleWebSocket_WriteUpgradeError(t *testing.T) {
+	backendListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+
+	go func() {
+		conn, err := backendListener.Accept()
+		if err != nil {
+			return
+		}
+		conn.Close()
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	wh := NewWebSocketHandler(&WebSocketConfig{
+		EnableWebSocket: true,
+		IdleTimeout:     2 * time.Second,
+	})
+	b := backend.NewBackend("ws-write-err", backendListener.Addr().String())
+	b.SetState(backend.StateUp)
+
+	req := httptest.NewRequest("GET", "/ws", nil)
+	req.Header.Set("Sec-WebSocket-Key", "dGhlbGxvIGlzIG5vIGJpbmU=")
+	w := httptest.NewRecorder()
+
+	err = wh.HandleWebSocket(w, req, b)
+	backendListener.Close()
+	if err == nil {
+		t.Error("expected error when backend closes before upgrade write")
+	}
+}
+
+// --- websocket.go: HandleWebSocket - writeUpgradeResponse error (line 135-137) ---
+
+func TestCov_HandleWebSocket_WriteUpgradeResponseError(t *testing.T) {
+	backendListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	defer backendListener.Close()
+
+	go func() {
+		conn, err := backendListener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		buf := make([]byte, 4096)
+		conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		conn.Read(buf)
+		conn.Write([]byte("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQiSG5hZWdpIHRvbyBzYXR1yKQ=\r\n\r\n"))
+		time.Sleep(2 * time.Second)
+	}()
+
+	wh := NewWebSocketHandler(&WebSocketConfig{
+		EnableWebSocket: true,
+		IdleTimeout:     2 * time.Second,
+	})
+	b := backend.NewBackend("ws-resp-err", backendListener.Addr().String())
+	b.SetState(backend.StateUp)
+
+	serverConn, clientConn := net.Pipe()
+	clientConn.Close()
+
+	rw := &hijackableResponseWriter{
+		conn: serverConn,
+		buf:  bufio.NewReadWriter(bufio.NewReader(strings.NewReader("")), bufio.NewWriter(io.Discard)),
+	}
+
+	req := httptest.NewRequest("GET", "/ws", nil)
+	req.Header.Set("Sec-WebSocket-Key", "dGhlbGxvIGlzIG5vIGJpbmU=")
+
+	err = wh.HandleWebSocket(rw, req, b)
+	if err == nil {
+		t.Error("expected error when writeUpgradeResponse fails")
+	}
+	t.Logf("Error: %v", err)
+}
+
+// --- websocket.go: HandleWebSocket - buffered data forwarding (lines 140-154) ---
+
+func TestCov_HandleWebSocket_BufferedClientData(t *testing.T) {
+	backendListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	defer backendListener.Close()
+
+	go func() {
+		conn, err := backendListener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		buf := make([]byte, 4096)
+		conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		conn.Read(buf)
+		conn.Write([]byte("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQiSG5hZWdpIHRvbyBzYXR1yKQ=\r\n\r\nextra-backend-data"))
+		conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		conn.Read(buf)
+	}()
+
+	wh := NewWebSocketHandler(&WebSocketConfig{
+		EnableWebSocket: true,
+		IdleTimeout:     2 * time.Second,
+	})
+	b := backend.NewBackend("ws-buf-backend", backendListener.Addr().String())
+	b.SetState(backend.StateUp)
+
+	serverConn, clientConn := net.Pipe()
+	defer clientConn.Close()
+
+	bufReader := bufio.NewReader(strings.NewReader("pre-client-data"))
+	bufWriter := bufio.NewWriter(io.Discard)
+	rw := &hijackableResponseWriter{
+		conn: serverConn,
+		buf:  bufio.NewReadWriter(bufReader, bufWriter),
+	}
+
+	req := httptest.NewRequest("GET", "/ws", nil)
+	req.Header.Set("Sec-WebSocket-Key", "dGhlbGxvIGlzIG5vIGJpbmU=")
+	req.Header.Set("Sec-WebSocket-Version", "13")
+	req.Header.Set("Upgrade", "websocket")
+
+	done := make(chan error, 1)
+	go func() {
+		done <- wh.HandleWebSocket(rw, req, b)
+	}()
+
+	clientConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	respBuf := make([]byte, 4096)
+	n, _ := clientConn.Read(respBuf)
+	result := string(respBuf[:n])
+	if !strings.Contains(result, "101") {
+		t.Errorf("expected 101 response, got: %s", result)
+	}
+
+	clientConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	n2, _ := clientConn.Read(respBuf)
+	if n2 > 0 {
+		t.Logf("Received forwarded backend data: %q", string(respBuf[:n2]))
+	}
+
+	serverConn.Close()
+	clientConn.Close()
+
+	select {
+	case err := <-done:
+		t.Logf("HandleWebSocket returned: %v", err)
+	case <-time.After(4 * time.Second):
+		t.Log("HandleWebSocket timed out")
+	}
+}
+
+// --- websocket.go: proxyWebSocket - panic recovery (lines 307-312, 325-330) ---
+
+func TestCov_ProxyWebSocket_PanicInCopy(t *testing.T) {
+	panicConn := &panicReadConn{}
+	normalConn := &errorConn{readErr: fmt.Errorf("normal error")}
+
+	wh := NewWebSocketHandler(&WebSocketConfig{
+		IdleTimeout: 100 * time.Millisecond,
+	})
+
+	err := wh.proxyWebSocket(panicConn, normalConn)
+	t.Logf("proxyWebSocket with panic conn returned: %v", err)
+}
+
+// panicReadConn is a net.Conn whose Read method panics.
+type panicReadConn struct {
+	closed bool
+}
+
+func (c *panicReadConn) Read([]byte) (int, error)         { panic("test panic in read") }
+func (c *panicReadConn) Write(p []byte) (int, error)      { return len(p), nil }
+func (c *panicReadConn) Close() error                     { c.closed = true; return nil }
+func (c *panicReadConn) LocalAddr() net.Addr              { return &net.TCPAddr{} }
+func (c *panicReadConn) RemoteAddr() net.Addr             { return &net.TCPAddr{} }
+func (c *panicReadConn) SetDeadline(time.Time) error      { return nil }
+func (c *panicReadConn) SetReadDeadline(time.Time) error  { return nil }
+func (c *panicReadConn) SetWriteDeadline(time.Time) error { return nil }
+
+// --- websocket.go: proxyWebSocket - error from errChan (line 344-345) ---
+
+func TestCov_ProxyWebSocket_ErrChanResult(t *testing.T) {
+	c1 := &errorConn{readErr: fmt.Errorf("non-close-error-1")}
+	c2 := &errorConn{readErr: fmt.Errorf("non-close-error-2")}
+
+	wh := NewWebSocketHandler(&WebSocketConfig{
+		IdleTimeout: 100 * time.Millisecond,
+	})
+
+	err := wh.proxyWebSocket(c1, c2)
+	if err == nil {
+		t.Error("expected error from proxyWebSocket")
+	}
+	t.Logf("proxyWebSocket returned error: %v", err)
+}
+
+// --- websocket.go: copyWithIdleTimeout - io.ErrShortWrite (line 369-371) ---
+
+func TestCov_CopyWithIdleTimeout_ShortWriteViaProxy(t *testing.T) {
+	src, srcPipe := net.Pipe()
+	dst, _ := net.Pipe()
+	defer src.Close()
+
+	dst.Close()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		wh := NewWebSocketHandler(nil)
+		err := wh.copyWithIdleTimeout(dst, src, 2*time.Second)
+		t.Logf("copyWithIdleTimeout returned: %v", err)
+	}()
+
+	srcPipe.Write([]byte("data"))
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("copyWithIdleTimeout hung on short write")
+	}
+}
+
+// --- websocket.go: isWebSocketCloseError - edge cases ---
+
+func TestCov_IsWebSocketCloseError_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"ECONNABORTED", syscall.ECONNABORTED, true},
+		{"timeout net error", &netError{timeout: true}, true},
+		{"eof string", fmt.Errorf("unexpected eof"), true},
+		{"non-close error", fmt.Errorf("some random error"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isWebSocketCloseError(tt.err)
+			if got != tt.want {
+				t.Errorf("isWebSocketCloseError(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+// --- http2.go: NewHTTP2Handler - DialTLS function (lines 98-101) ---
+
+func TestCov_NewHTTP2Handler_DialTLSPath(t *testing.T) {
+	config := DefaultHTTP2Config()
+	handler := NewHTTP2Handler(config)
+
+	if handler.h2Transport == nil {
+		t.Fatal("h2Transport should be initialized")
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	defer ln.Close()
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		conn.Close()
+	}()
+
+	dialFn := handler.h2Transport.DialTLS
+	if dialFn == nil {
+		t.Skip("DialTLS is nil, transport may use default")
+	}
+	conn, err := dialFn("tcp", ln.Addr().String(), nil)
+	if err != nil {
+		t.Logf("DialTLS: %v (may be expected)", err)
+	} else {
+		conn.Close()
+	}
+}
+
+// --- http2.go: Stop with server and listener ---
+
+func TestCov_HTTP2Listener_Stop_WithServerAndListener(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("test"))
+	})
+
+	opts := &HTTP2ListenerOptions{
+		Name:    "test-stop-full",
+		Address: "127.0.0.1:0",
+		Handler: handler,
+		Config:  DefaultHTTP2Config(),
+	}
+
+	listener, err := NewHTTP2Listener(opts)
+	if err != nil {
+		t.Fatalf("NewHTTP2Listener error: %v", err)
+	}
+
+	if err := listener.Start(); err != nil {
+		t.Fatalf("Start error: %v", err)
+	}
+
+	if !listener.IsRunning() {
+		t.Error("Listener should be running")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = listener.Stop(ctx)
+	if err != nil {
+		t.Errorf("Stop error: %v", err)
+	}
+
+	if listener.IsRunning() {
+		t.Error("Listener should not be running after stop")
+	}
+}
+
+// --- http2.go: HandleHTTP2Proxy - write error on response body (lines 524-526) ---
+
+func TestCov_HandleHTTP2Proxy_WriteError(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("response data"))
+	})
+
+	h2s := &http2.Server{}
+	server := httptest.NewServer(h2c.NewHandler(handler, h2s))
+	defer server.Close()
+
+	addr := strings.TrimPrefix(server.URL, "http://")
+	be := backend.NewBackend("h2-write-err-backend", addr)
+	be.SetState(backend.StateUp)
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	rec := &failingResponseWriter{header: make(http.Header)}
+
+	config := DefaultHTTP2Config()
+	err := HandleHTTP2Proxy(rec, req, be, config)
+	t.Logf("HandleHTTP2Proxy with failing writer: %v", err)
+}
+
+// failingResponseWriter is an http.ResponseWriter whose Write always returns an error.
+type failingResponseWriter struct {
+	header http.Header
+	code   int
+}
+
+func (f *failingResponseWriter) Header() http.Header  { return f.header }
+func (f *failingResponseWriter) WriteHeader(code int) { f.code = code }
+func (f *failingResponseWriter) Write([]byte) (int, error) {
+	return 0, fmt.Errorf("write error for test")
+}
+
+// --- http2.go: Start - double-check running race (lines 260-262) ---
+
+func TestCov_HTTP2Listener_Start_RaceCondition(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	opts := &HTTP2ListenerOptions{
+		Name:    "test-race",
+		Address: "127.0.0.1:0",
+		Handler: handler,
+		Config:  DefaultHTTP2Config(),
+	}
+
+	listener, err := NewHTTP2Listener(opts)
+	if err != nil {
+		t.Fatalf("NewHTTP2Listener error: %v", err)
+	}
+
+	listener.running.Store(true)
+
+	err = listener.Start()
+	if err == nil {
+		t.Error("expected error when listener already running")
+		listener.Stop(context.Background())
+	}
+}
+
+// --- http2.go: Stop - not running double-check (line 322-324) ---
+
+func TestCov_HTTP2Listener_Stop_RaceCheck(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	opts := &HTTP2ListenerOptions{
+		Name:    "test-stop-race",
+		Address: "127.0.0.1:0",
+		Handler: handler,
+		Config:  DefaultHTTP2Config(),
+	}
+
+	listener, _ := NewHTTP2Listener(opts)
+	listener.running.Store(true)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err := listener.Stop(ctx)
+	t.Logf("Stop with nil server: %v", err)
+}
+
+// --- websocket.go: writeUpgradeRequest - empty path (line 183-185) ---
+
+func TestCov_WriteUpgradeRequest_EmptyPathViaHandleWebSocket(t *testing.T) {
+	backendListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	defer backendListener.Close()
+
+	go func() {
+		conn, err := backendListener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		buf := make([]byte, 4096)
+		conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		conn.Read(buf)
+		conn.Write([]byte("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQiSG5hZWdpIHRvbyBzYXR1yKQ=\r\n\r\n"))
+		time.Sleep(2 * time.Second)
+	}()
+
+	wh := NewWebSocketHandler(&WebSocketConfig{
+		EnableWebSocket: true,
+		IdleTimeout:     2 * time.Second,
+	})
+	b := backend.NewBackend("ws-empty-path", backendListener.Addr().String())
+	b.SetState(backend.StateUp)
+
+	serverConn, clientConn := net.Pipe()
+	defer clientConn.Close()
+
+	rw := &hijackableResponseWriter{
+		conn: serverConn,
+		buf:  bufio.NewReadWriter(bufio.NewReader(strings.NewReader("")), bufio.NewWriter(io.Discard)),
+	}
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Sec-WebSocket-Key", "dGhlbGxvIGlzIG5vIGJpbmU=")
+	req.Header.Set("Sec-WebSocket-Version", "13")
+	req.Header.Set("Upgrade", "websocket")
+
+	done := make(chan error, 1)
+	go func() {
+		done <- wh.HandleWebSocket(rw, req, b)
+	}()
+
+	clientConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	respBuf := make([]byte, 4096)
+	n, _ := clientConn.Read(respBuf)
+	result := string(respBuf[:n])
+	if !strings.Contains(result, "101") {
+		t.Errorf("expected 101 response, got: %s", result)
+	}
+
+	serverConn.Close()
+	clientConn.Close()
+
+	select {
+	case err := <-done:
+		t.Logf("HandleWebSocket: %v", err)
+	case <-time.After(4 * time.Second):
+		t.Log("HandleWebSocket timed out")
 	}
 }

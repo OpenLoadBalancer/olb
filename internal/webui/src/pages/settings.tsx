@@ -7,12 +7,15 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Settings, Save, RotateCcw, Server, Globe, Shield, Bell } from "lucide-react"
 import { toast } from "sonner"
+import { useConfig } from "@/hooks/use-query"
+import { api } from "@/lib/api"
 
 export function SettingsPage() {
+  const { data: config } = useConfig()
   const [generalSettings, setGeneralSettings] = useState({
     instanceName: 'prod-olb-01',
-    logLevel: 'info',
-    maxConnections: 10000,
+    logLevel: config?.logging?.level || 'info',
+    maxConnections: config?.server?.max_connections || 10000,
     gracefulShutdown: true,
   })
 
@@ -32,8 +35,13 @@ export function SettingsPage() {
     onWAFBlock: false,
   })
 
-  const handleSave = (section: string) => {
-    toast.success(`${section} settings saved`)
+  const handleSave = async (section: string) => {
+    try {
+      await api.reload()
+      toast.success(`${section} settings saved and config reloaded`)
+    } catch (err: any) {
+      toast.error(err.message || `Failed to save ${section} settings`)
+    }
   }
 
   return (

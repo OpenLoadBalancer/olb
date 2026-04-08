@@ -22,74 +22,49 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Layers, Plus, Search, Trash2, Edit, Activity, Clock } from "lucide-react"
+import { Layers, Plus, Search, Trash2, Activity, Clock, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
-import type { Pool, Backend } from "@/types"
-
-const mockPools: Pool[] = [
-  {
-    id: "1",
-    name: "api-pool",
-    algorithm: "round_robin",
-    backends: [
-      { id: "b1", address: "10.0.1.10:8080", weight: 1, status: "up", health: "healthy", response_time_ms: 12, active_connections: 45, total_requests: 1250000 },
-      { id: "b2", address: "10.0.1.11:8080", weight: 1, status: "up", health: "healthy", response_time_ms: 15, active_connections: 38, total_requests: 1180000 },
-      { id: "b3", address: "10.0.1.12:8080", weight: 1, status: "down", health: "unhealthy", response_time_ms: 0, active_connections: 0, total_requests: 500000 },
-    ],
-    health_check: { enabled: true, type: "http", path: "/health", interval: "10s" },
-    total_requests: 2930000,
-    active_connections: 83,
-  },
-  {
-    id: "2",
-    name: "web-pool",
-    algorithm: "least_connections",
-    backends: [
-      { id: "b4", address: "10.0.2.10:3000", weight: 2, status: "up", health: "healthy", response_time_ms: 8, active_connections: 120, total_requests: 5000000 },
-      { id: "b5", address: "10.0.2.11:3000", weight: 2, status: "up", health: "healthy", response_time_ms: 10, active_connections: 98, total_requests: 4800000 },
-    ],
-    health_check: { enabled: true, type: "http", path: "/", interval: "5s" },
-    total_requests: 9800000,
-    active_connections: 218,
-  },
-  {
-    id: "3",
-    name: "grpc-pool",
-    algorithm: "ip_hash",
-    backends: [
-      { id: "b6", address: "10.0.3.10:50051", weight: 1, status: "up", health: "healthy", response_time_ms: 5, active_connections: 25, total_requests: 800000 },
-      { id: "b7", address: "10.0.3.11:50051", weight: 1, status: "up", health: "healthy", response_time_ms: 6, active_connections: 22, total_requests: 750000 },
-    ],
-    health_check: { enabled: true, type: "grpc", path: "", interval: "10s" },
-    total_requests: 1550000,
-    active_connections: 47,
-  },
-]
+import { usePools } from "@/hooks/use-query"
+import { api } from "@/lib/api"
+import { LoadingCard } from "@/components/ui/loading"
 
 const algorithmLabels: Record<string, string> = {
   round_robin: "Round Robin",
+  rr: "Round Robin",
   least_connections: "Least Connections",
+  lc: "Least Connections",
   ip_hash: "IP Hash",
+  iphash: "IP Hash",
   weighted_round_robin: "Weighted Round Robin",
+  wrr: "Weighted Round Robin",
+  weighted_least_connections: "Weighted Least Connections",
+  wlc: "Weighted Least Connections",
+  least_response_time: "Least Response Time",
+  lrt: "Least Response Time",
+  consistent_hash: "Consistent Hash",
+  ch: "Consistent Hash",
+  ketama: "Consistent Hash",
+  maglev: "Maglev",
+  power_of_two: "Power of Two",
+  p2c: "Power of Two",
   random: "Random",
-  first: "First",
+  weighted_random: "Weighted Random",
+  wrandom: "Weighted Random",
+  ring_hash: "Ring Hash",
+  ringhash: "Ring Hash",
+  rendezvous: "Rendezvous Hash",
+  rendezvous_hash: "Rendezvous Hash",
+  sticky: "Sticky Sessions",
+  peak_ewma: "Peak EWMA",
+  pewma: "Peak EWMA",
 }
 
-const algorithms = [
-  { value: "round_robin", label: "Round Robin" },
-  { value: "least_connections", label: "Least Connections" },
-  { value: "ip_hash", label: "IP Hash" },
-  { value: "weighted_round_robin", label: "Weighted Round Robin" },
-  { value: "random", label: "Random" },
-  { value: "first", label: "First" },
-]
-
 export function PoolsPage() {
-  const [pools, setPools] = useState<Pool[]>(mockPools)
+  const { data: pools, isLoading, error, refetch } = usePools()
   const [search, setSearch] = useState("")
-  const [selectedPool, setSelectedPool] = useState<Pool | null>(mockPools[0])
+  const [selectedPoolName, setSelectedPoolName] = useState<string | null>(null)
 
-  // Create Pool Dialog State
+  // Create Pool Dialog State (local UI only — pools created via config)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [newPool, setNewPool] = useState({
     name: "",
@@ -107,89 +82,97 @@ export function PoolsPage() {
     weight: 1,
   })
 
-  const filteredPools = pools.filter(p =>
+  const selectedPool = pools?.find(p => p.name === selectedPoolName) ?? null
+
+  // Auto-select first pool when data loads
+  if (pools && pools.length > 0 && !selectedPoolName && !selectedPool) {
+    setSelectedPoolName(pools[0].name)
+  }
+
+  const filteredPools = (pools ?? []).filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase())
   )
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
+  const getStatusColor = (state: string, healthy: boolean) => {
+    if (!healthy) return 'bg-red-500'
+    switch (state) {
       case 'up': return 'bg-green-500'
       case 'down': return 'bg-red-500'
       case 'draining': return 'bg-amber-500'
-      default: return 'bg-gray-500'
+      default: return 'bg-green-500'
     }
   }
 
-  const getHealthBadge = (health: string) => {
-    switch (health) {
-      case 'healthy': return <Badge variant="outline" className="text-green-600 border-green-600">Healthy</Badge>
-      case 'unhealthy': return <Badge variant="destructive">Unhealthy</Badge>
-      default: return <Badge variant="secondary">Unknown</Badge>
-    }
+  const getHealthBadge = (healthy: boolean) => {
+    return healthy
+      ? <Badge variant="outline" className="text-green-600 border-green-600">Healthy</Badge>
+      : <Badge variant="destructive">Unhealthy</Badge>
   }
 
-  const handleCreatePool = () => {
-    const pool: Pool = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: newPool.name,
-      algorithm: newPool.algorithm,
-      backends: [],
-      health_check: newPool.healthCheckEnabled ? {
-        enabled: true,
-        type: newPool.healthCheckType,
-        path: newPool.healthCheckPath,
-        interval: newPool.healthCheckInterval,
-      } : undefined,
-      total_requests: 0,
-      active_connections: 0,
-    }
-    setPools([...pools, pool])
-    setCreateDialogOpen(false)
-    setNewPool({
-      name: "",
-      algorithm: "round_robin",
-      healthCheckEnabled: true,
-      healthCheckType: "http",
-      healthCheckPath: "/health",
-      healthCheckInterval: "10s",
-    })
-    toast.success(`Pool "${pool.name}" created successfully`)
-  }
-
-  const handleAddBackend = () => {
+  const handleAddBackend = async () => {
     if (!selectedPool) return
-    const backend: Backend = {
-      id: Math.random().toString(36).substr(2, 9),
-      address: newBackend.address,
-      weight: newBackend.weight,
-      status: "up",
-      health: "unknown",
-      response_time_ms: 0,
-      active_connections: 0,
-      total_requests: 0,
+    try {
+      await api.addBackend(selectedPool.name, {
+        id: `${newBackend.address}`,
+        address: newBackend.address,
+        weight: newBackend.weight,
+      })
+      setBackendDialogOpen(false)
+      setNewBackend({ address: "", weight: 1 })
+      toast.success(`Backend "${newBackend.address}" added successfully`)
+      refetch()
+    } catch (err: any) {
+      toast.error(err.message || "Failed to add backend")
     }
-    const updatedPool = { ...selectedPool, backends: [...selectedPool.backends, backend] }
-    setPools(pools.map(p => p.id === selectedPool.id ? updatedPool : p))
-    setSelectedPool(updatedPool)
-    setBackendDialogOpen(false)
-    setNewBackend({ address: "", weight: 1 })
-    toast.success(`Backend "${backend.address}" added successfully`)
   }
 
-  const handleDeletePool = (poolId: string) => {
-    setPools(pools.filter(p => p.id !== poolId))
-    if (selectedPool?.id === poolId) {
-      setSelectedPool(null)
-    }
-    toast.success("Pool deleted successfully")
-  }
-
-  const handleDeleteBackend = (backendId: string) => {
+  const handleDeleteBackend = async (backendId: string) => {
     if (!selectedPool) return
-    const updatedPool = { ...selectedPool, backends: selectedPool.backends.filter(b => b.id !== backendId) }
-    setPools(pools.map(p => p.id === selectedPool.id ? updatedPool : p))
-    setSelectedPool(updatedPool)
-    toast.success("Backend removed successfully")
+    try {
+      await api.removeBackend(selectedPool.name, backendId)
+      toast.success("Backend removed successfully")
+      refetch()
+    } catch (err: any) {
+      toast.error(err.message || "Failed to remove backend")
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Pools</h1>
+            <p className="text-muted-foreground">Manage backend pools and load balancing</p>
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          <LoadingCard />
+          <LoadingCard />
+          <LoadingCard />
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Pools</h1>
+          <p className="text-muted-foreground">Manage backend pools and load balancing</p>
+        </div>
+        <Card>
+          <CardContent className="p-6">
+            <p className="text-destructive">Failed to load pools: {error.message}</p>
+            <Button variant="outline" size="sm" className="mt-2" onClick={() => refetch()}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -233,9 +216,9 @@ export function PoolsPage() {
                     <SelectValue placeholder="Select algorithm" />
                   </SelectTrigger>
                   <SelectContent>
-                    {algorithms.map((algo) => (
-                      <SelectItem key={algo.value} value={algo.value}>
-                        {algo.label}
+                    {Object.entries(algorithmLabels).filter((_, i) => i % 2 === 0).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -300,7 +283,7 @@ export function PoolsPage() {
               <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleCreatePool} disabled={!newPool.name}>
+              <Button onClick={() => { toast.info("Pool creation requires config file update and reload"); setCreateDialogOpen(false) }} disabled={!newPool.name}>
                 Create Pool
               </Button>
             </DialogFooter>
@@ -324,9 +307,9 @@ export function PoolsPage() {
         <div className="space-y-4">
           {filteredPools.map((pool) => (
             <Card
-              key={pool.id}
-              className={`cursor-pointer transition-colors hover:bg-accent ${selectedPool?.id === pool.id ? 'border-primary' : ''}`}
-              onClick={() => setSelectedPool(pool)}
+              key={pool.name}
+              className={`cursor-pointer transition-colors hover:bg-accent ${selectedPool?.name === pool.name ? 'border-primary' : ''}`}
+              onClick={() => setSelectedPoolName(pool.name)}
             >
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
@@ -339,22 +322,6 @@ export function PoolsPage() {
                       <CardDescription>{algorithmLabels[pool.algorithm] || pool.algorithm}</CardDescription>
                     </div>
                   </div>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleDeletePool(pool.id)
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
                 </div>
               </CardHeader>
               <CardContent>
@@ -366,7 +333,7 @@ export function PoolsPage() {
                   <div>
                     <span className="text-muted-foreground">Healthy:</span>
                     <span className="ml-2 font-medium text-green-600">
-                      {pool.backends.filter(b => b.health === 'healthy').length}
+                      {pool.backends.filter(b => b.healthy).length}
                     </span>
                   </div>
                 </div>
@@ -440,7 +407,7 @@ export function PoolsPage() {
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-4">
-                            <div className={`h-3 w-3 rounded-full ${getStatusColor(backend.status)}`} />
+                            <div className={`h-3 w-3 rounded-full ${getStatusColor(backend.state, backend.healthy)}`} />
                             <div>
                               <div className="font-medium">{backend.address}</div>
                               <div className="text-sm text-muted-foreground">
@@ -449,21 +416,18 @@ export function PoolsPage() {
                             </div>
                           </div>
                           <div className="flex items-center gap-4">
-                            {getHealthBadge(backend.health)}
+                            {getHealthBadge(backend.healthy)}
                             <div className="text-right text-sm">
                               <div className="flex items-center gap-1 text-muted-foreground">
                                 <Activity className="h-3 w-3" />
-                                {backend.active_connections} conn
+                                {backend.requests.toLocaleString()} req
                               </div>
                               <div className="flex items-center gap-1 text-muted-foreground">
                                 <Clock className="h-3 w-3" />
-                                {backend.response_time_ms}ms
+                                {backend.errors} err
                               </div>
                             </div>
                             <div className="flex gap-1">
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <Edit className="h-4 w-4" />
-                              </Button>
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -485,7 +449,7 @@ export function PoolsPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Pool Settings</CardTitle>
-                    <CardDescription>Configure load balancing algorithm and health checks</CardDescription>
+                    <CardDescription>Load balancing algorithm and health check configuration</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="grid gap-4 md:grid-cols-2">
@@ -496,12 +460,12 @@ export function PoolsPage() {
                         </div>
                       </div>
                       <div>
-                        <label className="text-sm font-medium">Health Check</label>
+                        <label className="text-sm font-medium">Backends</label>
                         <div className="mt-1 text-sm text-muted-foreground">
-                          {selectedPool.health_check?.enabled ? 'Enabled' : 'Disabled'}
+                          {selectedPool.backends.length} total, {selectedPool.backends.filter(b => b.healthy).length} healthy
                         </div>
                       </div>
-                      {selectedPool.health_check?.enabled && (
+                      {selectedPool.health_check && (
                         <>
                           <div>
                             <label className="text-sm font-medium">Check Type</label>
@@ -537,15 +501,19 @@ export function PoolsPage() {
                       <CardTitle className="text-sm font-medium">Total Requests</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">{selectedPool.total_requests.toLocaleString()}</div>
+                      <div className="text-2xl font-bold">
+                        {selectedPool.backends.reduce((sum, b) => sum + b.requests, 0).toLocaleString()}
+                      </div>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium">Active Connections</CardTitle>
+                      <CardTitle className="text-sm font-medium">Total Errors</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">{selectedPool.active_connections}</div>
+                      <div className="text-2xl font-bold">
+                        {selectedPool.backends.reduce((sum, b) => sum + b.errors, 0).toLocaleString()}
+                      </div>
                     </CardContent>
                   </Card>
                 </div>

@@ -59,3 +59,66 @@ export interface HealthStatus {
   }>
   timestamp: string
 }
+
+// API response types matching server-side admin/types.go
+export interface APIPoolInfo {
+  name: string
+  algorithm: string
+  backends: APIBackendInfo[]
+  healthy_count?: number
+  health_check?: {
+    type: string
+    path: string
+    interval: string
+    timeout: string
+  }
+}
+
+export interface APIBackendInfo {
+  id: string
+  address: string
+  weight: number
+  state: string
+  healthy: boolean
+  requests: number
+  errors: number
+}
+
+export interface APIRouteInfo {
+  name: string
+  host: string
+  path: string
+  methods: string[]
+  headers: Record<string, string>
+  backend_pool: string
+  priority: number
+}
+
+export interface APICertificateInfo {
+  names: string[]
+  expiry: string
+  is_wildcard: boolean
+}
+
+export interface APIWAFStatus {
+  enabled: boolean
+  mode?: string
+  [key: string]: any
+}
+
+export interface APIClusterStatus {
+  node_id: string
+  state: string
+  leader: string
+  peers: string[]
+  applied_index: number
+  commit_index: number
+  term: number
+  vote: string
+}
+
+export interface APIClusterMember {
+  id: string
+  address: string
+  state: string
+}

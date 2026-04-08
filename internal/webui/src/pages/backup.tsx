@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select"
 import { Save, Upload, Download, Trash2, Clock, Calendar, RotateCcw, CheckCircle, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
+import { useConfig } from "@/hooks/use-query"
 
 interface Backup {
   id: string
@@ -33,6 +34,7 @@ interface Backup {
 }
 
 export function BackupRestorePage() {
+  const { data: config } = useConfig()
   const [backups, setBackups] = useState<Backup[]>([
     { id: "1", name: "Pre-migration backup", created: "2025-01-15 14:30", size: "2.4 MB", type: "manual", status: "complete" },
     { id: "2", name: "Weekly backup", created: "2025-01-14 02:00", size: "2.3 MB", type: "auto", status: "complete" },
@@ -75,15 +77,12 @@ export function BackupRestorePage() {
   }
 
   const handleExport = () => {
-    const config = {
+    const exportData = {
       version: "1.0.0",
       exported: new Date().toISOString(),
-      pools: [],
-      listeners: [],
-      middleware: {},
-      settings: {},
+      config: config || {},
     }
-    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' })
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url

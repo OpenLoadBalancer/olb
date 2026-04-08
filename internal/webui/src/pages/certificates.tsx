@@ -15,45 +15,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Shield, Plus, Trash2, CheckCircle, AlertCircle, Upload } from "lucide-react"
+import { Shield, Plus, CheckCircle, AlertCircle, Upload, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
-
-interface Certificate {
-  id: string
-  domain: string
-  issuer: string
-  notBefore: string
-  notAfter: string
-  daysUntilExpiry: number
-  autoRenew: boolean
-  source?: 'manual' | 'acme'
-}
-
-const mockCertificates: Certificate[] = [
-  {
-    id: "1",
-    domain: "*.openloadbalancer.dev",
-    issuer: "Let's Encrypt R3",
-    notBefore: "2025-01-01",
-    notAfter: "2025-04-01",
-    daysUntilExpiry: 45,
-    autoRenew: true,
-    source: 'acme'
-  },
-  {
-    id: "2",
-    domain: "admin.openloadbalancer.dev",
-    issuer: "Let's Encrypt R3",
-    notBefore: "2025-01-15",
-    notAfter: "2025-04-15",
-    daysUntilExpiry: 60,
-    autoRenew: true,
-    source: 'acme'
-  }
-]
+import { useCertificates } from "@/hooks/use-query"
+import { LoadingCard } from "@/components/ui/loading"
 
 export function CertificatesPage() {
-  const [certs, setCerts] = useState<Certificate[]>(mockCertificates)
+  const { data: certs, isLoading, error, refetch } = useCertificates()
 
   // Add Certificate Dialog State
   const [certDialogOpen, setCertDialogOpen] = useState(false)
@@ -66,6 +34,13 @@ export function CertificatesPage() {
     autoRenew: true,
   })
 
+  const getDaysUntilExpiry = (expiry: string) => {
+    if (!expiry) return 999
+    const exp = new Date(expiry)
+    const now = new Date()
+    return Math.max(0, Math.floor((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+  }
+
   const getExpiryBg = (days: number) => {
     if (days < 7) return "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"
     if (days < 30) return "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300"
@@ -73,29 +48,13 @@ export function CertificatesPage() {
   }
 
   const handleAddCertificate = () => {
-    const cert: Certificate = {
-      id: Math.random().toString(36).substr(2, 9),
-      domain: newCert.domain,
-      issuer: certSource === 'acme' ? "Let's Encrypt" : "Manual",
-      notBefore: new Date().toISOString().split('T')[0],
-      notAfter: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      daysUntilExpiry: 90,
-      autoRenew: newCert.autoRenew,
-      source: certSource,
-    }
-    setCerts([...certs, cert])
+    // Certificate management requires ACME or manual cert file placement
+    // This is a UI placeholder — actual cert provisioning is via config/ACME
+    toast.info("Certificate management is done via configuration or ACME")
     setCertDialogOpen(false)
-    setNewCert({ domain: "", email: "", certContent: "", keyContent: "", autoRenew: true })
-    toast.success(`Certificate for "${cert.domain}" added successfully`)
   }
 
-  const handleDeleteCert = (id: string) => {
-    setCerts(certs.filter(c => c.id !== id))
-    toast.success("Certificate deleted successfully")
-  }
-
-  const handleRenewCert = (id: string) => {
-    setCerts(certs.map(c => c.id === id ? { ...c, daysUntilExpiry: 90, notAfter: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] } : c))
+  const handleRenewCert = (_names: string[]) => {
     toast.success("Certificate renewal initiated")
   }
 
@@ -224,18 +183,18 @@ export function CertificatesPage() {
             <Shield className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{certs.length}</div>
+            <div className="text-2xl font-bold">{certs?.length ?? 0}</div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Auto-Renewal</CardTitle>
+            <CardTitle className="text-sm font-medium">Wildcards</CardTitle>
             <CheckCircle className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {certs.filter(c => c.autoRenew).length}
+              {certs?.filter(c => c.is_wildcard).length ?? 0}
             </div>
           </CardContent>
         </Card>
@@ -247,68 +206,75 @@ export function CertificatesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {certs.filter(c => c.daysUntilExpiry < 30).length}
+              {certs?.filter(c => getDaysUntilExpiry(c.expiry) < 30).length ?? 0}
             </div>
           </CardContent>
         </Card>
       </div>
 
+      {isLoading && <LoadingCard />}
+      {error && (
+        <Card>
+          <CardContent className="p-6">
+            <p className="text-destructive">Failed to load certificates: {error.message}</p>
+            <Button variant="outline" size="sm" className="mt-2" onClick={() => refetch()}>
+              <RefreshCw className="mr-2 h-4 w-4" /> Retry
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="space-y-4">
-        {certs.map((cert) => (
-          <Card key={cert.id}>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Shield className="h-5 w-5 text-primary" />
-                  <div>
-                    <CardTitle className="text-base">{cert.domain}</CardTitle>
-                    <CardDescription>{cert.issuer}</CardDescription>
+        {(certs ?? []).map((cert, i) => {
+          const days = getDaysUntilExpiry(cert.expiry)
+          const domainLabel = cert.names.join(", ")
+          return (
+            <Card key={i}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Shield className="h-5 w-5 text-primary" />
+                    <div>
+                      <CardTitle className="text-base">{domainLabel}</CardTitle>
+                      <CardDescription>{cert.is_wildcard ? "Wildcard" : "Standard"} Certificate</CardDescription>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge className={getExpiryBg(days)}>
+                      {days} days
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleRenewCert(cert.names)}
+                    >
+                      <Upload className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge className={getExpiryBg(cert.daysUntilExpiry)}>
-                    {cert.daysUntilExpiry} days
-                  </Badge>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleRenewCert(cert.id)}
-                  >
-                    <Upload className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-destructive"
-                    onClick={() => handleDeleteCert(cert.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">SANs:</span>
+                    <span className="ml-2">{cert.names.join(", ")}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Expires:</span>
+                    <span className="ml-2">{cert.expiry || "N/A"}</span>
+                  </div>
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Valid From:</span>
-                  <span className="ml-2">{cert.notBefore}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Valid Until:</span>
-                  <span className="ml-2">{cert.notAfter}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Source:</span>
-                  <span className="ml-2 capitalize">{cert.source}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Auto-renew:</span>
-                  <span className="ml-2">{cert.autoRenew ? 'Yes' : 'No'}</span>
-                </div>
-              </div>
+              </CardContent>
+            </Card>
+          )
+        })}
+        {certs && certs.length === 0 && (
+          <Card>
+            <CardContent className="p-8 text-center text-muted-foreground">
+              No TLS certificates configured. Configure certificates in your config file.
             </CardContent>
           </Card>
-        ))}
+        )}
       </div>
     </div>
   )

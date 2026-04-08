@@ -1,6 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
+import type {
+  APIPoolInfo,
+  APIRouteInfo,
+  APICertificateInfo,
+  APIWAFStatus,
+  APIClusterStatus,
+  APIClusterMember,
+} from '@/types'
 
 interface UseQueryOptions<T> {
   onSuccess?: (data: T) => void
@@ -17,7 +25,7 @@ interface QueryResult<T> {
 }
 
 export function useQuery<T>(
-  queryFn: () => Promise<{ success: boolean; data: T }>,
+  queryFn: () => Promise<{ success: boolean; data?: T }>,
   options: UseQueryOptions<T> = {}
 ): QueryResult<T> {
   const { onSuccess, onError, enabled = true, refetchInterval } = options
@@ -32,7 +40,7 @@ export function useQuery<T>(
       setIsLoading(true)
       setError(null)
       const response = await queryFn()
-      if (response.success) {
+      if (response.success && response.data !== undefined) {
         setData(response.data)
         onSuccess?.(response.data)
       }
@@ -101,7 +109,7 @@ export function useMutation<T, V = void>(
 }
 
 // Health query hook
-export function useHealth(options?: UseQueryOptions<{ status: string; checks: Record<string, {status: string; message: string}>; timestamp: string }>) {
+export function useHealth(options?: UseQueryOptions<{ status: string; checks: Record<string, { status: string; message?: string }>; timestamp: string }>) {
   return useQuery(() => api.getHealth(), {
     refetchInterval: 30000,
     ...options
@@ -117,13 +125,75 @@ export function useSystemInfo(options?: UseQueryOptions<{ version: string; commi
 }
 
 // Pools query hook
-export function usePools(options?: UseQueryOptions<any[]>) {
-  return useQuery(() => api.getPools().then(r => ({ success: true, data: r })), options)
+export function usePools(options?: UseQueryOptions<APIPoolInfo[]>) {
+  return useQuery(() => api.getPools(), {
+    refetchInterval: 10000,
+    ...options
+  })
 }
 
-// Listeners query hook
-export function useListeners(options?: UseQueryOptions<any[]>) {
-  return useQuery(() => api.getListeners().then(r => ({ success: true, data: r })), options)
+// Routes query hook
+export function useRoutes(options?: UseQueryOptions<APIRouteInfo[]>) {
+  return useQuery(() => api.getRoutes(), {
+    refetchInterval: 30000,
+    ...options
+  })
+}
+
+// Certificates query hook
+export function useCertificates(options?: UseQueryOptions<APICertificateInfo[]>) {
+  return useQuery(() => api.getCertificates(), {
+    refetchInterval: 60000,
+    ...options
+  })
+}
+
+// WAF status query hook
+export function useWAFStatus(options?: UseQueryOptions<APIWAFStatus>) {
+  return useQuery(() => api.getWAFStatus(), {
+    refetchInterval: 30000,
+    ...options
+  })
+}
+
+// Cluster status query hook
+export function useClusterStatus(options?: UseQueryOptions<APIClusterStatus>) {
+  return useQuery(() => api.getClusterStatus(), {
+    refetchInterval: 10000,
+    ...options
+  })
+}
+
+// Cluster members query hook
+export function useClusterMembers(options?: UseQueryOptions<APIClusterMember[]>) {
+  return useQuery(() => api.getClusterMembers(), {
+    refetchInterval: 10000,
+    ...options
+  })
+}
+
+// Config query hook
+export function useConfig(options?: UseQueryOptions<any>) {
+  return useQuery(() => api.getConfig(), {
+    refetchInterval: 60000,
+    ...options
+  })
+}
+
+// Metrics query hook
+export function useMetrics(options?: UseQueryOptions<any>) {
+  return useQuery(() => api.getMetrics(), {
+    refetchInterval: 15000,
+    ...options
+  })
+}
+
+// Health status (per-backend) query hook
+export function useBackendHealth(options?: UseQueryOptions<any>) {
+  return useQuery(() => api.getHealthStatus(), {
+    refetchInterval: 10000,
+    ...options
+  })
 }
 
 // Toast notifications for mutations

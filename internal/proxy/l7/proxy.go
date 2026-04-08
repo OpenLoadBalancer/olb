@@ -11,6 +11,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -44,17 +45,18 @@ type HTTPProxy struct {
 	middlewareChain *middleware.Chain
 
 	// Protocol-specific handlers
-	wsHandler   *WebSocketHandler
-	grpcHandler *GRPCHandler
-	sseHandler  *SSEHandler
+	wsHandler      *WebSocketHandler
+	grpcHandler    *GRPCHandler
+	grpcWebHandler *GRPCWebHandler
+	sseHandler     *SSEHandler
 
 	// Configuration
 	proxyTimeout time.Duration
 	dialTimeout  time.Duration
 	maxRetries   int
 
-	// Error handling
-	errorHandler func(http.ResponseWriter, *http.Request, error)
+	// Error handling (protected by atomic for concurrent access)
+	errorHandler atomic.Value // stores func(http.ResponseWriter, *http.Request, error)
 
 	// HTTP client for proxying (with custom transport for connection pooling)
 	client *http.Client
@@ -109,11 +111,12 @@ func NewHTTPProxy(config *Config) *HTTPProxy {
 		middlewareChain: config.MiddlewareChain,
 		wsHandler:       NewWebSocketHandler(nil),
 		grpcHandler:     NewGRPCHandler(nil),
+		grpcWebHandler:  NewGRPCWebHandler(NewGRPCHandler(nil)),
 		sseHandler:      NewSSEHandler(nil),
 		proxyTimeout:    proxyTimeout,
 		dialTimeout:     dialTimeout,
 		maxRetries:      maxRetries,
-		errorHandler:    defaultErrorHandler,
+		errorHandler:    func() atomic.Value { v := atomic.Value{}; v.Store(defaultErrorHandler); return v }(),
 	}
 
 	// Create HTTP client with custom transport
@@ -160,7 +163,12 @@ func (p *HTTPProxy) createTransport() *http.Transport {
 
 // SetErrorHandler sets a custom error handler.
 func (p *HTTPProxy) SetErrorHandler(handler func(http.ResponseWriter, *http.Request, error)) {
-	p.errorHandler = handler
+	p.errorHandler.Store(handler)
+}
+
+// getErrorHandler returns the current error handler.
+func (p *HTTPProxy) getErrorHandler() func(http.ResponseWriter, *http.Request, error) {
+	return p.errorHandler.Load().(func(http.ResponseWriter, *http.Request, error))
 }
 
 // contextKey is a private type for context keys.
@@ -175,7 +183,7 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Match route
 	routeMatch, ok := p.router.Match(r)
 	if !ok {
-		p.errorHandler(w, r, olbErrors.ErrRouteNotFound)
+		p.getErrorHandler()(w, r, olbErrors.ErrRouteNotFound)
 		return
 	}
 
@@ -200,14 +208,14 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request, reqCtx *middleware.RequestContext, routeMatch *router.RouteMatch) {
 	// Validate request for smuggling indicators before proxying
 	if err := security.ValidateRequest(r); err != nil {
-		p.errorHandler(w, r, olbErrors.Wrap(err, olbErrors.CodeInvalidRequest, "request validation failed"))
+		p.getErrorHandler()(w, r, olbErrors.Wrap(err, olbErrors.CodeInvalidRequest, "request validation failed"))
 		return
 	}
 
 	// Get backend pool
 	pool := p.poolManager.GetPool(routeMatch.Route.BackendPool)
 	if pool == nil {
-		p.errorHandler(w, r, olbErrors.ErrPoolNotFound.WithContext("pool", routeMatch.Route.BackendPool))
+		p.getErrorHandler()(w, r, olbErrors.ErrPoolNotFound.WithContext("pool", routeMatch.Route.BackendPool))
 		return
 	}
 
@@ -215,14 +223,15 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request, reqCtx 
 	// These long-lived connections (WebSocket, gRPC streaming, SSE) are
 	// handled by dedicated handlers with their own connection lifecycle.
 	isWS := IsWebSocketUpgrade(r) && p.wsHandler != nil
-	isGRPC := IsGRPCRequest(r) && p.grpcHandler != nil
+	isGRPCWeb := IsGRPCWebRequest(r) && p.grpcWebHandler != nil
+	isGRPC := !isGRPCWeb && IsGRPCRequest(r) && p.grpcHandler != nil
 	isSSE := IsSSERequest(r) && p.sseHandler != nil
 
-	if isWS || isGRPC || isSSE {
+	if isWS || isGRPCWeb || isGRPC || isSSE {
 		// Select a backend for the protocol-specific handler
 		selectedBackend := p.selectBackend(pool)
 		if selectedBackend == nil {
-			p.errorHandler(w, r, olbErrors.ErrBackendUnavailable.WithContext("pool", pool.Name))
+			p.getErrorHandler()(w, r, olbErrors.ErrBackendUnavailable.WithContext("pool", pool.Name))
 			return
 		}
 		reqCtx.Backend = selectedBackend
@@ -231,13 +240,16 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request, reqCtx 
 		switch {
 		case isWS:
 			err = p.wsHandler.HandleWebSocket(w, r, selectedBackend)
+		case isGRPCWeb:
+			err = p.grpcWebHandler.HandleGRPCWeb(w, r, selectedBackend)
 		case isGRPC:
 			err = p.grpcHandler.HandleGRPC(w, r, selectedBackend)
 		case isSSE:
 			err = p.sseHandler.HandleSSE(w, r, selectedBackend)
 		}
 		if err != nil {
-			p.errorHandler(w, r, err)
+			selectedBackend.RecordError()
+			p.getErrorHandler()(w, r, err)
 		}
 		return
 	}
@@ -260,9 +272,9 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request, reqCtx 
 
 		if len(availableBackends) == 0 {
 			if len(healthyBackends) == 0 {
-				p.errorHandler(w, r, olbErrors.ErrPoolEmpty.WithContext("pool", pool.Name))
+				p.getErrorHandler()(w, r, olbErrors.ErrPoolEmpty.WithContext("pool", pool.Name))
 			} else {
-				p.errorHandler(w, r, olbErrors.ErrBackendUnavailable.WithContext("reason", "all backends attempted"))
+				p.getErrorHandler()(w, r, olbErrors.ErrBackendUnavailable.WithContext("reason", "all backends attempted"))
 			}
 			return
 		}
@@ -270,7 +282,7 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request, reqCtx 
 		// Select backend using balancer
 		selectedBackend := pool.GetBalancer().Next(availableBackends)
 		if selectedBackend == nil {
-			p.errorHandler(w, r, olbErrors.ErrBackendUnavailable.WithContext("pool", pool.Name))
+			p.getErrorHandler()(w, r, olbErrors.ErrBackendUnavailable.WithContext("pool", pool.Name))
 			return
 		}
 
@@ -287,18 +299,15 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request, reqCtx 
 		}
 
 		lastErr = err
+		selectedBackend.RecordError()
 
 		// Check if error is retryable
 		if !isRetryableError(err) {
 			break
 		}
-
-		// Mark backend as failed
-		selectedBackend.RecordError()
 	}
 
-	// All retries exhausted
-	p.errorHandler(w, r, olbErrors.ErrBackendUnavailable.WithContext("reason", lastErr.Error()))
+	p.getErrorHandler()(w, r, olbErrors.ErrBackendUnavailable.WithContext("reason", lastErr.Error()))
 }
 
 // selectBackend picks a healthy backend from the pool using the configured balancer.
@@ -396,16 +405,16 @@ func (p *HTTPProxy) prepareOutboundRequest(r *http.Request, b *backend.Backend) 
 	// Set X-Forwarded-Host
 	outReq.Header.Set("X-Forwarded-Host", r.Host)
 
-	// Strip hop-by-hop headers
-	for _, header := range hopByHopHeaders {
-		outReq.Header.Del(header)
-	}
-
-	// Handle Connection header values
+	// Handle Connection header values (must be before stripping Connection itself)
 	if connHeaders := outReq.Header.Get("Connection"); connHeaders != "" {
 		for _, h := range strings.Split(connHeaders, ",") {
 			outReq.Header.Del(strings.TrimSpace(h))
 		}
+	}
+
+	// Strip hop-by-hop headers
+	for _, header := range hopByHopHeaders {
+		outReq.Header.Del(header)
 	}
 
 	return outReq, nil

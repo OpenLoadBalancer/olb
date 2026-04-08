@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Activity, Layers, Radio, Server, Clock, TrendingUp, AlertCircle, CheckCircle, Download, RefreshCw } from "lucide-react"
-import { useHealth, useSystemInfo } from "@/hooks/use-query"
+import { useHealth, useSystemInfo, usePools, useRoutes } from "@/hooks/use-query"
 import { LoadingCard } from "@/components/ui/loading"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { toast } from "sonner"
@@ -26,6 +26,8 @@ interface ActivityEvent {
 export function DashboardPage() {
   const { data: health, isLoading: healthLoading, error: healthError } = useHealth()
   const { data: systemInfo, isLoading: infoLoading, error: infoError } = useSystemInfo()
+  const { data: pools } = usePools()
+  const { data: routes } = useRoutes()
   const [stats, setStats] = useState<RealtimeStats>({
     requestsPerSecond: 1247,
     activeConnections: 83,
@@ -187,19 +189,19 @@ export function DashboardPage() {
             <Layers className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">4</div>
+            <div className="text-2xl font-bold">{pools?.length ?? 0}</div>
             <p className="text-xs text-muted-foreground">Backend pools configured</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Listeners</CardTitle>
+            <CardTitle className="text-sm font-medium">Routes</CardTitle>
             <Radio className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">3</div>
-            <p className="text-xs text-muted-foreground">Active listeners</p>
+            <div className="text-2xl font-bold">{routes?.length ?? 0}</div>
+            <p className="text-xs text-muted-foreground">Active routes</p>
           </CardContent>
         </Card>
 
@@ -209,9 +211,10 @@ export function DashboardPage() {
             <Server className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">8</div>
+            <div className="text-2xl font-bold">{pools?.reduce((sum, p) => sum + p.backends.length, 0) ?? 0}</div>
             <p className="text-xs text-muted-foreground">
-              <span className="text-green-500">6 healthy</span>, <span className="text-red-500">2 unhealthy</span>
+              <span className="text-green-500">{pools?.reduce((sum, p) => sum + p.backends.filter(b => b.healthy).length, 0) ?? 0} healthy</span>{", "}
+              <span className="text-red-500">{pools?.reduce((sum, p) => sum + p.backends.filter(b => !b.healthy).length, 0) ?? 0} unhealthy</span>
             </p>
           </CardContent>
         </Card>

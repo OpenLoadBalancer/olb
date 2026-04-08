@@ -23,9 +23,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { AlertTriangle, Ban, Globe, Bot, Lock, Plus, Trash2 } from "lucide-react"
+import { AlertTriangle, Ban, Globe, Bot, Lock, Plus, Trash2, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { useWAFStatus } from "@/hooks/use-query"
+import { LoadingCard } from "@/components/ui/loading"
 
 interface WAFRule {
   id: string
@@ -56,6 +58,7 @@ interface RateLimitRule {
 }
 
 export function WAFPage() {
+  const { data: wafStatus, isLoading, error, refetch } = useWAFStatus()
   const [wafEnabled, setWafEnabled] = useState(true)
   const [wafMode, setWafMode] = useState<'enforce' | 'monitor'>('enforce')
   const [rules, setRules] = useState<WAFRule[]>([
@@ -110,6 +113,45 @@ export function WAFPage() {
   const toggleWAF = () => {
     setWafEnabled(!wafEnabled)
     toast.success(`WAF ${wafEnabled ? 'disabled' : 'enabled'}`)
+  }
+
+  // Sync with API status
+  if (wafStatus && wafStatus.enabled !== wafEnabled) {
+    setWafEnabled(wafStatus.enabled)
+    if (wafStatus.mode) setWafMode(wafStatus.mode as 'enforce' | 'monitor')
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Web Application Firewall</h1>
+          <p className="text-muted-foreground">Protect your applications from attacks</p>
+        </div>
+        <LoadingCard />
+      </div>
+    )
+  }
+
+  if (error || !wafStatus?.enabled) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Web Application Firewall</h1>
+          <p className="text-muted-foreground">Protect your applications from attacks</p>
+        </div>
+        <Card>
+          <CardContent className="p-6">
+            <p className="text-muted-foreground">
+              {error ? `Failed to load WAF status: ${error.message}` : "WAF is not enabled. Enable it in your configuration file."}
+            </p>
+            <Button variant="outline" size="sm" className="mt-2" onClick={() => refetch()}>
+              <RefreshCw className="mr-2 h-4 w-4" /> Retry
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   const handleAddRule = () => {

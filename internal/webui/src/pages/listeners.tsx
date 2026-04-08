@@ -23,45 +23,9 @@ import {
 } from "@/components/ui/select"
 import { Plus, Globe, Shield, Trash2, Edit, Activity, Route } from "lucide-react"
 import { toast } from "sonner"
-import type { Listener, Route as RouteType } from "@/types"
-
-const mockListeners: Listener[] = [
-  {
-    id: "1",
-    name: "http-public",
-    address: ":80",
-    protocol: "http",
-    routes: [
-      { id: "r1", path: "/api/*", pool: "api-pool", methods: ["GET", "POST", "PUT", "DELETE"], strip_prefix: false, priority: 100 },
-      { id: "r2", path: "/", pool: "web-pool", methods: ["GET"], strip_prefix: false, priority: 10 },
-    ],
-    enabled: true,
-  },
-  {
-    id: "2",
-    name: "https-public",
-    address: ":443",
-    protocol: "https",
-    routes: [
-      { id: "r3", path: "/api/*", pool: "api-pool", methods: ["GET", "POST", "PUT", "DELETE"], strip_prefix: false, priority: 100 },
-      { id: "r4", path: "/grpc/*", pool: "grpc-pool", methods: ["POST"], strip_prefix: true, priority: 90 },
-      { id: "r5", path: "/", pool: "web-pool", methods: ["GET"], strip_prefix: false, priority: 10 },
-    ],
-    enabled: true,
-  },
-  {
-    id: "3",
-    name: "tcp-internal",
-    address: ":5432",
-    protocol: "tcp",
-    routes: [
-      { id: "r6", path: "", pool: "db-pool", methods: [], strip_prefix: false, priority: 1 },
-    ],
-    enabled: false,
-  },
-]
-
-const mockPools = ["api-pool", "web-pool", "grpc-pool", "db-pool"]
+import { useConfig, usePools } from "@/hooks/use-query"
+import { LoadingCard } from "@/components/ui/loading"
+import type { Listener } from "@/types"
 
 const protocolIcons: Record<string, React.ReactNode> = {
   http: <Globe className="h-4 w-4" />,
@@ -80,8 +44,33 @@ const protocolColors: Record<string, string> = {
 const httpMethods = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
 
 export function ListenersPage() {
-  const [listeners, setListeners] = useState<Listener[]>(mockListeners)
-  const [selectedListener, setSelectedListener] = useState<Listener | null>(mockListeners[0])
+  const { data: config, isLoading: configLoading, error: configError } = useConfig()
+  const { data: pools } = usePools()
+  const poolNames = (pools ?? []).map(p => p.name)
+
+  // Derive listeners from config
+  const listeners: Listener[] = (config?.listeners ?? []).map((l: any, i: number) => ({
+    id: String(i),
+    name: l.name,
+    address: l.address,
+    protocol: (l.protocol || (l.tls?.enabled ? 'https' : 'http')) as Listener['protocol'],
+    routes: (l.routes ?? []).map((r: any, j: number) => ({
+      id: `${i}-${j}`,
+      path: r.path,
+      pool: r.pool,
+      methods: r.methods ?? [],
+      strip_prefix: false,
+      priority: j,
+    })),
+    enabled: true,
+  }))
+
+  const [selectedListener, setSelectedListener] = useState<Listener | null>(null)
+
+  // Auto-select first listener when data loads
+  if (listeners.length > 0 && !selectedListener) {
+    setSelectedListener(listeners[0])
+  }
 
   // Create Listener Dialog State
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -96,66 +85,33 @@ export function ListenersPage() {
   const [newRoute, setNewRoute] = useState({
     path: "",
     pool: "",
-    methods: ["GET"],
+    methods: ["GET"] as string[],
     strip_prefix: false,
     priority: 10,
   })
 
-  const toggleListener = (id: string) => {
-    setListeners(prev => prev.map(l =>
-      l.id === id ? { ...l, enabled: !l.enabled } : l
-    ))
-    const listener = listeners.find(l => l.id === id)
-    toast.success(`${listener?.name} ${listener?.enabled ? 'disabled' : 'enabled'}`)
+  const toggleListener = (_id: string) => {
+    toast.info("Listener state changes require config file update and reload")
   }
 
   const handleCreateListener = () => {
-    const listener: Listener = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: newListener.name,
-      address: newListener.address,
-      protocol: newListener.protocol as 'http' | 'https' | 'tcp' | 'udp',
-      routes: [],
-      enabled: true,
-    }
-    setListeners([...listeners, listener])
+    toast.info("Listener creation requires config file update and reload")
     setCreateDialogOpen(false)
     setNewListener({ name: "", address: "", protocol: "http" })
-    toast.success(`Listener "${listener.name}" created successfully`)
   }
 
   const handleAddRoute = () => {
-    if (!selectedListener) return
-    const route: RouteType = {
-      id: Math.random().toString(36).substr(2, 9),
-      path: newRoute.path,
-      pool: newRoute.pool,
-      methods: newRoute.methods,
-      strip_prefix: newRoute.strip_prefix,
-      priority: newRoute.priority,
-    }
-    const updatedListener = { ...selectedListener, routes: [...selectedListener.routes, route] }
-    setListeners(listeners.map(l => l.id === selectedListener.id ? updatedListener : l))
-    setSelectedListener(updatedListener)
+    toast.info("Route creation requires config file update and reload")
     setRouteDialogOpen(false)
     setNewRoute({ path: "", pool: "", methods: ["GET"], strip_prefix: false, priority: 10 })
-    toast.success(`Route "${route.path}" added successfully`)
   }
 
-  const handleDeleteListener = (id: string) => {
-    setListeners(listeners.filter(l => l.id !== id))
-    if (selectedListener?.id === id) {
-      setSelectedListener(null)
-    }
-    toast.success("Listener deleted successfully")
+  const handleDeleteListener = (_id: string) => {
+    toast.info("Listener removal requires config file update and reload")
   }
 
-  const handleDeleteRoute = (routeId: string) => {
-    if (!selectedListener) return
-    const updatedListener = { ...selectedListener, routes: selectedListener.routes.filter(r => r.id !== routeId) }
-    setListeners(listeners.map(l => l.id === selectedListener.id ? updatedListener : l))
-    setSelectedListener(updatedListener)
-    toast.success("Route removed successfully")
+  const handleDeleteRoute = (_routeId: string) => {
+    toast.info("Route removal requires config file update and reload")
   }
 
   const toggleMethod = (method: string) => {
@@ -165,6 +121,34 @@ export function ListenersPage() {
         ? prev.methods.filter(m => m !== method)
         : [...prev.methods, method]
     }))
+  }
+
+  if (configLoading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Listeners</h1>
+          <p className="text-muted-foreground">Configure entry points and routing rules</p>
+        </div>
+        <LoadingCard />
+      </div>
+    )
+  }
+
+  if (configError) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Listeners</h1>
+          <p className="text-muted-foreground">Configure entry points and routing rules</p>
+        </div>
+        <Card>
+          <CardContent className="p-6">
+            <p className="text-destructive">Failed to load configuration: {configError.message}</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -344,7 +328,7 @@ export function ListenersPage() {
                                 <SelectValue placeholder="Select pool" />
                               </SelectTrigger>
                               <SelectContent>
-                                {mockPools.map((pool) => (
+                                {poolNames.map((pool) => (
                                   <SelectItem key={pool} value={pool}>
                                     {pool}
                                   </SelectItem>
