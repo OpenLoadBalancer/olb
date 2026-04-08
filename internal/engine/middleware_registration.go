@@ -120,6 +120,11 @@ func createMiddlewareChain(cfg *config.Config, logger *logging.Logger, registry 
 		}))
 	}
 
+	// Always register the registry-aware metrics middleware so the Prometheus
+	// /metrics endpoint (served by the admin server) has data. This is separate
+	// from the config-gated v2 metrics middleware above.
+	chain.Use(middleware.NewMetricsMiddleware(registry))
+
 	// Request ID (priority 90) — generate request ID early for tracing
 	if cfg.Middleware != nil && cfg.Middleware.RequestID != nil && cfg.Middleware.RequestID.Enabled {
 		r := cfg.Middleware.RequestID
