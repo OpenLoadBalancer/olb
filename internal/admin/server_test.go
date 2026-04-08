@@ -4116,7 +4116,7 @@ func TestRemoveBackend_PoolNotFound_Direct(t *testing.T) {
 // --- Tests for cleanupLoop (50% coverage) ---
 
 func TestRateLimiterCleanupTriggered(t *testing.T) {
-	rl := newRateLimiter()
+	rl := newRateLimiter(0, "")
 
 	// Add a visitor with an old timestamp to simulate expiration
 	rl.mu.Lock()
@@ -4140,17 +4140,16 @@ func TestRateLimiterCleanupTriggered(t *testing.T) {
 // --- Tests for middleware rate limiting (75% coverage) ---
 
 func TestMiddlewareRateLimitExceeded(t *testing.T) {
-	rl := newRateLimiter()
+	rl := newRateLimiter(10, "1m")
 	defer rl.stop()
 
-	// Create a handler wrapped with rate limiter
 	handler := rl.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	// Make requests up to the limit (30) + 1 to trigger rate limiting
+	// Make requests up to the limit (10) + 1 to trigger rate limiting
 	var lastCode int
-	for i := 0; i < 35; i++ {
+	for i := 0; i < 12; i++ {
 		req := httptest.NewRequest("GET", "/test", nil)
 		req.RemoteAddr = "192.168.1.1:12345"
 		w := httptest.NewRecorder()
@@ -4165,7 +4164,7 @@ func TestMiddlewareRateLimitExceeded(t *testing.T) {
 }
 
 func TestMiddlewareRateLimitDifferentIPs(t *testing.T) {
-	rl := newRateLimiter()
+	rl := newRateLimiter(0, "")
 	defer rl.stop()
 
 	handler := rl.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -4185,7 +4184,7 @@ func TestMiddlewareRateLimitDifferentIPs(t *testing.T) {
 }
 
 func TestMiddlewareRateLimitNoPort(t *testing.T) {
-	rl := newRateLimiter()
+	rl := newRateLimiter(0, "")
 	defer rl.stop()
 
 	handler := rl.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -4204,7 +4203,7 @@ func TestMiddlewareRateLimitNoPort(t *testing.T) {
 }
 
 func TestMiddlewareRateLimitWindowReset(t *testing.T) {
-	rl := newRateLimiter()
+	rl := newRateLimiter(0, "")
 	defer rl.stop()
 
 	handler := rl.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -5085,5 +5084,747 @@ func TestAPI404Fallback_PostMethod(t *testing.T) {
 
 	if resp.Error == nil || resp.Error.Code != "NOT_FOUND" {
 		t.Errorf("expected NOT_FOUND error, got %v", resp.Error)
+	}
+}
+
+// TestServer_StopStateTransition tests that Stop changes the server state
+func TestServer_StopStateTransition(t *testing.T) {
+	server, _, _, _, _ := setupTestServer(t, nil)
+
+	// Start the server in a goroutine
+	go server.Start()
+
+	// Wait for it to start
+	time.Sleep(100 * time.Millisecond)
+
+	if server.GetState() != "running" {
+		t.Errorf("expected state 'running', got '%s'", server.GetState())
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := server.Stop(ctx); err != nil {
+		t.Fatalf("Stop failed: %v", err)
+	}
+
+	if server.GetState() != "stopping" {
+		t.Errorf("expected state 'stopping' after Stop, got '%s'", server.GetState())
+	}
+}
+
+// TestGetHealthStatus_WithLatencyAndError tests health status with latency and error in result
+func TestGetHealthStatus_WithLatencyAndError(t *testing.T) {
+	server, _, _, hc, _ := setupTestServer(t, nil)
+
+	hc.SetStatus("backend-1", health.StatusUnhealthy)
+	hc.results["backend-1"] = &health.Result{
+		Healthy:   false,
+		Latency:   150 * time.Millisecond,
+		Error:     fmt.Errorf("connection refused"),
+		Timestamp: time.Now(),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+	w := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w.Code)
+	}
+
+	var resp Response
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	dataJSON, _ := json.Marshal(resp.Data)
+	var statuses []map[string]any
+	json.Unmarshal(dataJSON, &statuses)
+
+	found := false
+	for _, s := range statuses {
+		if s["backend_id"] == "backend-1" {
+			found = true
+			if s["latency"] == nil || s["latency"] == "" {
+				t.Error("expected latency to be set")
+			}
+			if s["error"] != "unhealthy" {
+				t.Errorf("expected error 'unhealthy', got %v", s["error"])
+			}
+			break
+		}
+	}
+	if !found {
+		t.Error("expected to find backend-1 in health status")
+	}
+}
+
+// --- Additional tests for removeBackend uncovered branches (71.4%) ---
+
+// TestRemoveBackend_SuccessFullHTTP tests the full success path for removeBackend
+// using a real HTTP server to ensure all code paths through the handler are exercised.
+func TestRemoveBackend_SuccessFullHTTP(t *testing.T) {
+	server, poolManager, _, _, _ := setupTestServer(t, nil)
+
+	pool := backend.NewPool("test-pool", "round_robin")
+	b := backend.NewBackend("backend1", "127.0.0.1:8080")
+	b.SetState(backend.StateUp)
+	pool.AddBackend(b)
+	poolManager.AddPool(pool)
+
+	ts := &http.Server{
+		Addr:    "127.0.0.1:0",
+		Handler: server.server.Handler,
+	}
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
+
+	go ts.Serve(listener)
+	defer ts.Close()
+
+	baseURL := fmt.Sprintf("http://%s", listener.Addr().String())
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	// DELETE the existing backend
+	req, _ := http.NewRequest("DELETE", baseURL+"/api/v1/backends/test-pool/backend1", nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("failed to make request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var result Response
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if !result.Success {
+		t.Error("expected success response")
+	}
+}
+
+// TestRemoveBackend_InvalidPath tests removeBackend with a path that has no pool/backend IDs.
+func TestRemoveBackend_InvalidPath(t *testing.T) {
+	server, _, _, _, _ := setupTestServer(t, nil)
+
+	// Path with only pool name, no backend ID - extractBackendID returns empty
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/backends/", nil)
+	w := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(w, req)
+
+	// The router won't match /api/v1/backends/ with DELETE, so it falls
+	// through to the pool-level handler which rejects DELETE
+	if w.Code != http.StatusMethodNotAllowed && w.Code != http.StatusBadRequest {
+		t.Errorf("expected 405 or 400, got %d", w.Code)
+	}
+}
+
+// TestGetBackendDetail_SuccessFullHTTP tests the full success path for getBackendDetail
+// using a real HTTP server to ensure all code paths through the handler are exercised.
+func TestGetBackendDetail_SuccessFullHTTP(t *testing.T) {
+	server, poolManager, _, _, _ := setupTestServer(t, nil)
+
+	pool := backend.NewPool("test-pool", "round_robin")
+	b := backend.NewBackend("backend1", "127.0.0.1:8080")
+	b.SetState(backend.StateUp)
+	pool.AddBackend(b)
+	poolManager.AddPool(pool)
+
+	ts := &http.Server{
+		Addr:    "127.0.0.1:0",
+		Handler: server.server.Handler,
+	}
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
+
+	go ts.Serve(listener)
+	defer ts.Close()
+
+	baseURL := fmt.Sprintf("http://%s", listener.Addr().String())
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	resp, err := client.Get(baseURL + "/api/v1/backends/test-pool/backend1")
+	if err != nil {
+		t.Fatalf("failed to make request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var result Response
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if !result.Success {
+		t.Error("expected success response")
+	}
+
+	data, ok := result.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected data to be a map, got %T", result.Data)
+	}
+	if data["id"] != "backend1" {
+		t.Errorf("expected id=backend1, got %v", data["id"])
+	}
+	if data["state"] != "up" {
+		t.Errorf("expected state=up, got %v", data["state"])
+	}
+}
+
+// TestGetBackendDetail_BackendNotFoundFullHTTP tests getBackendDetail when the
+// backend doesn't exist, through a real HTTP server.
+func TestGetBackendDetail_BackendNotFoundFullHTTP(t *testing.T) {
+	server, poolManager, _, _, _ := setupTestServer(t, nil)
+
+	pool := backend.NewPool("test-pool", "round_robin")
+	poolManager.AddPool(pool)
+
+	ts := &http.Server{
+		Addr:    "127.0.0.1:0",
+		Handler: server.server.Handler,
+	}
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
+
+	go ts.Serve(listener)
+	defer ts.Close()
+
+	baseURL := fmt.Sprintf("http://%s", listener.Addr().String())
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	resp, err := client.Get(baseURL + "/api/v1/backends/test-pool/nonexistent")
+	if err != nil {
+		t.Fatalf("failed to make request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", resp.StatusCode)
+	}
+
+	var result Response
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if result.Error == nil || result.Error.Code != "BACKEND_NOT_FOUND" {
+		t.Errorf("expected BACKEND_NOT_FOUND error, got %v", result.Error)
+	}
+}
+
+// TestGetBackendDetail_PoolNotFoundFullHTTP tests getBackendDetail when the pool
+// doesn't exist, through a real HTTP server.
+func TestGetBackendDetail_PoolNotFoundFullHTTP(t *testing.T) {
+	server, poolManager, _, _, _ := setupTestServer(t, nil)
+
+	// Create a different pool so the requested one doesn't exist
+	pool := backend.NewPool("other-pool", "round_robin")
+	poolManager.AddPool(pool)
+
+	ts := &http.Server{
+		Addr:    "127.0.0.1:0",
+		Handler: server.server.Handler,
+	}
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
+
+	go ts.Serve(listener)
+	defer ts.Close()
+
+	baseURL := fmt.Sprintf("http://%s", listener.Addr().String())
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	resp, err := client.Get(baseURL + "/api/v1/backends/nonexistent-pool/backend1")
+	if err != nil {
+		t.Fatalf("failed to make request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", resp.StatusCode)
+	}
+
+	var result Response
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if result.Error == nil || result.Error.Code != "POOL_NOT_FOUND" {
+		t.Errorf("expected POOL_NOT_FOUND error, got %v", result.Error)
+	}
+}
+
+// --- Additional tests to improve coverage on target functions ---
+
+// TestCleanupLoopTickerTriggersCleanup verifies the cleanupLoop goroutine's
+// ticker branch by creating a rate limiter with a very short window.
+func TestCleanupLoopTickerTriggersCleanup(t *testing.T) {
+	rl := &rateLimiter{
+		visitors: make(map[string]*rlVisitor),
+		maxReqs:  30,
+		window:   50 * time.Millisecond, // very short window so ticker fires quickly
+		stopCh:   make(chan struct{}),
+	}
+
+	// Add a stale visitor (past the window)
+	rl.mu.Lock()
+	rl.visitors["stale-ip"] = &rlVisitor{
+		count:    5,
+		lastSeen: time.Now().Add(-1 * time.Second), // way past the 50ms window
+	}
+	rl.mu.Unlock()
+
+	// Start the cleanup loop
+	go rl.cleanupLoop()
+
+	// Wait for the ticker to fire at least once
+	time.Sleep(150 * time.Millisecond)
+
+	// Stop the loop
+	rl.stop()
+
+	// Verify the stale visitor was cleaned up by the ticker
+	rl.mu.Lock()
+	_, staleExists := rl.visitors["stale-ip"]
+	rl.mu.Unlock()
+	if staleExists {
+		t.Error("expected stale-ip to be cleaned up by ticker")
+	}
+}
+
+// TestRemoveBackend_MethodCheck tests the method guard in removeBackend directly.
+func TestRemoveBackend_MethodCheck(t *testing.T) {
+	server, _, _, _, _ := setupTestServer(t, nil)
+
+	// Call removeBackend with GET — should hit the method guard
+	w := httptest.NewRecorder()
+	server.removeBackend(w, httptest.NewRequest(http.MethodGet, "/api/v1/backends/test-pool/backend1", nil))
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for GET on removeBackend, got %d", w.Code)
+	}
+
+	var resp Response
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error == nil || resp.Error.Code != "METHOD_NOT_ALLOWED" {
+		t.Errorf("expected METHOD_NOT_ALLOWED, got %v", resp.Error)
+	}
+}
+
+// TestRemoveBackend_EmptyExtractBackendID tests removeBackend when extractBackendID returns empty.
+func TestRemoveBackend_EmptyExtractBackendID(t *testing.T) {
+	server, _, _, _, _ := setupTestServer(t, nil)
+
+	// Path where extractBackendID returns empty pool/backend
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/backends/", nil)
+	w := httptest.NewRecorder()
+	server.removeBackend(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid path, got %d", w.Code)
+	}
+
+	var resp Response
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error == nil || resp.Error.Code != "INVALID_PATH" {
+		t.Errorf("expected INVALID_PATH, got %v", resp.Error)
+	}
+}
+
+// TestGetPool_MethodCheck tests the POST method guard in getPool directly.
+func TestGetPool_MethodCheck(t *testing.T) {
+	server, poolManager, _, _, _ := setupTestServer(t, nil)
+
+	pool := backend.NewPool("test-pool", "round_robin")
+	poolManager.AddPool(pool)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/backends/test-pool", nil)
+	w := httptest.NewRecorder()
+	server.getPool(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for POST on getPool, got %d", w.Code)
+	}
+
+	var resp Response
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error == nil || resp.Error.Code != "METHOD_NOT_ALLOWED" {
+		t.Errorf("expected METHOD_NOT_ALLOWED, got %v", resp.Error)
+	}
+}
+
+// TestGetPool_EmptyPoolNameDirect tests the empty poolName guard in getPool directly.
+func TestGetPool_EmptyPoolNameDirect(t *testing.T) {
+	server, _, _, _, _ := setupTestServer(t, nil)
+
+	// URL where extractPoolName returns "" (e.g. path without backends prefix)
+	req := httptest.NewRequest(http.MethodGet, "/something/else", nil)
+	w := httptest.NewRecorder()
+	server.getPool(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for empty pool name, got %d", w.Code)
+	}
+
+	var resp Response
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error == nil || resp.Error.Code != "INVALID_POOL" {
+		t.Errorf("expected INVALID_POOL, got %v", resp.Error)
+	}
+}
+
+// TestGetPool_NilPoolManagerDirect tests getPool with nil poolManager directly.
+func TestGetPool_NilPoolManagerDirect(t *testing.T) {
+	serverCfg := &Config{
+		Address: "127.0.0.1:0",
+	}
+	server, err := NewServer(serverCfg)
+	if err != nil {
+		t.Fatalf("failed to create server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/backends/some-pool", nil)
+	w := httptest.NewRecorder()
+	server.getPool(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+
+	var resp Response
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error == nil || resp.Error.Code != "POOL_NOT_FOUND" {
+		t.Errorf("expected POOL_NOT_FOUND, got %v", resp.Error)
+	}
+}
+
+// TestAddBackend_MethodCheck tests the method guard in addBackend directly.
+func TestAddBackend_MethodCheck(t *testing.T) {
+	server, poolManager, _, _, _ := setupTestServer(t, nil)
+
+	pool := backend.NewPool("test-pool", "round_robin")
+	poolManager.AddPool(pool)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/backends/test-pool", nil)
+	w := httptest.NewRecorder()
+	server.addBackend(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for GET on addBackend, got %d", w.Code)
+	}
+
+	var resp Response
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error == nil || resp.Error.Code != "METHOD_NOT_ALLOWED" {
+		t.Errorf("expected METHOD_NOT_ALLOWED, got %v", resp.Error)
+	}
+}
+
+// TestAddBackend_EmptyPoolNameDirect tests addBackend with empty pool name.
+func TestAddBackend_EmptyPoolNameDirect(t *testing.T) {
+	server, _, _, _, _ := setupTestServer(t, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/backends", nil)
+	w := httptest.NewRecorder()
+	server.addBackend(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for empty pool name, got %d", w.Code)
+	}
+
+	var resp Response
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error == nil || resp.Error.Code != "INVALID_POOL" {
+		t.Errorf("expected INVALID_POOL, got %v", resp.Error)
+	}
+}
+
+// TestAddBackend_DuplicateFromPoolAddBackend tests the ErrAlreadyExist from pool.AddBackend path.
+func TestAddBackend_DuplicateFromPoolAddBackend(t *testing.T) {
+	server, poolManager, _, _, _ := setupTestServer(t, nil)
+
+	pool := backend.NewPool("test-pool", "round_robin")
+	poolManager.AddPool(pool)
+
+	// First add succeeds
+	b := backend.NewBackend("backend1", "127.0.0.1:8080")
+	pool.AddBackend(b)
+
+	// Second add via API — GetBackend finds existing, returns ALREADY_EXISTS
+	body := `{"id": "backend1", "address": "127.0.0.1:8081"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/backends/test-pool", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	server.addBackend(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Errorf("expected 409, got %d", w.Code)
+	}
+
+	var resp Response
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error == nil || resp.Error.Code != "ALREADY_EXISTS" {
+		t.Errorf("expected ALREADY_EXISTS, got %v", resp.Error)
+	}
+}
+
+// TestGetBackendDetail_MethodCheck tests the method guard in getBackendDetail directly.
+func TestGetBackendDetail_MethodCheck(t *testing.T) {
+	server, _, _, _, _ := setupTestServer(t, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/backends/test-pool/b1", nil)
+	w := httptest.NewRecorder()
+	server.getBackendDetail(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for POST on getBackendDetail, got %d", w.Code)
+	}
+
+	var resp Response
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error == nil || resp.Error.Code != "METHOD_NOT_ALLOWED" {
+		t.Errorf("expected METHOD_NOT_ALLOWED, got %v", resp.Error)
+	}
+}
+
+// TestGetBackendDetail_InvalidPathDirect tests getBackendDetail with short path directly.
+func TestGetBackendDetail_InvalidPathDirect(t *testing.T) {
+	server, _, _, _, _ := setupTestServer(t, nil)
+
+	// Path too short for extractBackendID to return non-empty
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/backends/test-pool", nil)
+	w := httptest.NewRecorder()
+	server.getBackendDetail(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid path, got %d", w.Code)
+	}
+
+	var resp Response
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error == nil || resp.Error.Code != "INVALID_PATH" {
+		t.Errorf("expected INVALID_PATH, got %v", resp.Error)
+	}
+}
+
+// TestGetBackendDetail_NilPoolMgrDirect tests nil poolManager branch directly.
+func TestGetBackendDetail_NilPoolMgrDirect(t *testing.T) {
+	serverCfg := &Config{
+		Address: "127.0.0.1:0",
+	}
+	server, err := NewServer(serverCfg)
+	if err != nil {
+		t.Fatalf("failed to create server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/backends/test-pool/b1", nil)
+	w := httptest.NewRecorder()
+	server.getBackendDetail(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+
+	var resp Response
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error == nil || resp.Error.Code != "POOL_NOT_FOUND" {
+		t.Errorf("expected POOL_NOT_FOUND, got %v", resp.Error)
+	}
+}
+
+// TestDrainBackend_MethodCheck tests the method guard in drainBackend directly.
+func TestDrainBackend_MethodCheck(t *testing.T) {
+	server, _, _, _, _ := setupTestServer(t, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/backends/test-pool/b1/drain", nil)
+	w := httptest.NewRecorder()
+	server.drainBackend(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for GET on drainBackend, got %d", w.Code)
+	}
+
+	var resp Response
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error == nil || resp.Error.Code != "METHOD_NOT_ALLOWED" {
+		t.Errorf("expected METHOD_NOT_ALLOWED, got %v", resp.Error)
+	}
+}
+
+// TestGetPoolByName_InvalidShortPath tests the len(parts) < 4 branch in getPoolByName.
+func TestGetPoolByName_InvalidShortPath(t *testing.T) {
+	server, _, _, _, _ := setupTestServer(t, nil)
+
+	// Path with fewer than 4 parts after trim
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/pools", nil)
+	w := httptest.NewRecorder()
+	server.getPoolByName(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for short path, got %d", w.Code)
+	}
+
+	var resp Response
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error == nil || resp.Error.Code != "INVALID_POOL" {
+		t.Errorf("expected INVALID_POOL, got %v", resp.Error)
+	}
+}
+
+// TestGetWAFStatus_NilWAFStatusDirect tests the nil wafStatus branch in getWAFStatus
+// by calling the handler method directly (route is not registered when wafStatus is nil).
+func TestGetWAFStatus_NilWAFStatusDirect(t *testing.T) {
+	serverCfg := &Config{
+		Address: "127.0.0.1:0",
+		// WAFStatus is nil
+	}
+	server, err := NewServer(serverCfg)
+	if err != nil {
+		t.Fatalf("failed to create server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/waf/status", nil)
+	w := httptest.NewRecorder()
+	server.getWAFStatus(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+
+	var resp Response
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if !resp.Success {
+		t.Error("expected success response")
+	}
+
+	data, ok := resp.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected data to be a map, got %T", resp.Data)
+	}
+
+	if enabled, ok := data["enabled"].(bool); !ok || enabled {
+		t.Errorf("expected enabled=false for nil wafStatus, got %v", data["enabled"])
+	}
+}
+
+// TestGetWAFStatus_MethodCheckNilWAFStatus tests method guard when wafStatus is nil.
+func TestGetWAFStatus_MethodCheckNilWAFStatus(t *testing.T) {
+	serverCfg := &Config{
+		Address: "127.0.0.1:0",
+	}
+	server, err := NewServer(serverCfg)
+	if err != nil {
+		t.Fatalf("failed to create server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/waf/status", nil)
+	w := httptest.NewRecorder()
+	server.getWAFStatus(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for POST, got %d", w.Code)
+	}
+}
+
+// TestPoolToInfo_WithHealthCheck exercises the health check branch in poolToInfo.
+func TestPoolToInfo_WithHealthCheck(t *testing.T) {
+	pool := backend.NewPool("hc-pool", "weighted_round_robin")
+	pool.HealthCheck = &backend.HealthCheckConfig{
+		Enabled:  true,
+		Interval: 5 * time.Second,
+		Timeout:  2 * time.Second,
+		Path:     "/healthz",
+		Port:     9090,
+	}
+	b := backend.NewBackend("b1", "10.0.0.1:8080")
+	b.SetState(backend.StateUp)
+	pool.AddBackend(b)
+
+	info := poolToInfo(pool)
+
+	if info.Name != "hc-pool" {
+		t.Errorf("expected name=hc-pool, got %s", info.Name)
+	}
+	if info.HealthCheck == nil {
+		t.Fatal("expected health_check to be non-nil")
+	}
+	if !info.HealthCheck.Enabled {
+		t.Error("expected health_check.enabled=true")
+	}
+	if info.HealthCheck.Path != "/healthz" {
+		t.Errorf("expected health_check.path=/healthz, got %s", info.HealthCheck.Path)
+	}
+	if info.HealthCheck.Port != 9090 {
+		t.Errorf("expected health_check.port=9090, got %d", info.HealthCheck.Port)
+	}
+	if info.Total != 1 {
+		t.Errorf("expected total=1, got %d", info.Total)
+	}
+	if info.Healthy != 1 {
+		t.Errorf("expected healthy=1, got %d", info.Healthy)
+	}
+}
+
+// TestPoolToInfo_NoHealthCheck exercises the no-health-check branch in poolToInfo.
+// NewPool initializes HealthCheck with a default config, so we explicitly set it to nil.
+func TestPoolToInfo_NoHealthCheck(t *testing.T) {
+	pool := backend.NewPool("no-hc-pool", "round_robin")
+	pool.HealthCheck = nil // explicitly nil to exercise the no-health-check branch
+	b := backend.NewBackend("b1", "10.0.0.1:8080")
+	pool.AddBackend(b)
+
+	info := poolToInfo(pool)
+
+	if info.HealthCheck != nil {
+		t.Error("expected health_check to be nil when not configured")
+	}
+	if info.Total != 1 {
+		t.Errorf("expected total=1, got %d", info.Total)
 	}
 }

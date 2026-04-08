@@ -72,7 +72,9 @@ type Server struct {
 	onReload func() error
 
 	// Internal
-	rateLimiter *rateLimiter
+	rateLimiter      *rateLimiter
+	rateLimitMaxReqs int
+	rateLimitWindow  string
 
 	// State
 	mu    sync.RWMutex
@@ -100,6 +102,13 @@ type Config struct {
 	// When nil, CSRF protection is disabled (API-only mode).
 	// When provided with Enabled=true, state-changing endpoints require a CSRF token.
 	CSRFConfig *csrf.Config
+
+	// RateLimit configures the per-IP rate limiter for the admin API.
+	// MaxRequests is the maximum requests per Window duration (default: 60).
+	// Window is the rate limit window duration (default: "1m").
+	// When zero/empty, sensible defaults are used.
+	RateLimitMaxRequests int
+	RateLimitWindow      string
 
 	// Optional components
 	ClusterAdmin ClusterAdmin // optional cluster management
@@ -152,11 +161,13 @@ func NewServer(config *Config) (*Server, error) {
 		clusterAdmin:   config.ClusterAdmin,
 		webUI:          config.WebUI,
 		configGetter:   config.ConfigGetter,
-		allowedOrigins: config.AllowedOrigins,
-		certLister:     config.CertLister,
-		wafStatus:      config.WAFStatus,
-		csrfConfig:     config.CSRFConfig,
-		startTime:      time.Now(),
+		allowedOrigins:   config.AllowedOrigins,
+		certLister:       config.CertLister,
+		wafStatus:        config.WAFStatus,
+		csrfConfig:       config.CSRFConfig,
+		rateLimitMaxReqs: config.RateLimitMaxRequests,
+		rateLimitWindow:  config.RateLimitWindow,
+		startTime:        time.Now(),
 		state:          "running",
 	}
 
@@ -222,7 +233,7 @@ func (s *Server) setupRoutes() {
 
 	// Apply rate limiting before auth to prevent brute force attacks
 	var handler http.Handler = mux
-	rl := newRateLimiter()
+	rl := newRateLimiter(s.rateLimitMaxReqs, s.rateLimitWindow)
 	handler = rl.middleware(handler)
 	s.rateLimiter = rl
 
@@ -383,11 +394,20 @@ type rlVisitor struct {
 	lastSeen time.Time
 }
 
-func newRateLimiter() *rateLimiter {
+func newRateLimiter(maxReqs int, windowStr string) *rateLimiter {
+	if maxReqs <= 0 {
+		maxReqs = 60
+	}
+	window := time.Minute
+	if windowStr != "" {
+		if d, err := time.ParseDuration(windowStr); err == nil && d > 0 {
+			window = d
+		}
+	}
 	rl := &rateLimiter{
 		visitors: make(map[string]*rlVisitor),
-		maxReqs:  30,
-		window:   time.Minute,
+		maxReqs:  maxReqs,
+		window:   window,
 		stopCh:   make(chan struct{}),
 	}
 	go rl.cleanupLoop()
