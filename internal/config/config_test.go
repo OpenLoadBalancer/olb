@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -1319,5 +1320,278 @@ pools:
 
 	if cfg.Version != "2" {
 		t.Errorf("Version = %q, want %q (should not be overwritten by default)", cfg.Version, "2")
+	}
+}
+
+// --- Middleware validation tests ---
+
+func validBaseConfig() *Config {
+	return &Config{
+		Listeners: []*Listener{
+			{Name: "http", Address: ":80"},
+		},
+	}
+}
+
+func TestConfig_Validate_JWT_NoSecret(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Middleware = &MiddlewareConfig{
+		JWT: &JWTConfig{Enabled: true},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for JWT without secret or public_key")
+	}
+	if !strings.Contains(err.Error(), "middleware.jwt") {
+		t.Errorf("error = %v, want middleware.jwt error", err)
+	}
+}
+
+func TestConfig_Validate_JWT_InvalidAlgorithm(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Middleware = &MiddlewareConfig{
+		JWT: &JWTConfig{Enabled: true, Secret: "test", Algorithm: "RS256"},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid JWT algorithm")
+	}
+	if !strings.Contains(err.Error(), "unsupported algorithm") {
+		t.Errorf("error = %v, want unsupported algorithm error", err)
+	}
+}
+
+func TestConfig_Validate_JWT_Valid(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Middleware = &MiddlewareConfig{
+		JWT: &JWTConfig{Enabled: true, Secret: "mysecret", Algorithm: "HS256"},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() failed: %v", err)
+	}
+}
+
+func TestConfig_Validate_BasicAuth_NoUsers(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Middleware = &MiddlewareConfig{
+		BasicAuth: &BasicAuthConfig{Enabled: true},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for BasicAuth without users")
+	}
+	if !strings.Contains(err.Error(), "middleware.basic_auth") {
+		t.Errorf("error = %v, want middleware.basic_auth error", err)
+	}
+}
+
+func TestConfig_Validate_BasicAuth_Valid(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Middleware = &MiddlewareConfig{
+		BasicAuth: &BasicAuthConfig{Enabled: true, Users: map[string]string{"admin": "pass"}},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() failed: %v", err)
+	}
+}
+
+func TestConfig_Validate_OAuth2_NoIssuer(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Middleware = &MiddlewareConfig{
+		OAuth2: &OAuth2Config{Enabled: true, ClientID: "test"},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for OAuth2 without issuer_url")
+	}
+}
+
+func TestConfig_Validate_OAuth2_NoClientID(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Middleware = &MiddlewareConfig{
+		OAuth2: &OAuth2Config{Enabled: true, IssuerURL: "https://example.com"},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for OAuth2 without client_id")
+	}
+}
+
+func TestConfig_Validate_HMAC_NoSecret(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Middleware = &MiddlewareConfig{
+		HMAC: &HMACConfig{Enabled: true},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for HMAC without secret")
+	}
+}
+
+func TestConfig_Validate_APIKey_NoKeys(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Middleware = &MiddlewareConfig{
+		APIKey: &APIKeyConfig{Enabled: true},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for APIKey without keys")
+	}
+}
+
+func TestConfig_Validate_Cache_InvalidTTL(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Middleware = &MiddlewareConfig{
+		Cache: &CacheConfig{Enabled: true, DefaultTTL: "not-a-duration"},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid cache TTL")
+	}
+}
+
+func TestConfig_Validate_Timeout_InvalidDuration(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Middleware = &MiddlewareConfig{
+		Timeout: &TimeoutConfig{Enabled: true, Timeout: "bad"},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid timeout duration")
+	}
+}
+
+func TestConfig_Validate_IPFilter_NoLists(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Middleware = &MiddlewareConfig{
+		IPFilter: &IPFilterConfig{Enabled: true},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for IPFilter without lists")
+	}
+}
+
+func TestConfig_Validate_IPFilter_WithAllowList(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Middleware = &MiddlewareConfig{
+		IPFilter: &IPFilterConfig{Enabled: true, AllowList: []string{"10.0.0.0/8"}},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() failed: %v", err)
+	}
+}
+
+func TestConfig_Validate_Compression_InvalidLevel(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Middleware = &MiddlewareConfig{
+		Compression: &CompressionConfig{Enabled: true, Level: 15},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid compression level")
+	}
+}
+
+func TestConfig_Validate_Trace_InvalidSampleRate(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Middleware = &MiddlewareConfig{
+		Trace: &TraceConfig{Enabled: true, SampleRate: 2.5},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid trace sample rate")
+	}
+}
+
+func TestConfig_Validate_Rewrite_EmptyPattern(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Middleware = &MiddlewareConfig{
+		Rewrite: &RewriteConfig{
+			Enabled: true,
+			Rules:   []RewriteRule{{Pattern: "", Replacement: "/new"}},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for rewrite rule with empty pattern")
+	}
+}
+
+// --- Server validation tests ---
+
+func TestConfig_Validate_Server_InvalidProxyTimeout(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Server = &ServerConfig{ProxyTimeout: "bad"}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid proxy_timeout")
+	}
+}
+
+func TestConfig_Validate_Server_InvalidDialTimeout(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Server = &ServerConfig{DialTimeout: "bad"}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid dial_timeout")
+	}
+}
+
+func TestConfig_Validate_Server_InvalidDrainTimeout(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Server = &ServerConfig{DrainTimeout: "bad"}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid drain_timeout")
+	}
+}
+
+func TestConfig_Validate_Server_NegativeMaxConnections(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Server = &ServerConfig{MaxConnections: -1}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for negative max_connections")
+	}
+}
+
+func TestConfig_Validate_Server_Valid(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Server = &ServerConfig{
+		ProxyTimeout:    "60s",
+		DialTimeout:     "10s",
+		DrainTimeout:    "30s",
+		MaxConnections:  10000,
+		MaxRetries:      3,
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() failed: %v", err)
+	}
+}
+
+func TestConfig_Validate_Coalesce_InvalidTTL(t *testing.T) {
+	cfg := validBaseConfig()
+	cfg.Middleware = &MiddlewareConfig{
+		Coalesce: &CoalesceConfig{Enabled: true, TTL: "not-a-duration"},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid coalesce TTL")
+	}
+}
+
+func TestConfig_Validate_MiddlewareDisabled_NoValidation(t *testing.T) {
+	// All middleware present but disabled — should pass validation
+	cfg := validBaseConfig()
+	cfg.Middleware = &MiddlewareConfig{
+		JWT:      &JWTConfig{Enabled: false},
+		BasicAuth: &BasicAuthConfig{Enabled: false},
+		OAuth2:   &OAuth2Config{Enabled: false},
+		HMAC:     &HMACConfig{Enabled: false},
+		APIKey:   &APIKeyConfig{Enabled: false},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("disabled middleware should not trigger validation: %v", err)
 	}
 }

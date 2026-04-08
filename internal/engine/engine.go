@@ -163,6 +163,8 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 	// Create connection manager with limits
 	maxConns := 10000
 	maxPerSource := 100
+	maxPerBackend := 1000
+	drainTimeout := 30 * time.Second
 	if cfg.Server != nil {
 		if cfg.Server.MaxConnections > 0 {
 			maxConns = cfg.Server.MaxConnections
@@ -170,12 +172,20 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 		if cfg.Server.MaxConnectionsPerSource > 0 {
 			maxPerSource = cfg.Server.MaxConnectionsPerSource
 		}
+		if cfg.Server.MaxConnectionsPerBackend > 0 {
+			maxPerBackend = cfg.Server.MaxConnectionsPerBackend
+		}
+		if cfg.Server.DrainTimeout != "" {
+			if d, err := time.ParseDuration(cfg.Server.DrainTimeout); err == nil {
+				drainTimeout = d
+			}
+		}
 	}
 	connMgr := conn.NewManager(&conn.Config{
 		MaxConnections: maxConns,
 		MaxPerSource:   maxPerSource,
-		MaxPerBackend:  1000,
-		DrainTimeout:   30 * time.Second,
+		MaxPerBackend:  maxPerBackend,
+		DrainTimeout:   drainTimeout,
 	})
 
 	// Create connection pool manager

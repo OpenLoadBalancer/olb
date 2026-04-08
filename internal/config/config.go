@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 // Config represents the top-level configuration.
@@ -42,6 +43,10 @@ type ServerConfig struct {
 	MaxIdleConns int `yaml:"max_idle_conns" json:"max_idle_conns"`
 	// MaxIdleConnsPerHost is the maximum idle connections per backend (default: 10).
 	MaxIdleConnsPerHost int `yaml:"max_idle_conns_per_host" json:"max_idle_conns_per_host"`
+	// MaxConnectionsPerBackend is the maximum concurrent connections per backend (default: 1000).
+	MaxConnectionsPerBackend int `yaml:"max_connections_per_backend" json:"max_connections_per_backend"`
+	// DrainTimeout is the maximum duration to wait for connections to close during shutdown (default: "30s").
+	DrainTimeout string `yaml:"drain_timeout" json:"drain_timeout"`
 }
 
 // ProfilingConfig represents profiling/debugging configuration.
@@ -874,12 +879,22 @@ func (c *Config) Validate() error {
 		if l.Pool != "" && !poolNames[l.Pool] {
 			return fmt.Errorf("listener %s: references non-existent pool %q", l.Name, l.Pool)
 		}
+		}
+
+		// Validate middleware configuration
+		if err := c.validateMiddleware(); err != nil {
+			return err
+		}
+
+		// Validate server configuration
+		if err := c.validateServer(); err != nil {
+			return err
+		}
+
+		return nil
 	}
 
-	return nil
-}
-
-// parseAddress validates and splits an address like ":8080" or "127.0.0.1:8080".
+	// parseAddress validates and splits an address like ":8080" or "127.0.0.1:8080".
 func parseAddress(addr string) (string, string, error) {
 	if strings.HasPrefix(addr, ":") {
 		return "", addr[1:], nil
@@ -889,4 +904,180 @@ func parseAddress(addr string) (string, string, error) {
 		return addr, "", nil
 	}
 	return host, port, nil
+}
+
+// validateMiddleware validates all middleware configuration.
+func (c *Config) validateMiddleware() error {
+	if c.Middleware == nil {
+		return nil
+	}
+
+	// JWT: if enabled, must have secret or public key
+	if c.Middleware.JWT != nil && c.Middleware.JWT.Enabled {
+		if c.Middleware.JWT.Secret == "" && c.Middleware.JWT.PublicKey == "" {
+			return fmt.Errorf("middleware.jwt: secret or public_key is required when enabled")
+		}
+		if c.Middleware.JWT.Algorithm != "" {
+			validAlgos := map[string]bool{"HS256": true, "HS384": true, "HS512": true, "EdDSA": true}
+			if !validAlgos[c.Middleware.JWT.Algorithm] {
+				return fmt.Errorf("middleware.jwt: unsupported algorithm %q (valid: HS256, HS384, HS512, EdDSA)", c.Middleware.JWT.Algorithm)
+			}
+		}
+	}
+
+	// Basic Auth: if enabled, must have users
+	if c.Middleware.BasicAuth != nil && c.Middleware.BasicAuth.Enabled {
+		if len(c.Middleware.BasicAuth.Users) == 0 {
+			return fmt.Errorf("middleware.basic_auth: at least one user is required when enabled")
+		}
+	}
+
+	// OAuth2: if enabled, must have issuer URL and client ID
+	if c.Middleware.OAuth2 != nil && c.Middleware.OAuth2.Enabled {
+		if c.Middleware.OAuth2.IssuerURL == "" && c.Middleware.OAuth2.JwksURL == "" {
+			return fmt.Errorf("middleware.oauth2: issuer_url or jwks_url is required when enabled")
+		}
+		if c.Middleware.OAuth2.ClientID == "" {
+			return fmt.Errorf("middleware.oauth2: client_id is required when enabled")
+		}
+	}
+
+	// HMAC: if enabled, must have secret
+	if c.Middleware.HMAC != nil && c.Middleware.HMAC.Enabled {
+		if c.Middleware.HMAC.Secret == "" {
+			return fmt.Errorf("middleware.hmac: secret is required when enabled")
+		}
+	}
+
+	// API Key: if enabled, must have keys
+	if c.Middleware.APIKey != nil && c.Middleware.APIKey.Enabled {
+		if len(c.Middleware.APIKey.Keys) == 0 {
+			return fmt.Errorf("middleware.api_key: at least one key is required when enabled")
+		}
+	}
+
+	// Rate Limit: if enabled, validate rate values
+	if c.Middleware.RateLimit != nil && c.Middleware.RateLimit.Enabled {
+		if c.Middleware.RateLimit.RequestsPerSecond < 0 {
+			return fmt.Errorf("middleware.rate_limit: requests_per_second must be non-negative")
+		}
+	}
+
+	// Cache: if enabled, validate TTL format
+	if c.Middleware.Cache != nil && c.Middleware.Cache.Enabled {
+		if c.Middleware.Cache.DefaultTTL != "" {
+			if _, err := time.ParseDuration(c.Middleware.Cache.DefaultTTL); err != nil {
+				return fmt.Errorf("middleware.cache: invalid default_ttl %q: %w", c.Middleware.Cache.DefaultTTL, err)
+			}
+		}
+		if c.Middleware.Cache.MaxSize < 0 {
+			return fmt.Errorf("middleware.cache: max_size must be non-negative")
+		}
+	}
+
+	// Timeout: if enabled, validate duration format
+	if c.Middleware.Timeout != nil && c.Middleware.Timeout.Enabled {
+		if c.Middleware.Timeout.Timeout != "" {
+			if _, err := time.ParseDuration(c.Middleware.Timeout.Timeout); err != nil {
+				return fmt.Errorf("middleware.timeout: invalid timeout %q: %w", c.Middleware.Timeout.Timeout, err)
+			}
+		}
+	}
+
+	// IP Filter: if enabled, must have allow or deny list
+	if c.Middleware.IPFilter != nil && c.Middleware.IPFilter.Enabled {
+		if len(c.Middleware.IPFilter.AllowList) == 0 && len(c.Middleware.IPFilter.DenyList) == 0 {
+			return fmt.Errorf("middleware.ip_filter: at least one of allow_list or deny_list is required when enabled")
+		}
+	}
+
+	// Compression: if enabled, validate level range
+	if c.Middleware.Compression != nil && c.Middleware.Compression.Enabled {
+		if c.Middleware.Compression.Level != 0 && (c.Middleware.Compression.Level < -1 || c.Middleware.Compression.Level > 9) {
+			return fmt.Errorf("middleware.compression: level must be between -1 and 9, got %d", c.Middleware.Compression.Level)
+		}
+	}
+
+	// Circuit Breaker: if enabled, validate thresholds
+	if c.Middleware.CircuitBreaker != nil && c.Middleware.CircuitBreaker.Enabled {
+		if c.Middleware.CircuitBreaker.ErrorThreshold < 0 {
+			return fmt.Errorf("middleware.circuit_breaker: error_threshold must be non-negative")
+		}
+		if c.Middleware.CircuitBreaker.ErrorRateThreshold < 0 || c.Middleware.CircuitBreaker.ErrorRateThreshold > 1 {
+			return fmt.Errorf("middleware.circuit_breaker: error_rate_threshold must be between 0 and 1")
+		}
+	}
+
+	// Coalesce: if enabled, validate TTL
+	if c.Middleware.Coalesce != nil && c.Middleware.Coalesce.Enabled {
+		if c.Middleware.Coalesce.TTL != "" {
+			if _, err := time.ParseDuration(c.Middleware.Coalesce.TTL); err != nil {
+				return fmt.Errorf("middleware.coalesce: invalid ttl %q: %w", c.Middleware.Coalesce.TTL, err)
+			}
+		}
+	}
+
+	// Rewrite: if enabled, validate rules have patterns
+	if c.Middleware.Rewrite != nil && c.Middleware.Rewrite.Enabled {
+		for i, rule := range c.Middleware.Rewrite.Rules {
+			if rule.Pattern == "" {
+				return fmt.Errorf("middleware.rewrite: rule %d: pattern is required", i)
+			}
+		}
+	}
+
+	// MaxBodySize: if enabled, validate max size
+	if c.Middleware.MaxBodySize != nil && c.Middleware.MaxBodySize.Enabled {
+		if c.Middleware.MaxBodySize.MaxSize < 0 {
+			return fmt.Errorf("middleware.max_body_size: max_size must be non-negative")
+		}
+	}
+
+	// Trace: if enabled, validate sample rate
+	if c.Middleware.Trace != nil && c.Middleware.Trace.Enabled {
+		if c.Middleware.Trace.SampleRate < 0 || c.Middleware.Trace.SampleRate > 1 {
+			return fmt.Errorf("middleware.trace: sample_rate must be between 0 and 1, got %f", c.Middleware.Trace.SampleRate)
+		}
+	}
+
+	return nil
+}
+
+// validateServer validates server configuration.
+func (c *Config) validateServer() error {
+	if c.Server == nil {
+		return nil
+	}
+
+	if c.Server.ProxyTimeout != "" {
+		if _, err := time.ParseDuration(c.Server.ProxyTimeout); err != nil {
+			return fmt.Errorf("server: invalid proxy_timeout %q: %w", c.Server.ProxyTimeout, err)
+		}
+	}
+
+	if c.Server.DialTimeout != "" {
+		if _, err := time.ParseDuration(c.Server.DialTimeout); err != nil {
+			return fmt.Errorf("server: invalid dial_timeout %q: %w", c.Server.DialTimeout, err)
+		}
+	}
+
+	if c.Server.DrainTimeout != "" {
+		if _, err := time.ParseDuration(c.Server.DrainTimeout); err != nil {
+			return fmt.Errorf("server: invalid drain_timeout %q: %w", c.Server.DrainTimeout, err)
+		}
+	}
+
+	if c.Server.MaxConnections < 0 {
+		return fmt.Errorf("server: max_connections must be non-negative")
+	}
+
+	if c.Server.MaxConnectionsPerSource < 0 {
+		return fmt.Errorf("server: max_connections_per_source must be non-negative")
+	}
+
+	if c.Server.MaxRetries < 0 {
+		return fmt.Errorf("server: max_retries must be non-negative")
+	}
+
+	return nil
 }
