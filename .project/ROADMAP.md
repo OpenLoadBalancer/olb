@@ -112,7 +112,7 @@ OpenLoadBalancer is a remarkably complete load balancer implementation with 97% 
 - [ ] **Add CONTRIBUTING.md code examples** -- Add examples for adding a new middleware, adding a new balancer algorithm, extending the WAF. ~4h
 - [ ] **Add architecture decision records** -- Document key decisions: why zero-dep, why Raft+SWIM, why radix trie, why React for WebUI. ~4h
 - [x] **Create Grafana dashboard import guide** -- Document how to import the provided dashboard.json. ~1h
-- [ ] **Add API rate limiting documentation** -- Document the admin auth rate limit behavior and how to configure it. ~2h
+- [x] **Add API rate limiting documentation** -- Document the admin auth rate limit behavior and how to configure it. ~2h
 - [ ] **Create performance tuning guide** -- Document how to tune for different workload types (high RPS, high concurrency, high bandwidth). ~4h
 
 **Estimated effort:** 18 hours
