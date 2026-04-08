@@ -44,6 +44,23 @@ type HTTP2Config struct {
 	// PingTimeout is the timeout for PING response.
 	PingTimeout time.Duration
 
+	// MaxDecoderHeaderBytes limits the total header bytes (decompressed) per request.
+	// Protects against HPACK bomb attacks. Default is 64KB.
+	// This maps to MaxDecoderHeaderTableSize on the http2.Server.
+	MaxDecoderHeaderBytes uint32
+
+	// MaxHeaderListSize limits the number of headers per request (after decompression).
+	// Protects against header flood attacks. Default is 256.
+	MaxHeaderListSize uint32
+
+	// MaxUploadBufferPerConnection is the maximum buffered data per connection.
+	// Default is 1MB.
+	MaxUploadBufferPerConnection int32
+
+	// MaxUploadBufferPerStream is the maximum buffered data per stream.
+	// Default is 256KB.
+	MaxUploadBufferPerStream int32
+
 	// PermitProhibitedCipherSuites allows using cipher suites that are prohibited by HTTP/2.
 	// Only use for testing, not in production.
 	PermitProhibitedCipherSuites bool
@@ -52,13 +69,17 @@ type HTTP2Config struct {
 // DefaultHTTP2Config returns a default HTTP/2 configuration.
 func DefaultHTTP2Config() *HTTP2Config {
 	return &HTTP2Config{
-		EnableHTTP2:          true,
-		EnableH2C:            true,
-		MaxConcurrentStreams: 250,
-		MaxFrameSize:         16 * 1024, // 16KB
-		IdleTimeout:          60 * time.Second,
-		ReadIdleTimeout:      30 * time.Second,
-		PingTimeout:          15 * time.Second,
+		EnableHTTP2:                  true,
+		EnableH2C:                    true,
+		MaxConcurrentStreams:         250,
+		MaxFrameSize:                 16 * 1024, // 16KB
+		IdleTimeout:                  60 * time.Second,
+		ReadIdleTimeout:              30 * time.Second,
+		PingTimeout:                  15 * time.Second,
+		MaxDecoderHeaderBytes:        64 * 1024, // 64KB — HPACK bomb protection
+		MaxHeaderListSize:            256,
+		MaxUploadBufferPerConnection: 1 * 1024 * 1024,  // 1MB
+		MaxUploadBufferPerStream:     256 * 1024,        // 256KB
 	}
 }
 
@@ -137,6 +158,24 @@ func (h *HTTP2Handler) GetTransport(scheme string) http.RoundTripper {
 	return h.transport
 }
 
+// newHTTP2Server creates an http2.Server with strict mode protections from config.
+func (h *HTTP2Handler) newHTTP2Server() *http2.Server {
+	srv := &http2.Server{
+		MaxConcurrentStreams:         h.config.MaxConcurrentStreams,
+		MaxReadFrameSize:             h.config.MaxFrameSize,
+		IdleTimeout:                  h.config.IdleTimeout,
+		ReadIdleTimeout:              h.config.ReadIdleTimeout,
+		PingTimeout:                  h.config.PingTimeout,
+		MaxUploadBufferPerConnection: h.config.MaxUploadBufferPerConnection,
+		MaxUploadBufferPerStream:     h.config.MaxUploadBufferPerStream,
+	}
+	// HPACK bomb protection: limit decoder header table size
+	if h.config.MaxDecoderHeaderBytes > 0 {
+		srv.MaxDecoderHeaderTableSize = h.config.MaxDecoderHeaderBytes
+	}
+	return srv
+}
+
 // WrapHandler wraps an HTTP handler with HTTP/2 support.
 // If h2c is enabled, it will handle h2c upgrade requests.
 func (h *HTTP2Handler) WrapHandler(handler http.Handler) http.Handler {
@@ -145,11 +184,7 @@ func (h *HTTP2Handler) WrapHandler(handler http.Handler) http.Handler {
 	}
 
 	// Use h2c to handle HTTP/2 cleartext upgrades
-	return h2c.NewHandler(handler, &http2.Server{
-		MaxConcurrentStreams: h.config.MaxConcurrentStreams,
-		MaxReadFrameSize:     h.config.MaxFrameSize,
-		IdleTimeout:          h.config.IdleTimeout,
-	})
+	return h2c.NewHandler(handler, h.newHTTP2Server())
 }
 
 // HTTP2Proxy handles HTTP/2 proxying to backends.
@@ -271,9 +306,16 @@ func (l *HTTP2Listener) Start() error {
 
 	// Configure HTTP/2 server
 	l.h2Server = &http2.Server{
-		MaxConcurrentStreams: l.config.MaxConcurrentStreams,
-		MaxReadFrameSize:     l.config.MaxFrameSize,
-		IdleTimeout:          l.config.IdleTimeout,
+		MaxConcurrentStreams:         l.config.MaxConcurrentStreams,
+		MaxReadFrameSize:             l.config.MaxFrameSize,
+		IdleTimeout:                  l.config.IdleTimeout,
+		ReadIdleTimeout:              l.config.ReadIdleTimeout,
+		PingTimeout:                  l.config.PingTimeout,
+		MaxUploadBufferPerConnection: l.config.MaxUploadBufferPerConnection,
+		MaxUploadBufferPerStream:     l.config.MaxUploadBufferPerStream,
+	}
+	if l.config.MaxDecoderHeaderBytes > 0 {
+		l.h2Server.MaxDecoderHeaderTableSize = l.config.MaxDecoderHeaderBytes
 	}
 
 	// Create HTTP server

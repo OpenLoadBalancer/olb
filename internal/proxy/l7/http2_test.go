@@ -23,6 +23,8 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"github.com/openloadbalancer/olb/internal/backend"
+	"github.com/openloadbalancer/olb/internal/balancer"
+	"github.com/openloadbalancer/olb/internal/router"
 )
 
 func TestDefaultHTTP2Config(t *testing.T) {
@@ -1303,5 +1305,517 @@ func TestHTTP2Listener_StartWithInvalidAddress(t *testing.T) {
 	} else {
 		// If it succeeds, clean up
 		listener.Stop(context.Background())
+	}
+}
+
+// ============================================================================
+// HTTP2Listener Start with TLS and verify ALPN config
+// ============================================================================
+
+func TestHTTP2Listener_StartWithTLS_VerifyALPN(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("Hello TLS ALPN"))
+	})
+
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{Organization: []string{"Test"}},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	if err != nil {
+		t.Fatalf("Failed to create certificate: %v", err)
+	}
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyBytes, _ := x509.MarshalECPrivateKey(priv)
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes})
+	cert, _ := tls.X509KeyPair(certPEM, keyPEM)
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+	}
+
+	opts := &HTTP2ListenerOptions{
+		Name:      "test-tls-alpn",
+		Address:   "127.0.0.1:0",
+		Handler:   handler,
+		TLSConfig: tlsConfig,
+		Config:    DefaultHTTP2Config(),
+	}
+
+	listener, err := NewHTTP2Listener(opts)
+	if err != nil {
+		t.Fatalf("NewHTTP2Listener error: %v", err)
+	}
+
+	if err := listener.Start(); err != nil {
+		t.Fatalf("Start error: %v", err)
+	}
+	defer listener.Stop(context.Background())
+
+	// Verify the TLS config has ALPN protocols set
+	if len(tlsConfig.NextProtos) < 2 {
+		t.Errorf("Expected ALPN protos to be set, got %v", tlsConfig.NextProtos)
+	}
+	if tlsConfig.NextProtos[0] != "h2" {
+		t.Errorf("First ALPN proto should be h2, got %s", tlsConfig.NextProtos[0])
+	}
+}
+
+// ============================================================================
+// HTTP2Listener Start with h2c disabled
+// ============================================================================
+
+func TestHTTP2Listener_StartWithH2CDisabled(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("no h2c"))
+	})
+
+	config := DefaultHTTP2Config()
+	config.EnableH2C = false // Disable h2c
+
+	opts := &HTTP2ListenerOptions{
+		Name:    "test-no-h2c",
+		Address: "127.0.0.1:0",
+		Handler: handler,
+		Config:  config,
+	}
+
+	listener, err := NewHTTP2Listener(opts)
+	if err != nil {
+		t.Fatalf("NewHTTP2Listener error: %v", err)
+	}
+
+	if err := listener.Start(); err != nil {
+		t.Fatalf("Start error: %v", err)
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("http://" + listener.Address())
+	if err != nil {
+		t.Fatalf("Request error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != "no h2c" {
+		t.Errorf("Body = %q, want 'no h2c'", string(body))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	listener.Stop(ctx)
+}
+
+// ============================================================================
+// HTTP2Listener Start with invalid address (listen failure)
+// ============================================================================
+
+func TestHTTP2Listener_StartWithBadAddress(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+
+	// Use a port that's already taken (if possible)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Skip("Could not allocate a port")
+	}
+	takenAddr := ln.Addr().String()
+	ln.Close() // Free it briefly, then try to bind
+
+	// Now start a listener on that address first
+	blocker, _ := net.Listen("tcp", takenAddr)
+	defer blocker.Close()
+
+	opts := &HTTP2ListenerOptions{
+		Name:    "test-bad-addr",
+		Address: takenAddr,
+		Handler: handler,
+		Config:  DefaultHTTP2Config(),
+	}
+
+	listener, _ := NewHTTP2Listener(opts)
+	err = listener.Start()
+	if err == nil {
+		t.Error("Expected error when address is already in use")
+		listener.Stop(context.Background())
+	}
+}
+
+// ============================================================================
+// HandleHTTP2Proxy: full round-trip with flusher
+// ============================================================================
+
+func TestHandleHTTP2Proxy_WithFlusher(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("flushed response"))
+	})
+
+	h2s := &http2.Server{}
+	server := httptest.NewServer(h2c.NewHandler(handler, h2s))
+	defer server.Close()
+
+	addr := strings.TrimPrefix(server.URL, "http://")
+	be := backend.NewBackend("h2-flush-backend", addr)
+	be.SetState(backend.StateUp)
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Proto = "HTTP/2.0"
+	req.ProtoMajor = 2
+
+	rec := httptest.NewRecorder()
+
+	config := DefaultHTTP2Config()
+	err := HandleHTTP2Proxy(rec, req, be, config)
+	if err != nil {
+		t.Fatalf("HandleHTTP2Proxy() error = %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	body := rec.Body.String()
+	if body != "flushed response" {
+		t.Errorf("Body = %q, want %q", body, "flushed response")
+	}
+}
+
+// ============================================================================
+// HandleHTTP2Proxy: backend connection refused
+// ============================================================================
+
+func TestHandleHTTP2Proxy_BackendRefused(t *testing.T) {
+	be := backend.NewBackend("h2-refused", "127.0.0.1:1")
+	be.SetState(backend.StateUp)
+
+	req := httptest.NewRequest("GET", "/", nil)
+	rec := httptest.NewRecorder()
+
+	config := DefaultHTTP2Config()
+	err := HandleHTTP2Proxy(rec, req, be, config)
+	if err == nil {
+		t.Error("Expected error when backend connection fails")
+	}
+	if err != nil && !strings.Contains(err.Error(), "backend request failed") {
+		t.Errorf("Expected 'backend request failed', got: %v", err)
+	}
+}
+
+// ============================================================================
+// HTTP2Proxy ServeHTTP with regular HTTP/1.1 request
+// ============================================================================
+
+func TestHTTP2Proxy_ServeHTTP_HTTP11WithRoute(t *testing.T) {
+	httpProxy, poolManager, routerInstance := setupTestProxy(t)
+
+	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("h1 response"))
+	}))
+	defer backendServer.Close()
+
+	pool := backend.NewPool("h2-pool", "round_robin")
+	pool.SetBalancer(balancer.NewRoundRobin())
+	b := backend.NewBackend("h2-b1", backendServer.Listener.Addr().String())
+	b.SetState(backend.StateUp)
+	pool.AddBackend(b)
+	poolManager.AddPool(pool)
+
+	route := &router.Route{Name: "h2-route", Path: "/test", BackendPool: "h2-pool"}
+	routerInstance.AddRoute(route)
+
+	h2Proxy := NewHTTP2Proxy(httpProxy, DefaultHTTP2Config())
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	rec := httptest.NewRecorder()
+
+	h2Proxy.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+	if rec.Body.String() != "h1 response" {
+		t.Errorf("expected 'h1 response', got %q", rec.Body.String())
+	}
+}
+
+// ============================================================================
+// HTTP2Listener: Start error captured in StartError after listener close
+// ============================================================================
+
+func TestHTTP2Listener_StartError_AcceptAfterClose(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("Hello"))
+	})
+
+	opts := &HTTP2ListenerOptions{
+		Name:    "test-accept-err",
+		Address: "127.0.0.1:0",
+		Handler: handler,
+		Config:  DefaultHTTP2Config(),
+	}
+
+	listener, err := NewHTTP2Listener(opts)
+	if err != nil {
+		t.Fatalf("NewHTTP2Listener error: %v", err)
+	}
+
+	if err := listener.Start(); err != nil {
+		t.Fatalf("Start error: %v", err)
+	}
+
+	// Get the underlying listener and close it to cause Serve to fail
+	addr := listener.Address()
+	t.Logf("Listening on %s", addr)
+
+	// Close the underlying listener to force an Accept error
+	// This should cause the goroutine to record a startErr
+	listener.mu.Lock()
+	if listener.listener != nil {
+		listener.listener.Close()
+	}
+	listener.mu.Unlock()
+
+	// Wait for the goroutine to detect the error
+	time.Sleep(200 * time.Millisecond)
+
+	// The listener should have stopped
+	if listener.IsRunning() {
+		t.Log("Listener still running after listener close")
+	}
+
+	// StartError may or may not be set depending on timing
+	t.Logf("StartError: %v", listener.StartError())
+}
+
+// ============================================================================
+// HTTP2Handler: GetTransport with HTTPS scheme
+// ============================================================================
+
+func TestHTTP2Handler_GetTransport_HTTPS(t *testing.T) {
+	config := &HTTP2Config{EnableHTTP2: true, EnableH2C: true}
+	handler := NewHTTP2Handler(config)
+
+	// HTTPS should use the standard transport
+	transport := handler.GetTransport("https")
+	if transport == nil {
+		t.Fatal("GetTransport(https) returned nil")
+	}
+	if handler.transport != transport {
+		t.Error("Expected standard transport for HTTPS scheme")
+	}
+}
+
+// ============================================================================
+// HTTP2Listener: Start with non-zero config values
+// ============================================================================
+
+func TestHTTP2Listener_StartWithCustomConfig(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("custom config"))
+	})
+
+	config := &HTTP2Config{
+		EnableHTTP2:          true,
+		EnableH2C:            true,
+		MaxConcurrentStreams: 100,
+		MaxFrameSize:         32 * 1024,
+		IdleTimeout:          30 * time.Second,
+	}
+
+	opts := &HTTP2ListenerOptions{
+		Name:    "test-custom-cfg",
+		Address: "127.0.0.1:0",
+		Handler: handler,
+		Config:  config,
+	}
+
+	listener, err := NewHTTP2Listener(opts)
+	if err != nil {
+		t.Fatalf("NewHTTP2Listener error: %v", err)
+	}
+
+	if err := listener.Start(); err != nil {
+		t.Fatalf("Start error: %v", err)
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("http://" + listener.Address())
+	if err != nil {
+		t.Fatalf("Request error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != "custom config" {
+		t.Errorf("Body = %q, want 'custom config'", string(body))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	listener.Stop(ctx)
+}
+
+// ============================================================================
+// HTTP2BackendTransport: RoundTrip to unreachable backend
+// ============================================================================
+
+func TestHTTP2BackendTransport_RoundTrip_Unreachable(t *testing.T) {
+	transport := NewHTTP2BackendTransport(DefaultHTTP2Config())
+
+	req, _ := http.NewRequest("GET", "http://127.0.0.1:1/", nil)
+	_, err := transport.RoundTrip(req)
+	if err == nil {
+		t.Error("Expected error for unreachable backend")
+	}
+}
+
+// --- HTTP/2 strict mode hardening tests ---
+
+func TestHTTP2Config_StrictModeDefaults(t *testing.T) {
+	config := DefaultHTTP2Config()
+
+	if config.MaxDecoderHeaderBytes != 64*1024 {
+		t.Errorf("expected MaxDecoderHeaderBytes=65536, got %d", config.MaxDecoderHeaderBytes)
+	}
+	if config.MaxHeaderListSize != 256 {
+		t.Errorf("expected MaxHeaderListSize=256, got %d", config.MaxHeaderListSize)
+	}
+	if config.MaxUploadBufferPerConnection != 1*1024*1024 {
+		t.Errorf("expected MaxUploadBufferPerConnection=1048576, got %d", config.MaxUploadBufferPerConnection)
+	}
+	if config.MaxUploadBufferPerStream != 256*1024 {
+		t.Errorf("expected MaxUploadBufferPerStream=262144, got %d", config.MaxUploadBufferPerStream)
+	}
+	if config.ReadIdleTimeout != 30*time.Second {
+		t.Errorf("expected ReadIdleTimeout=30s, got %v", config.ReadIdleTimeout)
+	}
+	if config.PingTimeout != 15*time.Second {
+		t.Errorf("expected PingTimeout=15s, got %v", config.PingTimeout)
+	}
+}
+
+func TestHTTP2Handler_NewHTTP2Server_SetsAllFields(t *testing.T) {
+	config := &HTTP2Config{
+		EnableHTTP2:                  true,
+		MaxConcurrentStreams:         100,
+		MaxFrameSize:                 32768,
+		IdleTimeout:                  30 * time.Second,
+		ReadIdleTimeout:              10 * time.Second,
+		PingTimeout:                  5 * time.Second,
+		MaxDecoderHeaderBytes:        32768,
+		MaxUploadBufferPerConnection: 512 * 1024,
+		MaxUploadBufferPerStream:     128 * 1024,
+	}
+
+	handler := NewHTTP2Handler(config)
+	srv := handler.newHTTP2Server()
+
+	if srv.MaxConcurrentStreams != 100 {
+		t.Errorf("expected MaxConcurrentStreams=100, got %d", srv.MaxConcurrentStreams)
+	}
+	if srv.MaxReadFrameSize != 32768 {
+		t.Errorf("expected MaxReadFrameSize=32768, got %d", srv.MaxReadFrameSize)
+	}
+	if srv.IdleTimeout != 30*time.Second {
+		t.Errorf("expected IdleTimeout=30s, got %v", srv.IdleTimeout)
+	}
+	if srv.ReadIdleTimeout != 10*time.Second {
+		t.Errorf("expected ReadIdleTimeout=10s, got %v", srv.ReadIdleTimeout)
+	}
+	if srv.PingTimeout != 5*time.Second {
+		t.Errorf("expected PingTimeout=5s, got %v", srv.PingTimeout)
+	}
+	if srv.MaxUploadBufferPerConnection != 512*1024 {
+		t.Errorf("expected MaxUploadBufferPerConnection=524288, got %d", srv.MaxUploadBufferPerConnection)
+	}
+	if srv.MaxUploadBufferPerStream != 128*1024 {
+		t.Errorf("expected MaxUploadBufferPerStream=131072, got %d", srv.MaxUploadBufferPerStream)
+	}
+	if srv.MaxDecoderHeaderTableSize != 32768 {
+		t.Errorf("expected MaxDecoderHeaderTableSize=32768, got %d", srv.MaxDecoderHeaderTableSize)
+	}
+}
+
+func TestHTTP2Handler_NewHTTP2Server_ZeroHeaderBytes(t *testing.T) {
+	config := &HTTP2Config{
+		EnableHTTP2:           true,
+		MaxDecoderHeaderBytes: 0, // should not set MaxDecoderHeaderTableSize
+	}
+
+	handler := NewHTTP2Handler(config)
+	srv := handler.newHTTP2Server()
+
+	// Should not override the default (4096 in http2 library)
+	if srv.MaxDecoderHeaderTableSize != 0 {
+		t.Errorf("expected MaxDecoderHeaderTableSize=0 when config is 0, got %d", srv.MaxDecoderHeaderTableSize)
+	}
+}
+
+func TestHTTP2Listener_Start_SetsStrictMode(t *testing.T) {
+	config := &HTTP2Config{
+		EnableHTTP2:                  true,
+		EnableH2C:                    true,
+		MaxConcurrentStreams:         50,
+		MaxFrameSize:                 16384,
+		IdleTimeout:                  30 * time.Second,
+		ReadIdleTimeout:              10 * time.Second,
+		PingTimeout:                  5 * time.Second,
+		MaxDecoderHeaderBytes:        16384,
+		MaxUploadBufferPerConnection: 512 * 1024,
+		MaxUploadBufferPerStream:     64 * 1024,
+	}
+
+	listener, err := NewHTTP2Listener(&HTTP2ListenerOptions{
+		Name:    "test-strict",
+		Address: "127.0.0.1:0",
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
+		Config:  config,
+	})
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
+
+	// Start in background
+	go listener.Start()
+	defer listener.Stop(context.Background())
+
+	// Wait for startup
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify the h2Server was configured
+	h2s := listener.h2Server
+	if h2s == nil {
+		t.Fatal("expected h2Server to be set")
+	}
+	if h2s.MaxConcurrentStreams != 50 {
+		t.Errorf("expected MaxConcurrentStreams=50, got %d", h2s.MaxConcurrentStreams)
+	}
+	if h2s.ReadIdleTimeout != 10*time.Second {
+		t.Errorf("expected ReadIdleTimeout=10s, got %v", h2s.ReadIdleTimeout)
+	}
+	if h2s.PingTimeout != 5*time.Second {
+		t.Errorf("expected PingTimeout=5s, got %v", h2s.PingTimeout)
+	}
+	if h2s.MaxUploadBufferPerConnection != 512*1024 {
+		t.Errorf("expected MaxUploadBufferPerConnection=524288, got %d", h2s.MaxUploadBufferPerConnection)
+	}
+	if h2s.MaxUploadBufferPerStream != 64*1024 {
+		t.Errorf("expected MaxUploadBufferPerStream=65536, got %d", h2s.MaxUploadBufferPerStream)
+	}
+	if h2s.MaxDecoderHeaderTableSize != 16384 {
+		t.Errorf("expected MaxDecoderHeaderTableSize=16384, got %d", h2s.MaxDecoderHeaderTableSize)
 	}
 }

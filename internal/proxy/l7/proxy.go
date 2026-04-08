@@ -50,6 +50,9 @@ type HTTPProxy struct {
 	grpcWebHandler *GRPCWebHandler
 	sseHandler     *SSEHandler
 
+	// Shadow traffic
+	shadowManager *ShadowManager
+
 	// Configuration
 	proxyTimeout        time.Duration
 	dialTimeout         time.Duration
@@ -76,6 +79,7 @@ type Config struct {
 	MaxRetries      int
 	MaxIdleConns        int
 	MaxIdleConnsPerHost int
+	ShadowConfig        *ShadowConfig
 }
 
 // DefaultConfig returns a default configuration.
@@ -135,6 +139,11 @@ func NewHTTPProxy(config *Config) *HTTPProxy {
 		errorHandler:        func() atomic.Value { v := atomic.Value{}; v.Store(defaultErrorHandler); return v }(),
 	}
 
+	// Initialize shadow manager if configured
+	if config.ShadowConfig != nil && config.ShadowConfig.Enabled {
+		p.shadowManager = NewShadowManager(*config.ShadowConfig)
+	}
+
 	// Create HTTP client with custom transport
 	p.client = &http.Client{
 		Timeout:   proxyTimeout,
@@ -180,6 +189,11 @@ func (p *HTTPProxy) createTransport() *http.Transport {
 // SetErrorHandler sets a custom error handler.
 func (p *HTTPProxy) SetErrorHandler(handler func(http.ResponseWriter, *http.Request, error)) {
 	p.errorHandler.Store(handler)
+}
+
+// ShadowManager returns the shadow manager, or nil if shadowing is not enabled.
+func (p *HTTPProxy) ShadowManager() *ShadowManager {
+	return p.shadowManager
 }
 
 // getErrorHandler returns the current error handler.
@@ -234,6 +248,11 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request, reqCtx 
 		p.getErrorHandler()(w, r, olbErrors.ErrPoolNotFound.WithContext("pool", routeMatch.Route.BackendPool))
 		return
 	}
+
+		// Fire-and-forget shadow request (non-blocking, best-effort)
+		if p.shadowManager != nil && p.shadowManager.ShouldShadowRequest(r) {
+			p.shadowManager.ShadowRequest(r)
+		}
 
 	// Check for protocol-specific requests that bypass the retry loop.
 	// These long-lived connections (WebSocket, gRPC streaming, SSE) are

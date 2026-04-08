@@ -3236,3 +3236,167 @@ func TestCov_WriteUpgradeRequest_EmptyPathViaHandleWebSocket(t *testing.T) {
 		t.Log("HandleWebSocket timed out")
 	}
 }
+
+// --- Shadow Manager Wiring Tests ---
+
+func TestShadowManager_NilWhenNotConfigured(t *testing.T) {
+	proxy, _, _ := setupTestProxy(t)
+	if proxy.ShadowManager() != nil {
+		t.Error("expected nil shadow manager when not configured")
+	}
+}
+
+func TestShadowManager_CreatedWhenConfigured(t *testing.T) {
+	poolManager := backend.NewPoolManager()
+	routerInstance := router.NewRouter()
+	connPoolManager := conn.NewPoolManager(nil)
+	healthChecker := health.NewChecker()
+	middlewareChain := middleware.NewChain()
+
+	config := &Config{
+		Router:          routerInstance,
+		PoolManager:     poolManager,
+		ConnPoolManager: connPoolManager,
+		HealthChecker:   healthChecker,
+		MiddlewareChain: middlewareChain,
+		ShadowConfig: &ShadowConfig{
+			Enabled:     true,
+			Percentage:  10,
+			CopyHeaders: true,
+			CopyBody:    false,
+			Timeout:     5 * time.Second,
+		},
+	}
+
+	proxy := NewHTTPProxy(config)
+	if proxy.ShadowManager() == nil {
+		t.Error("expected non-nil shadow manager when configured")
+	}
+	if !proxy.ShadowManager().ShouldShadow() {
+		// ShouldShadow uses counter, may or may not return true on first call
+		// but it shouldn't panic
+	}
+}
+
+func TestShadowManager_ShadowRequestFired(t *testing.T) {
+	// Create a shadow backend that tracks requests
+	shadowReceived := make(chan struct{}, 1)
+	shadowBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case shadowReceived <- struct{}{}:
+		default:
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer shadowBackend.Close()
+
+	// Create the primary backend
+	primaryBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("primary"))
+	}))
+	defer primaryBackend.Close()
+
+	// Setup pool with primary backend
+	poolManager := backend.NewPoolManager()
+	routerInstance := router.NewRouter()
+	connPoolManager := conn.NewPoolManager(nil)
+	healthChecker := health.NewChecker()
+	middlewareChain := middleware.NewChain()
+
+	pool := backend.NewPool("test-pool", "round_robin")
+	pb := backend.NewBackend("primary", strings.TrimPrefix(primaryBackend.URL, "http://"))
+	pb.SetState(backend.StateUp)
+	pool.AddBackend(pb)
+	poolManager.AddPool(pool)
+	pool.SetBalancer(balancer.NewRoundRobin())
+
+	routerInstance.AddRoute(&router.Route{
+		Name:        "test",
+		Path:        "/api/test",
+		BackendPool: "test-pool",
+	})
+
+	// Configure shadow at 100% to guarantee it fires
+	shadowAddr := strings.TrimPrefix(shadowBackend.URL, "http://")
+	sb := backend.NewBackend("shadow", shadowAddr)
+	sb.SetState(backend.StateUp)
+
+	config := &Config{
+		Router:          routerInstance,
+		PoolManager:     poolManager,
+		ConnPoolManager: connPoolManager,
+		HealthChecker:   healthChecker,
+		MiddlewareChain: middlewareChain,
+		ProxyTimeout:    5 * time.Second,
+		DialTimeout:     1 * time.Second,
+		ShadowConfig: &ShadowConfig{
+			Enabled:     true,
+			Percentage:  100, // always shadow
+			CopyHeaders: true,
+			CopyBody:    false,
+			Timeout:     5 * time.Second,
+		},
+	}
+
+	proxy := NewHTTPProxy(config)
+
+	// Add shadow target to shadow manager
+	sm := proxy.ShadowManager()
+	if sm == nil {
+		t.Fatal("expected shadow manager to be created")
+	}
+
+	shadowBackends := []*backend.Backend{sb}
+	shadowBalancer := balancer.NewRoundRobin()
+	sm.AddTarget(shadowBalancer, shadowBackends, 100)
+
+	// Make a request through the proxy
+	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	req.Host = "example.com"
+	w := httptest.NewRecorder()
+	proxy.ServeHTTP(w, req)
+
+	// Primary response should succeed
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 from primary, got %d", w.Code)
+	}
+
+	// Shadow request should have been fired (async, wait briefly)
+	select {
+	case <-shadowReceived:
+		// Success - shadow was fired
+	case <-time.After(2 * time.Second):
+		t.Error("expected shadow request to be fired")
+	}
+}
+
+func TestShadowManager_ForceHeader(t *testing.T) {
+	config := &Config{
+		Router:          router.NewRouter(),
+		PoolManager:     backend.NewPoolManager(),
+		ConnPoolManager: conn.NewPoolManager(nil),
+		HealthChecker:   health.NewChecker(),
+		MiddlewareChain: middleware.NewChain(),
+		ShadowConfig: &ShadowConfig{
+			Enabled:    true,
+			Percentage: 0, // never shadow normally
+			Timeout:    5 * time.Second,
+		},
+	}
+
+	proxy := NewHTTPProxy(config)
+	sm := proxy.ShadowManager()
+
+	// Without force header, ShouldShadowRequest should return false (percentage=0)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	if sm.ShouldShadowRequest(req) {
+		t.Error("expected ShouldShadowRequest=false with 0% and no header")
+	}
+
+	// With force header, should return true
+	req.Header.Set("X-OLB-Shadow-Force", "true")
+	if !sm.ShouldShadowRequest(req) {
+		t.Error("expected ShouldShadowRequest=true with force header")
+	}
+}

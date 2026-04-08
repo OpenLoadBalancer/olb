@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/openloadbalancer/olb/internal/backend"
@@ -31,6 +32,7 @@ type ShadowManager struct {
 	enabled bool
 	targets []ShadowTarget
 	config  ShadowConfig
+	counter atomic.Uint64
 }
 
 // NewShadowManager creates a new shadow manager.
@@ -55,13 +57,36 @@ func (sm *ShadowManager) AddTarget(balancer backend.Balancer, backends []*backen
 }
 
 // ShouldShadow determines if a request should be shadowed based on percentage.
+// Uses a deterministic counter-based approach: every Nth request is shadowed
+// based on the configured percentage (e.g., 10% means every 10th request).
 func (sm *ShadowManager) ShouldShadow() bool {
+	if sm == nil || !sm.enabled || len(sm.targets) == 0 {
+		return false
+	}
+	pct := sm.config.Percentage
+	if pct <= 0 {
+		return false
+	}
+	if pct >= 100 {
+		return true
+	}
+	// Deterministic: shadow 1 in every (100/pct) requests
+	n := sm.counter.Add(1)
+	threshold := uint64(100.0 / pct)
+	return n%threshold == 1
+}
+
+// ShouldShadowRequest determines if a specific request should be shadowed,
+// supporting header-based matching via X-OLB-Shadow-Force header.
+func (sm *ShadowManager) ShouldShadowRequest(req *http.Request) bool {
 	if sm == nil || !sm.enabled {
 		return false
 	}
-	// Simple hash-based decision could be added here
-	// For now, use random selection based on percentage
-	return true
+	// Allow explicit opt-in via header
+	if req.Header.Get("X-OLB-Shadow-Force") == "true" {
+		return true
+	}
+	return sm.ShouldShadow()
 }
 
 // ShadowRequest sends a shadow copy of the request to shadow targets.

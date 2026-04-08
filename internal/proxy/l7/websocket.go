@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -34,15 +35,26 @@ type WebSocketConfig struct {
 
 	// MaxMessageSize is the maximum message size in bytes.
 	MaxMessageSize int64
+
+	// MaxConns is the maximum number of concurrent WebSocket connections.
+	// 0 means unlimited. When the limit is reached, new connections are rejected
+	// with HTTP 503 Service Unavailable.
+	MaxConns int
+
+	// TLSInsecureSkipVerify controls whether backend TLS certificates are verified.
+	// Defaults to true for backward compatibility with internal self-signed certs.
+	// Set to false when proxying to external backends with valid certificates.
+	TLSInsecureSkipVerify bool
 }
 
 // DefaultWebSocketConfig returns a default WebSocket configuration.
 func DefaultWebSocketConfig() *WebSocketConfig {
 	return &WebSocketConfig{
-		EnableWebSocket: true,
-		IdleTimeout:     60 * time.Second,
-		PingInterval:    30 * time.Second,
-		MaxMessageSize:  10 * 1024 * 1024, // 10MB
+		EnableWebSocket:       true,
+		IdleTimeout:           60 * time.Second,
+		PingInterval:          30 * time.Second,
+		MaxMessageSize:        10 * 1024 * 1024, // 10MB
+		TLSInsecureSkipVerify: true,              // backward compatible default
 	}
 }
 
@@ -58,8 +70,9 @@ func IsWebSocketUpgrade(r *http.Request) bool {
 
 // WebSocketHandler handles WebSocket proxying.
 type WebSocketHandler struct {
-	config *WebSocketConfig
-	dialer *net.Dialer
+	config  *WebSocketConfig
+	dialer  *net.Dialer
+	conns   atomic.Int64 // current active WebSocket connections
 }
 
 // NewWebSocketHandler creates a new WebSocket handler.
@@ -76,6 +89,11 @@ func NewWebSocketHandler(config *WebSocketConfig) *WebSocketHandler {
 	}
 }
 
+// ActiveConns returns the number of currently active WebSocket connections.
+func (wh *WebSocketHandler) ActiveConns() int64 {
+	return wh.conns.Load()
+}
+
 // HandleWebSocket handles a WebSocket upgrade request by:
 // 1. Dialing the backend and forwarding the upgrade request
 // 2. Reading the backend's 101 response
@@ -84,6 +102,16 @@ func NewWebSocketHandler(config *WebSocketConfig) *WebSocketHandler {
 func (wh *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request, b *backend.Backend) error {
 	if !wh.config.EnableWebSocket {
 		return errors.New("websocket disabled")
+	}
+
+	// Enforce concurrent connection limit
+	if wh.config.MaxConns > 0 {
+		current := wh.conns.Add(1)
+		if current > int64(wh.config.MaxConns) {
+			wh.conns.Add(-1)
+			return fmt.Errorf("websocket connection limit reached (%d)", wh.config.MaxConns)
+		}
+		defer wh.conns.Add(-1)
 	}
 
 	wsKey := r.Header.Get("Sec-WebSocket-Key")
@@ -101,10 +129,10 @@ func (wh *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		return fmt.Errorf("failed to connect to backend: %w", err)
 	}
-	defer backendConn.Close()
 
 	// 2. Forward the original upgrade request to backend
 	if err := wh.writeUpgradeRequest(backendConn, r, b); err != nil {
+		backendConn.Close()
 		return fmt.Errorf("failed to send upgrade to backend: %w", err)
 	}
 
@@ -112,27 +140,32 @@ func (wh *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Reque
 	backendBuf := bufio.NewReader(backendConn)
 	backendResp, err := http.ReadResponse(backendBuf, r)
 	if err != nil {
+		backendConn.Close()
 		return fmt.Errorf("failed to read backend upgrade response: %w", err)
 	}
 	defer backendResp.Body.Close()
 
 	if backendResp.StatusCode != http.StatusSwitchingProtocols {
+		backendConn.Close()
 		return fmt.Errorf("backend rejected WebSocket upgrade: %d", backendResp.StatusCode)
 	}
 
 	// 4. Hijack client connection
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
+		backendConn.Close()
 		return errors.New("response writer does not support hijacking")
 	}
 	clientConn, clientBuf, err := hijacker.Hijack()
 	if err != nil {
+		backendConn.Close()
 		return fmt.Errorf("failed to hijack connection: %w", err)
 	}
-	defer clientConn.Close()
 
 	// 5. Forward 101 Switching Protocols to client
 	if err := wh.writeUpgradeResponse(clientConn, backendResp, wsKey); err != nil {
+		backendConn.Close()
+		clientConn.Close()
 		return fmt.Errorf("failed to send 101 to client: %w", err)
 	}
 
@@ -141,7 +174,11 @@ func (wh *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Reque
 		buffered := make([]byte, clientBuf.Reader.Buffered())
 		n, _ := clientBuf.Reader.Read(buffered)
 		if n > 0 {
-			backendConn.Write(buffered[:n])
+			if _, err := backendConn.Write(buffered[:n]); err != nil {
+				backendConn.Close()
+				clientConn.Close()
+				return fmt.Errorf("failed to forward buffered client data: %w", err)
+			}
 		}
 	}
 
@@ -150,7 +187,11 @@ func (wh *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Reque
 		buffered := make([]byte, backendBuf.Buffered())
 		n, _ := backendBuf.Read(buffered)
 		if n > 0 {
-			clientConn.Write(buffered[:n])
+			if _, err := clientConn.Write(buffered[:n]); err != nil {
+				backendConn.Close()
+				clientConn.Close()
+				return fmt.Errorf("failed to forward buffered backend data: %w", err)
+			}
 		}
 	}
 
@@ -285,7 +326,7 @@ func (wh *WebSocketHandler) dialBackend(r *http.Request, b *backend.Backend) (ne
 			// Backend TLS verification is skipped by default for internal
 			// backends using self-signed certificates. For public backends,
 			// configure proper CA certificates via the TLS manager.
-			InsecureSkipVerify: true, //nolint:gosec — backend-to-backend internal TLS
+			InsecureSkipVerify: wh.config.TLSInsecureSkipVerify, //nolint:gosec
 		}
 		return tls.DialWithDialer(wh.dialer, "tcp", address, tlsConfig)
 	}
@@ -424,30 +465,30 @@ func (wp *WebSocketProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if IsWebSocketUpgrade(r) {
 		routeMatch, ok := wp.httpProxy.router.Match(r)
 		if !ok {
-			wp.httpProxy.errorHandler(w, r, errors.New("route not found"))
+			wp.httpProxy.getErrorHandler()(w, r, errors.New("route not found"))
 			return
 		}
 
 		pool := wp.httpProxy.poolManager.GetPool(routeMatch.Route.BackendPool)
 		if pool == nil {
-			wp.httpProxy.errorHandler(w, r, errors.New("pool not found"))
+			wp.httpProxy.getErrorHandler()(w, r, errors.New("pool not found"))
 			return
 		}
 
 		backends := pool.GetHealthyBackends()
 		if len(backends) == 0 {
-			wp.httpProxy.errorHandler(w, r, errors.New("no healthy backends"))
+			wp.httpProxy.getErrorHandler()(w, r, errors.New("no healthy backends"))
 			return
 		}
 
 		selected := pool.GetBalancer().Next(backends)
 		if selected == nil {
-			wp.httpProxy.errorHandler(w, r, errors.New("no backend available"))
+			wp.httpProxy.getErrorHandler()(w, r, errors.New("no backend available"))
 			return
 		}
 
 		if err := wp.wsHandler.HandleWebSocket(w, r, selected); err != nil {
-			wp.httpProxy.errorHandler(w, r, err)
+			wp.httpProxy.getErrorHandler()(w, r, err)
 		}
 		return
 	}
