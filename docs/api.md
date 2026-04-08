@@ -43,6 +43,65 @@ ws://localhost:8081/api/v1/ws/metrics?token=your-secret-token
 
 ---
 
+## Rate Limiting
+
+The admin API has built-in per-IP rate limiting to prevent brute-force attacks on authentication endpoints.
+
+### Default Limits
+
+| Parameter | Default |
+|-----------|---------|
+| Max requests per window | 60 |
+| Window duration | 1 minute |
+
+### Behavior
+
+- Rate limiting is applied **before** authentication — unauthenticated requests also count toward the limit
+- Each source IP gets an independent counter
+- When the limit is exceeded, the API returns **429 Too Many Requests** with a `Retry-After` header
+- Stale entries are cleaned up automatically by a background goroutine
+
+### Response When Rate Limited
+
+```json
+{
+  "error": "rate limit exceeded"
+}
+```
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 60
+Content-Type: application/json
+```
+
+### Configuration
+
+Configure via the admin section in `olb.yaml`:
+
+```yaml
+admin:
+  enabled: true
+  address: "127.0.0.1:8081"
+  rate_limit_max_requests: 100   # default: 60
+  rate_limit_window: "2m"        # default: "1m"
+```
+
+### Additional Protection: Circuit Breaker
+
+The admin API also has an internal circuit breaker that protects against cascading failures:
+
+| Parameter | Default |
+|-----------|---------|
+| Error threshold | 5 consecutive errors |
+| Open duration | 30 seconds |
+| Half-open timeout | 10 seconds |
+| Successes to close | 3 consecutive |
+
+When the circuit breaker is open, the API returns **503 Service Unavailable** for state-changing operations.
+
+---
+
 ## System
 
 ### GET /api/v1/system/info

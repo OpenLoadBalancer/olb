@@ -722,11 +722,13 @@ type ACME struct {
 
 // Admin represents admin API configuration.
 type Admin struct {
-	Address    string `yaml:"address" json:"address"`
-	Enabled    bool   `yaml:"enabled" json:"enabled"`
-	MCPAddress string `yaml:"mcp_address" json:"mcp_address"`
-	MCPToken   string `yaml:"mcp_token" json:"-"`
-	MCPAudit   bool   `yaml:"mcp_audit" json:"mcp_audit"`
+	Address              string `yaml:"address" json:"address"`
+	Enabled              bool   `yaml:"enabled" json:"enabled"`
+	MCPAddress           string `yaml:"mcp_address" json:"mcp_address"`
+	MCPToken             string `yaml:"mcp_token" json:"-"`
+	MCPAudit             bool   `yaml:"mcp_audit" json:"mcp_audit"`
+	RateLimitMaxRequests int    `yaml:"rate_limit_max_requests" json:"rate_limit_max_requests"`
+	RateLimitWindow      string `yaml:"rate_limit_window" json:"rate_limit_window"`
 }
 
 // Logging represents logging configuration.
