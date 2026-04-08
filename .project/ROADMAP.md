@@ -96,7 +96,7 @@ OpenLoadBalancer is a remarkably complete load balancer implementation with 97% 
 - [x] **Add connection pooling metrics** -- Expose pool utilization, wait time, eviction rate to Prometheus. ~4h
 - [ ] **Benchmark memory allocation hotspots** -- Use pprof to identify and reduce allocations in hot paths (proxy request, balancer selection, middleware chain). ~8h
 - [ ] **Optimize gRPC frame parsing** -- Reduce allocations in `internal/proxy/l7/grpc.go` frame read/write. ~4h
-- [ ] **Add write-combining for metrics** -- Batch metric increments to reduce atomic operation contention under high load. ~4h
+- [x] **Add write-combining for metrics** -- Batch metric increments to reduce atomic operation contention under high load. ~4h
 - [ ] **Optimize WebUI bundle** -- Audit React chunk splitting, lazy-load pages, reduce initial bundle size. ~4h
 
 **Estimated effort:** 44 hours

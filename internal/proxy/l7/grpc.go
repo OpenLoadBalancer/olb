@@ -11,10 +11,19 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/openloadbalancer/olb/internal/backend"
 )
+
+// grpcFrameHeaderPool reuses 5-byte header buffers across parseGRPCFrame calls.
+var grpcFrameHeaderPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, 5)
+		return &buf
+	},
+}
 
 // IsGRPCRequest checks if the request is a gRPC request.
 func IsGRPCRequest(r *http.Request) bool {
@@ -228,24 +237,34 @@ func grpcWebResponseContentType(requestContentType string) string {
 // the trailer key-value pairs as "Key: Value\r\n".
 // If trailers is empty, it synthesizes "grpc-status: 0".
 func encodeTrailersAsGRPCWebFrame(trailers http.Header) []byte {
-	var b strings.Builder
+	// Estimate trailer size: most trailers are small (~64 bytes)
+	estimated := 64
 	for key, values := range trailers {
-		for _, value := range values {
-			b.WriteString(key)
-			b.WriteString(": ")
-			b.WriteString(value)
-			b.WriteString("\r\n")
-		}
+		estimated += len(key)*len(values) + 4*len(values)
 	}
-	trailerData := b.String()
-	if len(trailerData) == 0 {
-		trailerData = "grpc-status: 0\r\n"
+	if estimated < 32 {
+		estimated = 32
 	}
 
-	buf := make([]byte, 5+len(trailerData))
+	var buf []byte
+	// Build trailer data directly into a byte slice
+	trailerBuf := make([]byte, 0, estimated)
+	for key, values := range trailers {
+		for _, value := range values {
+			trailerBuf = append(trailerBuf, key...)
+			trailerBuf = append(trailerBuf, ": "...)
+			trailerBuf = append(trailerBuf, value...)
+			trailerBuf = append(trailerBuf, "\r\n"...)
+		}
+	}
+	if len(trailerBuf) == 0 {
+		trailerBuf = append(trailerBuf, "grpc-status: 0\r\n"...)
+	}
+
+	buf = make([]byte, 5+len(trailerBuf))
 	buf[0] = 0x80 // trailer flag
-	binary.BigEndian.PutUint32(buf[1:5], uint32(len(trailerData)))
-	copy(buf[5:], trailerData)
+	binary.BigEndian.PutUint32(buf[1:5], uint32(len(trailerBuf)))
+	copy(buf[5:], trailerBuf)
 	return buf
 }
 
@@ -555,13 +574,16 @@ func parseGRPCFrame(r io.Reader) (*gRPCFrame, error) {
 	// 4 bytes: message length (big-endian)
 	// N bytes: message data
 
-	buf := make([]byte, 5)
+	bufPtr := grpcFrameHeaderPool.Get().(*[]byte)
+	buf := *bufPtr
+	defer grpcFrameHeaderPool.Put(bufPtr)
+
 	if _, err := io.ReadFull(r, buf); err != nil {
 		return nil, err
 	}
 
 	compressed := buf[0] == 1
-	length := uint32(buf[1])<<24 | uint32(buf[2])<<16 | uint32(buf[3])<<8 | uint32(buf[4])
+	length := binary.BigEndian.Uint32(buf[1:5])
 
 	data := make([]byte, length)
 	if _, err := io.ReadFull(r, data); err != nil {
@@ -577,18 +599,19 @@ func parseGRPCFrame(r io.Reader) (*gRPCFrame, error) {
 
 // writeGRPCFrame writes a gRPC frame to the writer.
 func writeGRPCFrame(w io.Writer, frame *gRPCFrame) error {
-	buf := make([]byte, 5+len(frame.Data))
+	// Write header directly to avoid combined buffer allocation
+	header := [5]byte{}
 	if frame.Compressed {
-		buf[0] = 1
-	} else {
-		buf[0] = 0
+		header[0] = 1
 	}
-	buf[1] = byte(frame.Length >> 24)
-	buf[2] = byte(frame.Length >> 16)
-	buf[3] = byte(frame.Length >> 8)
-	buf[4] = byte(frame.Length)
-	copy(buf[5:], frame.Data)
+	binary.BigEndian.PutUint32(header[1:5], frame.Length)
 
-	_, err := w.Write(buf)
-	return err
+	if _, err := w.Write(header[:]); err != nil {
+		return err
+	}
+	if len(frame.Data) > 0 {
+		_, err := w.Write(frame.Data)
+		return err
+	}
+	return nil
 }
