@@ -106,9 +106,9 @@ Then create a Pull Request on GitHub.
 
 ## Coding Standards
 
-### Zero External Dependencies
+### Minimal External Dependencies
 
-**CRITICAL**: OpenLoadBalancer uses only Go standard library. The only exception is `golang.org/x/crypto` for bcrypt and OCSP.
+**CRITICAL**: OpenLoadBalancer uses only Go standard library plus `golang.org/x/crypto`, `golang.org/x/net`, and `golang.org/x/text`. No other external dependencies are allowed.
 
 ```go
 // DON'T: Add external dependencies
@@ -249,6 +249,244 @@ See [CLAUDE.md](CLAUDE.md) for the full architecture guide.
 | `internal/middleware` | HTTP middleware chain |
 | `internal/waf` | Web Application Firewall |
 | `internal/config` | Configuration parsing |
+
+---
+
+## Code Examples
+
+### Adding a New Balancer Algorithm
+
+All balancers implement the `Balancer` interface in `internal/balancer/`:
+
+```go
+type Balancer interface {
+    // Name returns the algorithm name for logging and config matching.
+    Name() string
+
+    // Next selects a backend from the list. Returns nil if empty.
+    Next(backends []*backend.Backend) *backend.Backend
+
+    // Add registers a backend with the balancer.
+    Add(backend *backend.Backend)
+
+    // Remove removes a backend by ID.
+    Remove(id string)
+
+    // Update notifies the balancer that a backend's state changed.
+    Update(backend *backend.Backend)
+}
+```
+
+**Example: Adding a "Random Two Choices" algorithm**
+
+1. Create `internal/balancer/random_two.go`:
+
+```go
+package balancer
+
+import (
+    "math/rand"
+    "github.com/openloadbalancer/olb/internal/backend"
+)
+
+// RandomTwoChoices picks two random backends and selects the one
+// with fewer active connections (power-of-two-choices variant).
+type RandomTwoChoices struct{}
+
+func NewRandomTwoChoices() *RandomTwoChoices {
+    return &RandomTwoChoices{}
+}
+
+func (r *RandomTwoChoices) Name() string { return "random_two_choices" }
+
+func (r *RandomTwoChoices) Next(backends []*backend.Backend) *backend.Backend {
+    if len(backends) == 0 {
+        return nil
+    }
+    if len(backends) == 1 {
+        return backends[0]
+    }
+    i := rand.Intn(len(backends))
+    j := rand.Intn(len(backends) - 1)
+    if j >= i {
+        j++
+    }
+    // Pick the one with fewer connections
+    if backends[j].ActiveConns() < backends[i].ActiveConns() {
+        return backends[j]
+    }
+    return backends[i]
+}
+
+func (r *RandomTwoChoices) Add(*backend.Backend)    {}
+func (r *RandomTwoChoices) Remove(string)           {}
+func (r *RandomTwoChoices) Update(*backend.Backend)  {}
+```
+
+2. Wire in `internal/engine/engine.go` in the `initializePools` method:
+
+```go
+case "random_two_choices", "r2c":
+    bal = balancer.NewRandomTwoChoices()
+```
+
+3. Write tests in `internal/balancer/random_two_test.go`:
+
+```go
+func TestRandomTwoChoices_Empty(t *testing.T) {
+    r := NewRandomTwoChoices()
+    if got := r.Next(nil); got != nil {
+        t.Error("expected nil for empty backends")
+    }
+}
+
+func TestRandomTwoChoices_Single(t *testing.T) {
+    r := NewRandomTwoChoices()
+    b := backend.NewBackend("b1", "localhost:8080")
+    if got := r.Next([]*backend.Backend{b}); got != b {
+        t.Error("expected the single backend")
+    }
+}
+```
+
+### Adding a New Middleware
+
+Middlewares are HTTP handlers that wrap the request chain. Each lives in its own subdirectory under `internal/middleware/` with config gating.
+
+**Example: Adding a "Request Logger" middleware**
+
+1. Create `internal/middleware/reqlog/reqlog.go`:
+
+```go
+package reqlog
+
+import (
+    "log"
+    "net/http"
+)
+
+// Config configures the request logger middleware.
+type Config struct {
+    Enabled bool   `yaml:"enabled" json:"enabled"`
+    Prefix  string `yaml:"prefix" json:"prefix"`
+}
+
+// Middleware returns an HTTP middleware that logs each request.
+func Middleware(cfg Config) func(http.Handler) http.Handler {
+    return func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            if !cfg.Enabled {
+                next.ServeHTTP(w, r)
+                return
+            }
+            prefix := cfg.Prefix
+            if prefix == "" {
+                prefix = "[REQ]"
+            }
+            log.Printf("%s %s %s", prefix, r.Method, r.URL.Path)
+            next.ServeHTTP(w, r)
+        })
+    }
+}
+```
+
+2. Add config struct in `internal/config/config.go`:
+
+```go
+type ReqLogConfig struct {
+    Enabled bool   `yaml:"enabled" json:"enabled"`
+    Prefix  string `yaml:"prefix" json:"prefix"`
+}
+```
+
+Add it to the `MiddlewareConfig` struct and YAML tags.
+
+3. Register in `internal/engine/middleware_registration.go`:
+
+```go
+func (ctx *middlewareRegistrationContext) registerReqLogMiddleware() {
+    cfg := ctx.cfg.Middleware.ReqLog
+    if !cfg.Enabled {
+        return
+    }
+    ctx.chain.Use(reqlog.Middleware(reqlog.Config{
+        Enabled: cfg.Enabled,
+        Prefix:  cfg.Prefix,
+    }))
+}
+```
+
+4. Add the call in `createMiddlewareChain()` and write tests.
+
+### Extending the WAF
+
+The WAF detection pipeline lives in `internal/waf/`. Each detector is a struct implementing a `Detect` method.
+
+**Example: Adding a CRLF injection detector**
+
+1. Create `internal/waf/detectors/crlf.go`:
+
+```go
+package detectors
+
+import "strings"
+
+// CRLFPattern matches common CRLF injection payloads.
+var crlfPatterns = []string{
+    "%0d", "%0a", "\r", "\n",
+}
+
+// DetectCRLF checks input for CRLF injection attempts.
+// Returns a score (0-100) indicating threat level.
+func DetectCRLF(input string) int {
+    lower := strings.ToLower(input)
+    score := 0
+    for _, pattern := range crlfPatterns {
+        if strings.Contains(lower, pattern) {
+            score += 30
+        }
+    }
+    if score > 100 {
+        score = 100
+    }
+    return score
+}
+```
+
+2. Wire into the detection engine in `internal/waf/detection.go`:
+
+```go
+// In the detect function, add alongside sqli, xss:
+if config.CRLF.Enabled {
+    if score := detectors.DetectCRLF(input); score > 0 {
+        totalScore += score
+    }
+}
+```
+
+3. Add config in the WAF detector config:
+
+```go
+CRLF struct {
+    Enabled bool `yaml:"enabled" json:"enabled"`
+}
+```
+
+4. Write tests in `internal/waf/detectors/crlf_test.go`:
+
+```go
+func TestDetectCRLF_Clean(t *testing.T) {
+    if got := DetectCRLF("hello world"); got != 0 {
+        t.Errorf("expected 0, got %d", got)
+    }
+}
+
+func TestDetectCRLF_Injection(t *testing.T) {
+    if got := DetectCRLF("test%0d%0aHeader:evil"); got == 0 {
+        t.Error("expected non-zero score for CRLF injection")
+    }
+}
+```
 
 ## Release Process
 

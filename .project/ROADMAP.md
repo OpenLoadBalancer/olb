@@ -108,7 +108,7 @@ OpenLoadBalancer is a remarkably complete load balancer implementation with 97% 
 ### Documentation and developer experience
 
 - [x] **Update README metrics** -- Fix binary size (9MB -> 10.9MB), algorithm count (14 vs 12 vs 16), dependency count (zero vs 2 vs 3). ~1h
-- [ ] **Update CHANGELOG** -- Set v1.0.0 release date, move unreleased items to proper version. ~2h
+- [x] **Update CHANGELOG** -- Set v1.0.0 release date, move unreleased items to proper version. ~2h
 - [ ] **Add CONTRIBUTING.md code examples** -- Add examples for adding a new middleware, adding a new balancer algorithm, extending the WAF. ~4h
 - [ ] **Add architecture decision records** -- Document key decisions: why zero-dep, why Raft+SWIM, why radix trie, why React for WebUI. ~4h
 - [x] **Create Grafana dashboard import guide** -- Document how to import the provided dashboard.json. ~1h
