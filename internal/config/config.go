@@ -884,22 +884,22 @@ func (c *Config) Validate() error {
 		if l.Pool != "" && !poolNames[l.Pool] {
 			return fmt.Errorf("listener %s: references non-existent pool %q", l.Name, l.Pool)
 		}
-		}
-
-		// Validate middleware configuration
-		if err := c.validateMiddleware(); err != nil {
-			return err
-		}
-
-		// Validate server configuration
-		if err := c.validateServer(); err != nil {
-			return err
-		}
-
-		return nil
 	}
 
-	// parseAddress validates and splits an address like ":8080" or "127.0.0.1:8080".
+	// Validate middleware configuration
+	if err := c.validateMiddleware(); err != nil {
+		return err
+	}
+
+	// Validate server configuration
+	if err := c.validateServer(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// parseAddress validates and splits an address like ":8080" or "127.0.0.1:8080".
 func parseAddress(addr string) (string, string, error) {
 	if strings.HasPrefix(addr, ":") {
 		return "", addr[1:], nil

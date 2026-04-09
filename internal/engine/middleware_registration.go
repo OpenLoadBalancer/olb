@@ -536,7 +536,7 @@ func registerCSRFMiddleware(ctx *middlewareRegistrationContext) {
 		CookieDomain:   c.CookieDomain,
 		CookieMaxAge:   c.CookieMaxAge,
 		CookieSecure:   c.CookieSecure,
-		CookieHTTPOnly:  c.CookieHTTPOnly,
+		CookieHTTPOnly: c.CookieHTTPOnly,
 		TokenLength:    c.TokenLength,
 	})
 	if err == nil {

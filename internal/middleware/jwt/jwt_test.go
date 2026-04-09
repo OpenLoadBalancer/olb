@@ -10,8 +10,8 @@ import (
 	"encoding/json"
 	"hash"
 	"net/http"
-	"strings"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )

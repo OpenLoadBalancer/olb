@@ -79,14 +79,14 @@ type HTTPProxy struct {
 
 // Config contains configuration for the HTTP proxy.
 type Config struct {
-	Router          *router.Router
-	PoolManager     *backend.PoolManager
-	ConnPoolManager *conn.PoolManager
-	HealthChecker   *health.Checker
-	MiddlewareChain *middleware.Chain
-	ProxyTimeout    time.Duration
-	DialTimeout     time.Duration
-	MaxRetries      int
+	Router              *router.Router
+	PoolManager         *backend.PoolManager
+	ConnPoolManager     *conn.PoolManager
+	HealthChecker       *health.Checker
+	MiddlewareChain     *middleware.Chain
+	ProxyTimeout        time.Duration
+	DialTimeout         time.Duration
+	MaxRetries          int
 	MaxIdleConns        int
 	MaxIdleConnsPerHost int
 	IdleConnTimeout     time.Duration
@@ -138,15 +138,15 @@ func NewHTTPProxy(config *Config) *HTTPProxy {
 	}
 
 	p := &HTTPProxy{
-		router:          config.Router,
-		poolManager:     config.PoolManager,
-		connPoolManager: config.ConnPoolManager,
-		healthChecker:   config.HealthChecker,
-		middlewareChain: config.MiddlewareChain,
-		wsHandler:       NewWebSocketHandler(nil),
-		grpcHandler:     NewGRPCHandler(nil),
-		grpcWebHandler:  NewGRPCWebHandler(NewGRPCHandler(nil)),
-		sseHandler:      NewSSEHandler(nil),
+		router:              config.Router,
+		poolManager:         config.PoolManager,
+		connPoolManager:     config.ConnPoolManager,
+		healthChecker:       config.HealthChecker,
+		middlewareChain:     config.MiddlewareChain,
+		wsHandler:           NewWebSocketHandler(nil),
+		grpcHandler:         NewGRPCHandler(nil),
+		grpcWebHandler:      NewGRPCWebHandler(NewGRPCHandler(nil)),
+		sseHandler:          NewSSEHandler(nil),
 		proxyTimeout:        proxyTimeout,
 		dialTimeout:         dialTimeout,
 		maxRetries:          maxRetries,
@@ -266,10 +266,10 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request, reqCtx 
 		return
 	}
 
-		// Fire-and-forget shadow request (non-blocking, best-effort)
-		if p.shadowManager != nil && p.shadowManager.ShouldShadowRequest(r) {
-			p.shadowManager.ShadowRequest(r)
-		}
+	// Fire-and-forget shadow request (non-blocking, best-effort)
+	if p.shadowManager != nil && p.shadowManager.ShouldShadowRequest(r) {
+		p.shadowManager.ShadowRequest(r)
+	}
 
 	// Check for protocol-specific requests that bypass the retry loop.
 	// These long-lived connections (WebSocket, gRPC streaming, SSE) are

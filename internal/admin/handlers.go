@@ -484,6 +484,7 @@ func (s *Server) removeBackend(w http.ResponseWriter, r *http.Request) {
 
 	writeSuccess(w, map[string]string{"message": "backend removed successfully"})
 }
+
 type UpdateBackendRequest struct {
 	Weight   *int32 `json:"weight,omitempty"`
 	MaxConns *int32 `json:"max_conns,omitempty"`

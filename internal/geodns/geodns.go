@@ -36,9 +36,9 @@ type GeoDNS struct {
 	defaultPool string
 
 	// GeoIP database
-	geoDB map[string]*Location // legacy CIDR -> Location
-	mmdb  *mmdbReader          // MaxMind DB reader (nil if not loaded)
-	mmdbPath string            // path for hot-reload
+	geoDB    map[string]*Location // legacy CIDR -> Location
+	mmdb     *mmdbReader          // MaxMind DB reader (nil if not loaded)
+	mmdbPath string               // path for hot-reload
 
 	// Pool health status
 	poolHealth map[string]bool

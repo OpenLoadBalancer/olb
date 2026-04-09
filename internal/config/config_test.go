@@ -1560,11 +1560,11 @@ func TestConfig_Validate_Server_NegativeMaxConnections(t *testing.T) {
 func TestConfig_Validate_Server_Valid(t *testing.T) {
 	cfg := validBaseConfig()
 	cfg.Server = &ServerConfig{
-		ProxyTimeout:    "60s",
-		DialTimeout:     "10s",
-		DrainTimeout:    "30s",
-		MaxConnections:  10000,
-		MaxRetries:      3,
+		ProxyTimeout:   "60s",
+		DialTimeout:    "10s",
+		DrainTimeout:   "30s",
+		MaxConnections: 10000,
+		MaxRetries:     3,
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() failed: %v", err)
@@ -1586,11 +1586,11 @@ func TestConfig_Validate_MiddlewareDisabled_NoValidation(t *testing.T) {
 	// All middleware present but disabled — should pass validation
 	cfg := validBaseConfig()
 	cfg.Middleware = &MiddlewareConfig{
-		JWT:      &JWTConfig{Enabled: false},
+		JWT:       &JWTConfig{Enabled: false},
 		BasicAuth: &BasicAuthConfig{Enabled: false},
-		OAuth2:   &OAuth2Config{Enabled: false},
-		HMAC:     &HMACConfig{Enabled: false},
-		APIKey:   &APIKeyConfig{Enabled: false},
+		OAuth2:    &OAuth2Config{Enabled: false},
+		HMAC:      &HMACConfig{Enabled: false},
+		APIKey:    &APIKeyConfig{Enabled: false},
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("disabled middleware should not trigger validation: %v", err)

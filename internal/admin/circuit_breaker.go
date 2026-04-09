@@ -14,11 +14,11 @@ import (
 type adminCircuitBreaker struct {
 	mu sync.Mutex
 
-	state      cbState
-	openSince  time.Time
-	errors     int
-	successes  int
-	lastError  time.Time
+	state     cbState
+	openSince time.Time
+	errors    int
+	successes int
+	lastError time.Time
 
 	// Configuration
 	errorThreshold int           // errors before opening (default: 5)
@@ -30,7 +30,7 @@ type adminCircuitBreaker struct {
 type cbState int
 
 const (
-	cbClosed   cbState = iota
+	cbClosed cbState = iota
 	cbOpen
 	cbHalfOpen
 )

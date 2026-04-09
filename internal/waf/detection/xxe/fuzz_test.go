@@ -19,11 +19,11 @@ func FuzzXXEDetector(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, input string) {
 		ctx := &detection.RequestContext{
-			Body:         []byte(input),
-			ContentType:  "application/xml",
-			BodyParams:   make(map[string]string),
-			Headers:      make(map[string][]string),
-			Cookies:      make(map[string]string),
+			Body:        []byte(input),
+			ContentType: "application/xml",
+			BodyParams:  make(map[string]string),
+			Headers:     make(map[string][]string),
+			Cookies:     make(map[string]string),
 		}
 		findings := d.Detect(ctx)
 		for _, finding := range findings {

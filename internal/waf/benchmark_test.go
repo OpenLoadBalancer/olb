@@ -178,10 +178,10 @@ func BenchmarkCMDIDetector(b *testing.B) {
 func BenchmarkXXEDetector(b *testing.B) {
 	d := xxe.New()
 	ctx := &detection.RequestContext{
-		Body:         []byte(`<root><name>test</name><value>123</value></root>`),
-		BodyParams:   make(map[string]string),
-		Headers:      make(map[string][]string),
-		Cookies:      make(map[string]string),
+		Body:       []byte(`<root><name>test</name><value>123</value></root>`),
+		BodyParams: make(map[string]string),
+		Headers:    make(map[string][]string),
+		Cookies:    make(map[string]string),
 	}
 	b.ResetTimer()
 	for b.Loop() {

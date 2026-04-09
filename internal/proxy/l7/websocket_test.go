@@ -1833,10 +1833,10 @@ type mockNetConn struct {
 	io.Writer
 }
 
-func (m *mockNetConn) Read(b []byte) (int, error)         { return 0, nil }
-func (m *mockNetConn) Close() error                        { return nil }
-func (m *mockNetConn) LocalAddr() net.Addr                 { return nil }
-func (m *mockNetConn) RemoteAddr() net.Addr                { return nil }
-func (m *mockNetConn) SetDeadline(time.Time) error         { return nil }
-func (m *mockNetConn) SetReadDeadline(time.Time) error     { return nil }
-func (m *mockNetConn) SetWriteDeadline(time.Time) error    { return nil }
+func (m *mockNetConn) Read(b []byte) (int, error)       { return 0, nil }
+func (m *mockNetConn) Close() error                     { return nil }
+func (m *mockNetConn) LocalAddr() net.Addr              { return nil }
+func (m *mockNetConn) RemoteAddr() net.Addr             { return nil }
+func (m *mockNetConn) SetDeadline(time.Time) error      { return nil }
+func (m *mockNetConn) SetReadDeadline(time.Time) error  { return nil }
+func (m *mockNetConn) SetWriteDeadline(time.Time) error { return nil }

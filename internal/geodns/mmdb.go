@@ -32,9 +32,9 @@ type mmdbMetadata struct {
 // mmdbReader reads a MaxMind DB file.
 // Immutable after construction — safe for concurrent use.
 type mmdbReader struct {
-	data     []byte       // full file contents
+	data     []byte // full file contents
 	meta     mmdbMetadata
-	dataBase uint32       // offset where data section starts (treeSize + 16)
+	dataBase uint32 // offset where data section starts (treeSize + 16)
 }
 
 // result represents a decoded MMDB data field (discriminated union).
@@ -49,22 +49,22 @@ type result struct {
 
 // MMDB data type constants (from the spec).
 const (
-	mmdbTypeExtended = 0
-	mmdbTypePointer  = 1
-	mmdbTypeString   = 2
-	mmdbTypeDouble   = 3
-	mmdbTypeBytes    = 4
-	mmdbTypeUint16   = 5
-	mmdbTypeUint32   = 6
-	mmdbTypeMap      = 7
-	mmdbTypeInt32    = 8
-	mmdbTypeUint64   = 9
-	mmdbTypeUint128  = 10
-	mmdbTypeArray    = 11
+	mmdbTypeExtended  = 0
+	mmdbTypePointer   = 1
+	mmdbTypeString    = 2
+	mmdbTypeDouble    = 3
+	mmdbTypeBytes     = 4
+	mmdbTypeUint16    = 5
+	mmdbTypeUint32    = 6
+	mmdbTypeMap       = 7
+	mmdbTypeInt32     = 8
+	mmdbTypeUint64    = 9
+	mmdbTypeUint128   = 10
+	mmdbTypeArray     = 11
 	mmdbTypeContainer = 12
 	mmdbTypeEndMarker = 13
-	mmdbTypeBoolean  = 14
-	mmdbTypeFloat    = 15
+	mmdbTypeBoolean   = 14
+	mmdbTypeFloat     = 15
 )
 
 // newMMDBReader opens and parses an MMDB file.

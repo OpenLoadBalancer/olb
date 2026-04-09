@@ -78,8 +78,8 @@ func DefaultHTTP2Config() *HTTP2Config {
 		PingTimeout:                  15 * time.Second,
 		MaxDecoderHeaderBytes:        64 * 1024, // 64KB — HPACK bomb protection
 		MaxHeaderListSize:            256,
-		MaxUploadBufferPerConnection: 1 * 1024 * 1024,  // 1MB
-		MaxUploadBufferPerStream:     256 * 1024,        // 256KB
+		MaxUploadBufferPerConnection: 1 * 1024 * 1024, // 1MB
+		MaxUploadBufferPerStream:     256 * 1024,      // 256KB
 	}
 }
 

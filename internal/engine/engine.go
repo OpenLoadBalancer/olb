@@ -90,7 +90,7 @@ type Engine struct {
 	pluginMgr    *plugin.PluginManager
 	clusterMgr   *cluster.ClusterManager // optional, nil if not configured
 	raftCluster  *cluster.Cluster        // optional, nil if not configured
-	persister    *cluster.FilePersister   // optional, nil if no DataDir
+	persister    *cluster.FilePersister  // optional, nil if no DataDir
 	discoveryMgr *discovery.Manager
 	webUIHandler *webui.Handler
 	geoDNS       *geodns.GeoDNS    // optional, nil if not configured
@@ -103,7 +103,7 @@ type Engine struct {
 	profilingCleanup func()
 
 	// System metrics updater
-	sysMetrics   *systemMetrics
+	sysMetrics     *systemMetrics
 	sysMetricsStop chan struct{}
 
 	// Log file output for SIGUSR1 reopening (non-nil when logging to file)
@@ -493,17 +493,17 @@ func (e *Engine) initCluster(clusterCfg *config.ClusterConfig, logger *logging.L
 	// This handles applying config changes (set_config, update_backend,
 	// update_route, update_listener, WAF commands) across cluster nodes.
 	configSM := cluster.NewConfigStateMachine(e.config)
-		configSM.OnConfigApplied(func(newCfg *config.Config) {
-			if err := e.validateConfig(newCfg); err != nil {
-				logger.Error("Raft config validation failed", logging.Error(err))
-				return
-			}
-			if err := e.applyConfig(newCfg); err != nil {
-				logger.Error("Failed to apply Raft config", logging.Error(err))
-				return
-			}
-			logger.Info("Config applied via Raft consensus")
-		})
+	configSM.OnConfigApplied(func(newCfg *config.Config) {
+		if err := e.validateConfig(newCfg); err != nil {
+			logger.Error("Raft config validation failed", logging.Error(err))
+			return
+		}
+		if err := e.applyConfig(newCfg); err != nil {
+			logger.Error("Failed to apply Raft config", logging.Error(err))
+			return
+		}
+		logger.Info("Config applied via Raft consensus")
+	})
 	stateMachine := configSM
 
 	raftCluster, err := cluster.New(raftCfg, stateMachine)
@@ -910,12 +910,12 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 	}
 
 	// 0e. Stop GeoDNS
-		if e.geoDNS != nil {
-			e.geoDNS.Close()
-			e.logger.Info("GeoDNS stopped")
-		}
+	if e.geoDNS != nil {
+		e.geoDNS.Close()
+		e.logger.Info("GeoDNS stopped")
+	}
 
-		// 0f. Stop OCSP manager
+	// 0f. Stop OCSP manager
 	if e.ocspManager != nil {
 		if err := e.ocspManager.Stop(); err != nil {
 			e.logger.Warn("Failed to stop OCSP manager", logging.Error(err))

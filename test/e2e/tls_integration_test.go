@@ -268,7 +268,7 @@ func TestE2E_MTLS_Handshake(t *testing.T) {
 		Timeout: 5 * time.Second,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
-				Certificates:      []tls.Certificate{untrustedCert},
+				Certificates:       []tls.Certificate{untrustedCert},
 				InsecureSkipVerify: true,
 			},
 		},

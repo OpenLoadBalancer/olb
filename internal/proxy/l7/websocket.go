@@ -53,7 +53,7 @@ func DefaultWebSocketConfig() *WebSocketConfig {
 		IdleTimeout:           60 * time.Second,
 		PingInterval:          30 * time.Second,
 		MaxMessageSize:        10 * 1024 * 1024, // 10MB
-		TLSInsecureSkipVerify: false,             // secure default: verify backend TLS certificates
+		TLSInsecureSkipVerify: false,            // secure default: verify backend TLS certificates
 	}
 }
 
@@ -69,9 +69,9 @@ func IsWebSocketUpgrade(r *http.Request) bool {
 
 // WebSocketHandler handles WebSocket proxying.
 type WebSocketHandler struct {
-	config  *WebSocketConfig
-	dialer  *net.Dialer
-	conns   atomic.Int64 // current active WebSocket connections
+	config *WebSocketConfig
+	dialer *net.Dialer
+	conns  atomic.Int64 // current active WebSocket connections
 }
 
 // NewWebSocketHandler creates a new WebSocket handler.
@@ -327,7 +327,6 @@ func extractClientIP(r *http.Request) string {
 
 	return host
 }
-
 
 // dialBackend dials the backend server for WebSocket connection.
 func (wh *WebSocketHandler) dialBackend(r *http.Request, b *backend.Backend) (net.Conn, error) {

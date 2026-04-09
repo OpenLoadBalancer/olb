@@ -1230,7 +1230,6 @@ func TestConfigStateMachine_Apply_WAFCommandWithHandlerError(t *testing.T) {
 	}
 }
 
-
 // ---------------------------------------------------------------------------
 // DeleteBackend command
 // ---------------------------------------------------------------------------

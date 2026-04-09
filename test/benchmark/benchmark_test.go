@@ -511,7 +511,6 @@ func BenchmarkMiddlewareChain_Full(b *testing.B) {
 // Buffer Pool Benchmarks
 // ---------------------------------------------------------------------------
 
-
 // BenchmarkMiddlewareChain_ThenOverhead measures the per-request overhead of Then().
 // This is the critical hot path - proxy.go calls Then() on every request.
 func BenchmarkMiddlewareChain_ThenOverhead(b *testing.B) {

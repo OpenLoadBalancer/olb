@@ -75,13 +75,13 @@ type Server struct {
 	metrics       Metrics
 
 	// Optional components
-	clusterAdmin ClusterAdmin // optional, nil if clustering not enabled
-	raftProposer RaftProposer // optional, nil if clustering not enabled
-	webUI        http.Handler // optional, nil if web UI not available
-	configGetter ConfigGetter // optional, for GET /api/v1/config
-	certLister   CertLister   // optional, for GET /api/v1/certificates
-	wafStatus         func() any   // optional WAF status provider
-	middlewareStatus  func() any   // optional middleware status provider
+	clusterAdmin     ClusterAdmin // optional, nil if clustering not enabled
+	raftProposer     RaftProposer // optional, nil if clustering not enabled
+	webUI            http.Handler // optional, nil if web UI not available
+	configGetter     ConfigGetter // optional, for GET /api/v1/config
+	certLister       CertLister   // optional, for GET /api/v1/certificates
+	wafStatus        func() any   // optional WAF status provider
+	middlewareStatus func() any   // optional middleware status provider
 
 	// Callbacks
 	onReload func() error
@@ -127,13 +127,13 @@ type Config struct {
 	RateLimitWindow      string
 
 	// Optional components
-	ClusterAdmin ClusterAdmin // optional cluster management
-	RaftProposer RaftProposer // optional, for Raft-based config changes
-	WebUI        http.Handler // optional web UI handler
-	ConfigGetter ConfigGetter // optional config provider
-	CertLister   CertLister   // optional certificate lister
-	WAFStatus         func() any   // optional WAF status provider
-	MiddlewareStatus   func() any   // optional middleware status provider
+	ClusterAdmin     ClusterAdmin // optional cluster management
+	RaftProposer     RaftProposer // optional, for Raft-based config changes
+	WebUI            http.Handler // optional web UI handler
+	ConfigGetter     ConfigGetter // optional config provider
+	CertLister       CertLister   // optional certificate lister
+	WAFStatus        func() any   // optional WAF status provider
+	MiddlewareStatus func() any   // optional middleware status provider
 }
 
 // PoolManager interface for backend pool operations.
@@ -169,17 +169,17 @@ func NewServer(config *Config) (*Server, error) {
 	}
 
 	s := &Server{
-		addr:           config.Address,
-		config:         config.Auth,
-		poolManager:    config.PoolManager,
-		router:         config.Router,
-		healthChecker:  config.HealthChecker,
-		metrics:        config.Metrics,
-		onReload:       config.OnReload,
-		clusterAdmin:   config.ClusterAdmin,
-		raftProposer:   config.RaftProposer,
-		webUI:          config.WebUI,
-		configGetter:   config.ConfigGetter,
+		addr:             config.Address,
+		config:           config.Auth,
+		poolManager:      config.PoolManager,
+		router:           config.Router,
+		healthChecker:    config.HealthChecker,
+		metrics:          config.Metrics,
+		onReload:         config.OnReload,
+		clusterAdmin:     config.ClusterAdmin,
+		raftProposer:     config.RaftProposer,
+		webUI:            config.WebUI,
+		configGetter:     config.ConfigGetter,
 		allowedOrigins:   config.AllowedOrigins,
 		certLister:       config.CertLister,
 		wafStatus:        config.WAFStatus,

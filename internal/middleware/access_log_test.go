@@ -561,9 +561,9 @@ func TestAccessLogMiddleware_BodyLogging_Enabled(t *testing.T) {
 func TestAccessLogMiddleware_BodyLogging_Truncated(t *testing.T) {
 	var buf bytes.Buffer
 	config := AccessLogConfig{
-		Format:      AccessLogFormatJSON,
-		Output:      &buf,
-		LogBody:     true,
+		Format:       AccessLogFormatJSON,
+		Output:       &buf,
+		LogBody:      true,
 		MaxBodyBytes: 10,
 	}
 	m := NewAccessLogMiddleware(config)

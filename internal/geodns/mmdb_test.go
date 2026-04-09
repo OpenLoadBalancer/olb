@@ -84,8 +84,8 @@ func writeTestMMDB(t *testing.T, recordSize uint16) string {
 
 	// I need to fix the reader to add dataBase to the offset.
 
-	dataRecordUS = nodeCount + 16 + 0                    // US data at section offset 0
-	dataRecordAU = nodeCount + 16 + uint32(len(dataUS))  // AU data after US
+	dataRecordUS = nodeCount + 16 + 0                   // US data at section offset 0
+	dataRecordAU = nodeCount + 16 + uint32(len(dataUS)) // AU data after US
 
 	// Build the trie: 8 levels for first octet
 	// Node layout: node 0 is root, nodes 1-255 are children
