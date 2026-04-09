@@ -1,125 +1,22 @@
-import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { AlertTriangle, Ban, Globe, Bot, Lock, Plus, Trash2, RefreshCw } from "lucide-react"
-import { toast } from "sonner"
+import { AlertTriangle, Ban, Globe, Bot, RefreshCw, Shield, ShieldCheck, ShieldAlert, Eye } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useWAFStatus } from "@/hooks/use-query"
+import { useWAFStatus, useConfig } from "@/hooks/use-query"
 import { LoadingCard } from "@/components/ui/loading"
 
-interface WAFRule {
+interface WAFLayer {
   id: string
   name: string
-  pattern: string
-  action: 'block' | 'log' | 'challenge'
-  enabled: boolean
-  hits: number
-  severity: 'low' | 'medium' | 'high' | 'critical'
-  description: string
-}
-
-interface IPBlock {
-  id: string
-  ip: string
-  reason: string
-  expires: string
-  added: string
-}
-
-interface RateLimitRule {
-  id: string
-  name: string
-  requests: number
-  window: string
-  action: 'block' | 'challenge'
-  enabled: boolean
+  icon: React.ComponentType<{ className?: string }>
+  active: boolean
 }
 
 export function WAFPage() {
   const { data: wafStatus, isLoading, error, refetch } = useWAFStatus()
-  const [wafEnabled, setWafEnabled] = useState(true)
-  const [wafMode, setWafMode] = useState<'enforce' | 'monitor'>('enforce')
-  const [rules, setRules] = useState<WAFRule[]>([
-    { id: "1", name: "SQL Injection", pattern: "(?i)(union|select|insert|update|delete|drop|create|alter)", action: "block", enabled: true, hits: 1523, severity: "critical", description: "Detects SQL injection attempts" },
-    { id: "2", name: "XSS Attack", pattern: "(?i)(<script|javascript:|onerror=|onload=)", action: "block", enabled: true, hits: 892, severity: "high", description: "Cross-site scripting detection" },
-    { id: "3", name: "Path Traversal", pattern: "\.\./|\\.\\./", action: "block", enabled: true, hits: 445, severity: "high", description: "Directory traversal attempts" },
-    { id: "4", name: "Bot Detection", pattern: "(?i)(bot|crawler|spider|scrape)", action: "challenge", enabled: true, hits: 5678, severity: "medium", description: "Challenge suspicious bots" },
-  ])
-  const [blockedIPs, setBlockedIPs] = useState<IPBlock[]>([
-    { id: "1", ip: "192.168.1.100", reason: "Rate limit exceeded", expires: "1 hour", added: "2 hours ago" },
-    { id: "2", ip: "10.0.0.50", reason: "WAF rule triggered", expires: "24 hours", added: "5 hours ago" },
-  ])
-  const [rateLimits, setRateLimits] = useState<RateLimitRule[]>([
-    { id: "1", name: "General API", requests: 1000, window: "1m", action: "block", enabled: true },
-    { id: "2", name: "Login Attempts", requests: 5, window: "5m", action: "challenge", enabled: true },
-  ])
-
-  // Dialog states
-  const [ruleDialogOpen, setRuleDialogOpen] = useState(false)
-  const [ipDialogOpen, setIpDialogOpen] = useState(false)
-  const [rateLimitDialogOpen, setRateLimitDialogOpen] = useState(false)
-
-  const [newRule, setNewRule] = useState({
-    name: "",
-    pattern: "",
-    action: "block" as 'block' | 'challenge' | 'log',
-    severity: "medium" as 'low' | 'medium' | 'high' | 'critical',
-    description: "",
-  })
-
-  const [newBlock, setNewBlock] = useState({
-    ip: "",
-    reason: "",
-    duration: "1h",
-  })
-
-  const [newRateLimit, setNewRateLimit] = useState({
-    name: "",
-    requests: 100,
-    window: "1m",
-    action: "block" as 'block' | 'challenge',
-  })
-
-  const toggleRule = (id: string) => {
-    setRules(prev => prev.map(r =>
-      r.id === id ? { ...r, enabled: !r.enabled } : r
-    ))
-    const rule = rules.find(r => r.id === id)
-    toast.success(`${rule?.name} ${rule?.enabled ? 'disabled' : 'enabled'}`)
-  }
-
-  const toggleWAF = () => {
-    setWafEnabled(!wafEnabled)
-    toast.success(`WAF ${wafEnabled ? 'disabled' : 'enabled'}`)
-  }
-
-  // Sync with API status
-  if (wafStatus && wafStatus.enabled !== wafEnabled) {
-    setWafEnabled(wafStatus.enabled)
-    if (wafStatus.mode) setWafMode(wafStatus.mode as 'enforce' | 'monitor')
-  }
+  const { data: config } = useConfig()
 
   if (isLoading) {
     return (
@@ -154,80 +51,36 @@ export function WAFPage() {
     )
   }
 
-  const handleAddRule = () => {
-    const rule: WAFRule = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: newRule.name,
-      pattern: newRule.pattern,
-      action: newRule.action,
-      enabled: true,
-      hits: 0,
-      severity: newRule.severity,
-      description: newRule.description,
-    }
-    setRules([...rules, rule])
-    setRuleDialogOpen(false)
-    setNewRule({ name: "", pattern: "", action: "block", severity: "medium", description: "" })
-    toast.success(`Rule "${rule.name}" created successfully`)
-  }
+  // Extract WAF layers from status
+  const layers = (wafStatus.layers || {}) as Record<string, boolean>
+  const layerList: WAFLayer[] = [
+    { id: 'ip_acl', name: 'IP ACL', icon: Ban, active: !!layers.ip_acl },
+    { id: 'rate_limit', name: 'Rate Limiting', icon: Shield, active: !!layers.rate_limit },
+    { id: 'sanitizer', name: 'Sanitizer', icon: ShieldCheck, active: !!layers.sanitizer },
+    { id: 'detection', name: 'Detection', icon: Eye, active: !!layers.detection },
+    { id: 'bot_detect', name: 'Bot Detection', icon: Bot, active: !!layers.bot_detect },
+    { id: 'response', name: 'Response', icon: ShieldAlert, active: !!layers.response },
+  ]
 
-  const handleDeleteRule = (id: string) => {
-    setRules(rules.filter(r => r.id !== id))
-    toast.success("Rule deleted successfully")
-  }
+  const activeLayers = layerList.filter(l => l.active).length
 
-  const handleAddBlock = () => {
-    const block: IPBlock = {
-      id: Math.random().toString(36).substr(2, 9),
-      ip: newBlock.ip,
-      reason: newBlock.reason,
-      expires: newBlock.duration === "1h" ? "1 hour" : newBlock.duration === "24h" ? "24 hours" : "7 days",
-      added: "Just now",
-    }
-    setBlockedIPs([...blockedIPs, block])
-    setIpDialogOpen(false)
-    setNewBlock({ ip: "", reason: "", duration: "1h" })
-    toast.success(`IP "${block.ip}" blocked successfully`)
-  }
+  // Extract stats from WAF analytics if available
+  const stats = wafStatus.stats as Record<string, any> | undefined
+  const totalBlocked = stats?.total_blocked ?? stats?.blocked ?? 0
+  const totalChallenges = stats?.total_challenges ?? stats?.challenges ?? 0
+  const totalRequests = stats?.total_requests ?? 0
 
-  const handleRemoveBlock = (id: string) => {
-    setBlockedIPs(blockedIPs.filter(b => b.id !== id))
-    toast.success("IP unblocked successfully")
-  }
+  // Get WAF config for detailed view
+  const wafConfig = (config as any)?.waf as Record<string, any> | undefined
 
-  const handleAddRateLimit = () => {
-    const rl: RateLimitRule = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: newRateLimit.name,
-      requests: newRateLimit.requests,
-      window: newRateLimit.window,
-      action: newRateLimit.action,
-      enabled: true,
-    }
-    setRateLimits([...rateLimits, rl])
-    setRateLimitDialogOpen(false)
-    setNewRateLimit({ name: "", requests: 100, window: "1m", action: "block" })
-    toast.success(`Rate limit "${rl.name}" created successfully`)
-  }
+  // Extract rate limit rules from config
+  const rateLimitRules = wafConfig?.rate_limit?.rules as Array<Record<string, any>> ?? []
 
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case 'critical': return 'bg-red-500'
-      case 'high': return 'bg-orange-500'
-      case 'medium': return 'bg-yellow-500'
-      case 'low': return 'bg-blue-500'
-      default: return 'bg-gray-500'
-    }
-  }
+  // Extract detection config
+  const detectionConfig = wafConfig?.detection as Record<string, any> | undefined
+  const detectors = detectionConfig?.detectors as Record<string, Record<string, any>> | undefined
 
-  const getActionBadge = (action: string) => {
-    switch (action) {
-      case 'block': return <Badge variant="destructive">Block</Badge>
-      case 'challenge': return <Badge>Challenge</Badge>
-      case 'log': return <Badge variant="secondary">Log</Badge>
-      default: return <Badge variant="outline">{action}</Badge>
-    }
-  }
+  const mode = wafStatus.mode || 'unknown'
 
   return (
     <div className="space-y-6">
@@ -237,36 +90,22 @@ export function WAFPage() {
           <p className="text-muted-foreground">Protect your applications from attacks</p>
         </div>
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Mode:</span>
-            <Button
-              variant={wafMode === 'enforce' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setWafMode('enforce')}
-            >
-              Enforce
-            </Button>
-            <Button
-              variant={wafMode === 'monitor' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setWafMode('monitor')}
-            >
-              Monitor
-            </Button>
-          </div>
-          <Switch checked={wafEnabled} onCheckedChange={toggleWAF} />
+          <Badge variant={mode === 'enforce' ? 'default' : 'secondary'}>
+            {mode === 'enforce' ? 'Enforce Mode' : mode === 'monitor' ? 'Monitor Mode' : mode}
+          </Badge>
+          <Badge variant="outline">6-Layer Pipeline</Badge>
         </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Requests</CardTitle>
-            <Globe className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Active Layers</CardTitle>
+            <Shield className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">1.2M</div>
-            <p className="text-xs text-muted-foreground">Last 24 hours</p>
+            <div className="text-2xl font-bold">{activeLayers}/{layerList.length}</div>
+            <p className="text-xs text-muted-foreground">Protection layers active</p>
           </CardContent>
         </Card>
 
@@ -276,8 +115,10 @@ export function WAFPage() {
             <Ban className="h-4 w-4 text-red-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">8,542</div>
-            <p className="text-xs text-muted-foreground">Last 24 hours</p>
+            <div className="text-2xl font-bold text-red-600">
+              {typeof totalBlocked === 'number' ? totalBlocked.toLocaleString() : 'N/A'}
+            </div>
+            <p className="text-xs text-muted-foreground">Since last restart</p>
           </CardContent>
         </Card>
 
@@ -287,368 +128,62 @@ export function WAFPage() {
             <Bot className="h-4 w-4 text-amber-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-amber-600">3,291</div>
-            <p className="text-xs text-muted-foreground">Last 24 hours</p>
+            <div className="text-2xl font-bold text-amber-600">
+              {typeof totalChallenges === 'number' ? totalChallenges.toLocaleString() : 'N/A'}
+            </div>
+            <p className="text-xs text-muted-foreground">Since last restart</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Blocked IPs</CardTitle>
-            <Lock className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Total Requests</CardTitle>
+            <Globe className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{blockedIPs.length}</div>
-            <p className="text-xs text-muted-foreground">Currently blocked</p>
+            <div className="text-2xl font-bold">
+              {typeof totalRequests === 'number' ? totalRequests.toLocaleString() : 'N/A'}
+            </div>
+            <p className="text-xs text-muted-foreground">Since last restart</p>
           </CardContent>
         </Card>
       </div>
 
-      <Tabs defaultValue="rules" className="space-y-4">
+      <Tabs defaultValue="layers" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="rules">Rules</TabsTrigger>
-          <TabsTrigger value="blocked">Blocked IPs</TabsTrigger>
+          <TabsTrigger value="layers">Protection Layers</TabsTrigger>
+          <TabsTrigger value="detection">Detection Engines</TabsTrigger>
           <TabsTrigger value="ratelimit">Rate Limiting</TabsTrigger>
-          <TabsTrigger value="detection">Detection</TabsTrigger>
+          <TabsTrigger value="config">Configuration</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="rules" className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-medium">Security Rules</h3>
-            <Dialog open={ruleDialogOpen} onOpenChange={setRuleDialogOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Rule
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[550px]">
-                <DialogHeader>
-                  <DialogTitle>Add WAF Rule</DialogTitle>
-                  <DialogDescription>
-                    Create a new security rule to detect and block attacks.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="rule-name">Rule Name</Label>
-                    <Input
-                      id="rule-name"
-                      placeholder="e.g., SQL Injection Detection"
-                      value={newRule.name}
-                      onChange={(e) => setNewRule({ ...newRule, name: e.target.value })}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="rule-description">Description</Label>
-                    <Input
-                      id="rule-description"
-                      placeholder="Brief description of what this rule detects"
-                      value={newRule.description}
-                      onChange={(e) => setNewRule({ ...newRule, description: e.target.value })}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="rule-pattern">Pattern (Regex)</Label>
-                    <Textarea
-                      id="rule-pattern"
-                      placeholder="(?i)(union|select|insert|...)"
-                      value={newRule.pattern}
-                      onChange={(e) => setNewRule({ ...newRule, pattern: e.target.value })}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="rule-action">Action</Label>
-                      <Select
-                        value={newRule.action}
-                        onValueChange={(value: 'block' | 'challenge' | 'log') => setNewRule({ ...newRule, action: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="block">Block</SelectItem>
-                          <SelectItem value="challenge">Challenge</SelectItem>
-                          <SelectItem value="log">Log Only</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="rule-severity">Severity</Label>
-                      <Select
-                        value={newRule.severity}
-                        onValueChange={(value: 'low' | 'medium' | 'high' | 'critical') => setNewRule({ ...newRule, severity: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="low">Low</SelectItem>
-                          <SelectItem value="medium">Medium</SelectItem>
-                          <SelectItem value="high">High</SelectItem>
-                          <SelectItem value="critical">Critical</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setRuleDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleAddRule} disabled={!newRule.name || !newRule.pattern}>
-                    Add Rule
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
-
-          <div className="space-y-3">
-            {rules.map((rule) => (
-              <Card key={rule.id} className={cn("transition-colors", rule.enabled ? 'border-primary/50' : 'opacity-60')}>
+        <TabsContent value="layers" className="space-y-4">
+          <h3 className="text-lg font-medium">6-Layer Security Pipeline</h3>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {layerList.map((layer) => (
+              <Card key={layer.id} className={cn("transition-colors", layer.active && "border-primary/50")}>
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-2 h-8 rounded-full ${getSeverityColor(rule.severity)}`} />
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "p-2 rounded-lg",
+                        layer.active ? "bg-primary/10" : "bg-muted"
+                      )}>
+                        <layer.icon className={cn(
+                          "h-5 w-5",
+                          layer.active ? "text-primary" : "text-muted-foreground"
+                        )} />
+                      </div>
                       <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{rule.name}</span>
-                          <Badge variant="outline" className="text-xs capitalize">{rule.severity}</Badge>
+                        <div className="font-medium">{layer.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          Layer: {layer.id.replace(/_/g, ' ')}
                         </div>
-                        <div className="text-sm text-muted-foreground">{rule.description}</div>
-                        <div className="text-xs font-mono text-muted-foreground mt-1">{rule.pattern}</div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                      {getActionBadge(rule.action)}
-                      <div className="text-sm text-muted-foreground w-20 text-right">
-                        {rule.hits.toLocaleString()} hits
-                      </div>
-                      <Switch
-                        checked={rule.enabled}
-                        onCheckedChange={() => toggleRule(rule.id)}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-destructive"
-                        onClick={() => handleDeleteRule(rule.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="blocked" className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-medium">Blocked IP Addresses</h3>
-            <Dialog open={ipDialogOpen} onOpenChange={setIpDialogOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm">
-                  <Ban className="mr-2 h-4 w-4" />
-                  Block IP
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[400px]">
-                <DialogHeader>
-                  <DialogTitle>Block IP Address</DialogTitle>
-                  <DialogDescription>
-                    Manually block an IP address.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="block-ip">IP Address</Label>
-                    <Input
-                      id="block-ip"
-                      placeholder="192.168.1.100"
-                      value={newBlock.ip}
-                      onChange={(e) => setNewBlock({ ...newBlock, ip: e.target.value })}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="block-reason">Reason</Label>
-                    <Input
-                      id="block-reason"
-                      placeholder="Suspicious activity"
-                      value={newBlock.reason}
-                      onChange={(e) => setNewBlock({ ...newBlock, reason: e.target.value })}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="block-duration">Duration</Label>
-                    <Select
-                      value={newBlock.duration}
-                      onValueChange={(value: string) => setNewBlock({ ...newBlock, duration: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1h">1 hour</SelectItem>
-                        <SelectItem value="24h">24 hours</SelectItem>
-                        <SelectItem value="7d">7 days</SelectItem>
-                        <SelectItem value="permanent">Permanent</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setIpDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleAddBlock} disabled={!newBlock.ip}>
-                    Block IP
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
-
-          <div className="space-y-3">
-            {blockedIPs.map((block) => (
-              <Card key={block.id}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <Ban className="h-5 w-5 text-destructive" />
-                      <div>
-                        <div className="font-medium font-mono">{block.ip}</div>
-                        <div className="text-sm text-muted-foreground">{block.reason}</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right text-sm">
-                        <div className="text-muted-foreground">Expires: {block.expires}</div>
-                        <div className="text-muted-foreground">Added: {block.added}</div>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-destructive"
-                        onClick={() => handleRemoveBlock(block.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="ratelimit" className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-medium">Rate Limiting Rules</h3>
-            <Dialog open={rateLimitDialogOpen} onOpenChange={setRateLimitDialogOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Rate Limit
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[450px]">
-                <DialogHeader>
-                  <DialogTitle>Add Rate Limit</DialogTitle>
-                  <DialogDescription>
-                    Configure request rate limiting for specific endpoints or globally.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="rl-name">Rule Name</Label>
-                    <Input
-                      id="rl-name"
-                      placeholder="e.g., API Rate Limit"
-                      value={newRateLimit.name}
-                      onChange={(e) => setNewRateLimit({ ...newRateLimit, name: e.target.value })}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="rl-requests">Requests</Label>
-                      <Input
-                        id="rl-requests"
-                        type="number"
-                        value={newRateLimit.requests}
-                        onChange={(e) => setNewRateLimit({ ...newRateLimit, requests: parseInt(e.target.value) || 0 })}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="rl-window">Window</Label>
-                      <Select
-                        value={newRateLimit.window}
-                        onValueChange={(value: string) => setNewRateLimit({ ...newRateLimit, window: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="1s">1 second</SelectItem>
-                          <SelectItem value="10s">10 seconds</SelectItem>
-                          <SelectItem value="1m">1 minute</SelectItem>
-                          <SelectItem value="5m">5 minutes</SelectItem>
-                          <SelectItem value="1h">1 hour</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="rl-action">Action</Label>
-                    <Select
-                      value={newRateLimit.action}
-                      onValueChange={(value: 'block' | 'challenge') => setNewRateLimit({ ...newRateLimit, action: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="block">Block</SelectItem>
-                        <SelectItem value="challenge">Challenge</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setRateLimitDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleAddRateLimit} disabled={!newRateLimit.name}>
-                    Add Rate Limit
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
-
-          <div className="grid gap-4">
-            {rateLimits.map((rl) => (
-              <Card key={rl.id}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="font-medium">{rl.name}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {rl.requests} requests per {rl.window}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      {getActionBadge(rl.action)}
-                      <Switch
-                        checked={rl.enabled}
-                        onCheckedChange={() => {
-                          setRateLimits(rateLimits.map(r => r.id === rl.id ? { ...r, enabled: !r.enabled } : r))
-                        }}
-                      />
-                    </div>
+                    <Badge variant={layer.active ? 'default' : 'secondary'}>
+                      {layer.active ? 'Active' : 'Inactive'}
+                    </Badge>
                   </div>
                 </CardContent>
               </Card>
@@ -657,72 +192,123 @@ export function WAFPage() {
         </TabsContent>
 
         <TabsContent value="detection">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-amber-500" />
-                  Top Attack Types
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {[
-                    { type: 'SQL Injection', count: 1543, percent: 45 },
-                    { type: 'XSS', count: 892, percent: 26 },
-                    { type: 'Bot Traffic', count: 567, percent: 17 },
-                    { type: 'Path Traversal', count: 445, percent: 12 },
-                  ].map((attack) => (
-                    <div key={attack.type} className="space-y-1">
-                      <div className="flex justify-between text-sm">
-                        <span>{attack.type}</span>
-                        <span className="text-muted-foreground">{attack.count.toLocaleString()}</span>
-                      </div>
-                      <div className="h-2 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-primary rounded-full"
-                          style={{ width: `${attack.percent}%` }}
-                        />
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-amber-500" />
+                Detection Engines
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {detectors ? Object.entries(detectors).map(([name, cfg]) => (
+                  <div key={name} className="flex items-center justify-between p-3 rounded-lg border">
+                    <div className="flex items-center gap-3">
+                      <ShieldCheck className={cn("h-5 w-5", cfg.enabled ? "text-green-500" : "text-muted-foreground")} />
+                      <div>
+                        <div className="font-medium capitalize">{name.replace(/_/g, ' ')} Detection</div>
+                        <div className="text-xs text-muted-foreground">
+                          Detects {name === 'sqli' ? 'SQL injection' : name === 'xss' ? 'cross-site scripting' : name} attacks
+                        </div>
                       </div>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                    <Badge variant={cfg.enabled ? 'default' : 'secondary'}>
+                      {cfg.enabled ? 'Active' : 'Disabled'}
+                    </Badge>
+                  </div>
+                )) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Detection engine configuration not available. Configure in the WAF section of your config file.
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Globe className="h-5 w-5 text-primary" />
-                  Top Countries
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {[
-                    { country: 'China', count: 2341, percent: 35 },
-                    { country: 'United States', count: 1234, percent: 18 },
-                    { country: 'Russia', count: 987, percent: 15 },
-                    { country: 'Brazil', count: 654, percent: 10 },
-                    { country: 'Germany', count: 432, percent: 6 },
-                  ].map((country) => (
-                    <div key={country.country} className="space-y-1">
-                      <div className="flex justify-between text-sm">
-                        <span>{country.country}</span>
-                        <span className="text-muted-foreground">{country.count.toLocaleString()}</span>
+        <TabsContent value="ratelimit" className="space-y-4">
+          <h3 className="text-lg font-medium">WAF Rate Limiting Rules</h3>
+          {rateLimitRules.length > 0 ? (
+            <div className="grid gap-4">
+              {rateLimitRules.map((rl, i) => (
+                <Card key={i}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-medium">{rl.id || `Rule ${i + 1}`}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {rl.limit || rl.requests || '?'} requests per {rl.window || '?'}
+                          {rl.scope && ` (scope: ${rl.scope})`}
+                        </div>
                       </div>
-                      <div className="h-2 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-primary rounded-full"
-                          style={{ width: `${country.percent}%` }}
-                        />
+                      <div className="flex items-center gap-4">
+                        <Badge variant={rl.action === 'block' ? 'destructive' : 'default'}>
+                          {rl.action || 'block'}
+                        </Badge>
                       </div>
                     </div>
-                  ))}
-                </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card>
+              <CardContent className="p-6">
+                <p className="text-sm text-muted-foreground text-center">
+                  {layers.rate_limit
+                    ? "Rate limiting is active but no custom rules are configured. Using default limits."
+                    : "Rate limiting is not enabled in the WAF configuration."}
+                </p>
               </CardContent>
             </Card>
-          </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="config">
+          <Card>
+            <CardHeader>
+              <CardTitle>WAF Configuration</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Enabled</span>
+                  <Badge variant={wafStatus.enabled ? 'default' : 'secondary'}>
+                    {wafStatus.enabled ? 'Yes' : 'No'}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Mode</span>
+                  <Badge variant="outline">{mode}</Badge>
+                </div>
+                {wafConfig?.ip_acl && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">IP ACL Auto-Ban</span>
+                    <Badge variant={wafConfig.ip_acl.auto_ban?.enabled ? 'default' : 'secondary'}>
+                      {wafConfig.ip_acl.auto_ban?.enabled ? 'Enabled' : 'Disabled'}
+                    </Badge>
+                  </div>
+                )}
+                {wafConfig?.sanitizer && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Sanitizer</span>
+                    <Badge variant={wafConfig.sanitizer.enabled ? 'default' : 'secondary'}>
+                      {wafConfig.sanitizer.enabled ? 'Enabled' : 'Disabled'}
+                    </Badge>
+                  </div>
+                )}
+                {wafConfig?.bot_detection && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Bot Detection Mode</span>
+                    <Badge variant="outline">{wafConfig.bot_detection.mode || 'unknown'}</Badge>
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-4">
+                WAF is configured via the config file. Edit the config file and reload to make changes.
+              </p>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

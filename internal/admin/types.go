@@ -79,6 +79,23 @@ type AddBackendRequest struct {
 	Weight  int    `json:"weight,omitempty"`
 }
 
+// MiddlewareStatusItem describes a single middleware's status.
+type MiddlewareStatusItem struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Enabled     bool   `json:"enabled"`
+	Category    string `json:"category"`
+}
+
+// EventItem describes a system event for the activity feed.
+type EventItem struct {
+	ID        string `json:"id"`
+	Type      string `json:"type"` // success, info, warning, error
+	Message   string `json:"message"`
+	Timestamp string `json:"timestamp"`
+}
+
 // ErrorResponse creates an error response.
 func ErrorResponse(code, message string) *Response {
 	return &Response{

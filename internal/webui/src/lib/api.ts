@@ -155,6 +155,21 @@ export interface UpdateBackendRequest {
   max_conns?: number
 }
 
+export interface MiddlewareStatusItem {
+  id: string
+  name: string
+  description: string
+  enabled: boolean
+  category: string
+}
+
+export interface EventItem {
+  id: string
+  type: string
+  message: string
+  timestamp: string
+}
+
 export const api = {
   // System
   getHealth: () => fetchAPI<APIResponse<HealthStatus>>('/system/health'),
@@ -218,4 +233,10 @@ export const api = {
     }),
   leaveCluster: () =>
     fetchAPI<APIResponse<any>>('/cluster/leave', { method: 'POST' }),
+
+  // Middleware status
+  getMiddlewareStatus: () => fetchAPI<APIResponse<MiddlewareStatusItem[]>>('/middleware/status'),
+
+  // Events
+  getEvents: () => fetchAPI<APIResponse<EventItem[]>>('/events'),
 }

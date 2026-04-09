@@ -29,7 +29,7 @@ OpenLoadBalancer is a remarkably complete load balancer implementation with 97% 
 
 - [x] **Remove duplicate middleware registration** -- `internal/engine/engine.go` `createMiddlewareChain()` wires both v1 (root middleware/) and v2 (subdirectory middleware/cache/, middleware/metrics/, etc.) versions of Cache, Metrics, RealIP, RequestID. Remove v1 registrations. ~2h
 - [x] **Implement Raft state machine Apply/Snapshot** -- ConfigStateMachine with full command handling (set_config, update_backend, delete_backend, update_route, update_listener, WAF commands), Snapshot/Restore, file-based persistence, crash recovery, Raft-aware admin API endpoints. ~40-80h
-- [ ] **Connect WebUI to real API** -- Replace mock data in 10/11 React pages (`internal/webui/src/pages/`) with actual API calls using existing `useQuery`/`useMutation` hooks. ~40h
+- [x] **Connect WebUI to real API** -- Replace mock data in 10/11 React pages (`internal/webui/src/pages/`) with actual API calls using existing `useQuery`/`useMutation` hooks. ~40h
 - [x] **Remove webui.old/ directory** -- Delete `internal/webui.old/` from the repo. ~1h
 - [x] **Clean up stray root files** -- Remove `simple.yaml`, `test_backend.go`, `cover.out.bin`, `cli.cov` from project root. ~15min
 - [x] **Remove duplicate Helm chart** -- Keep `helm/olb/`, remove `deploy/helm/olb/`, update any references. ~1h
@@ -154,7 +154,7 @@ OpenLoadBalancer is a remarkably complete load balancer implementation with 97% 
 - [ ] OpenTelemetry native tracing support
 - [ ] Kubernetes Gateway API implementation
 - [ ] macOS and Windows service management
-- [ ] Configuration import/export in WebUI (backup page exists but uses mock data)
+- [x] Configuration import/export in WebUI (backup page uses real config export/import)
 
 ---
 

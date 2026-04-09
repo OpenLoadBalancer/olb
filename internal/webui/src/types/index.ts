@@ -122,3 +122,18 @@ export interface APIClusterMember {
   address: string
   state: string
 }
+
+export interface APIMiddlewareStatusItem {
+  id: string
+  name: string
+  description: string
+  enabled: boolean
+  category: string
+}
+
+export interface APIEventItem {
+  id: string
+  type: string
+  message: string
+  timestamp: string
+}

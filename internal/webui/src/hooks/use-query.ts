@@ -8,6 +8,8 @@ import type {
   APIWAFStatus,
   APIClusterStatus,
   APIClusterMember,
+  APIMiddlewareStatusItem,
+  APIEventItem,
 } from '@/types'
 
 interface UseQueryOptions<T> {
@@ -225,5 +227,21 @@ export function useToastMutation<T, V = void>(
       }
       options.onError?.(error, variables)
     },
+  })
+}
+
+// Middleware status query hook
+export function useMiddlewareStatus(options?: UseQueryOptions<APIMiddlewareStatusItem[]>) {
+  return useQuery(() => api.getMiddlewareStatus(), {
+    refetchInterval: 30000,
+    ...options
+  })
+}
+
+// Events query hook
+export function useEvents(options?: UseQueryOptions<APIEventItem[]>) {
+  return useQuery(() => api.getEvents(), {
+    refetchInterval: 15000,
+    ...options
   })
 }

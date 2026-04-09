@@ -79,7 +79,8 @@ type Server struct {
 	webUI        http.Handler // optional, nil if web UI not available
 	configGetter ConfigGetter // optional, for GET /api/v1/config
 	certLister   CertLister   // optional, for GET /api/v1/certificates
-	wafStatus    func() any   // optional WAF status provider
+	wafStatus         func() any   // optional WAF status provider
+	middlewareStatus  func() any   // optional middleware status provider
 
 	// Callbacks
 	onReload func() error
@@ -130,7 +131,8 @@ type Config struct {
 	WebUI        http.Handler // optional web UI handler
 	ConfigGetter ConfigGetter // optional config provider
 	CertLister   CertLister   // optional certificate lister
-	WAFStatus    func() any   // optional WAF status provider
+	WAFStatus         func() any   // optional WAF status provider
+	MiddlewareStatus   func() any   // optional middleware status provider
 }
 
 // PoolManager interface for backend pool operations.
@@ -180,6 +182,7 @@ func NewServer(config *Config) (*Server, error) {
 		allowedOrigins:   config.AllowedOrigins,
 		certLister:       config.CertLister,
 		wafStatus:        config.WAFStatus,
+		middlewareStatus: config.MiddlewareStatus,
 		csrfConfig:       config.CSRFConfig,
 		rateLimitMaxReqs: config.RateLimitMaxRequests,
 		rateLimitWindow:  config.RateLimitWindow,
@@ -240,6 +243,14 @@ func (s *Server) setupRoutes() {
 	if s.wafStatus != nil {
 		mux.HandleFunc("/api/v1/waf/status", s.getWAFStatus)
 	}
+
+	// Middleware status endpoint (optional)
+	if s.middlewareStatus != nil {
+		mux.HandleFunc("/api/v1/middleware/status", s.getMiddlewareStatus)
+	}
+
+	// Events endpoint
+	mux.HandleFunc("/api/v1/events", s.getEvents)
 
 	// Cluster endpoints (optional)
 	if s.clusterAdmin != nil {

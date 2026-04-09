@@ -1,46 +1,23 @@
-import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
+import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Settings, Save, RotateCcw, Server, Globe, Shield, Bell } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Settings, Server, Globe, Shield, RotateCcw } from "lucide-react"
 import { toast } from "sonner"
 import { useConfig } from "@/hooks/use-query"
 import { api } from "@/lib/api"
 
 export function SettingsPage() {
   const { data: config } = useConfig()
-  const [generalSettings, setGeneralSettings] = useState({
-    instanceName: 'prod-olb-01',
-    logLevel: config?.logging?.level || 'info',
-    maxConnections: config?.server?.max_connections || 10000,
-    gracefulShutdown: true,
-  })
+  const c = config as any
 
-  const [adminSettings, setAdminSettings] = useState({
-    apiEnabled: true,
-    webUIEnabled: true,
-    metricsEnabled: true,
-    apiKey: '',
-  })
-
-  const [notificationSettings, setNotificationSettings] = useState({
-    emailEnabled: false,
-    slackEnabled: false,
-    webhookEnabled: false,
-    onBackendDown: true,
-    onHighLatency: true,
-    onWAFBlock: false,
-  })
-
-  const handleSave = async (section: string) => {
+  const handleReload = async () => {
     try {
       await api.reload()
-      toast.success(`${section} settings saved and config reloaded`)
+      toast.success("Configuration reloaded from disk")
     } catch (err: any) {
-      toast.error(err.message || `Failed to save ${section} settings`)
+      toast.error(err.message || "Failed to reload configuration")
     }
   }
 
@@ -48,8 +25,14 @@ export function SettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground">Configure OpenLoadBalancer instance</p>
+        <p className="text-muted-foreground">View current configuration</p>
       </div>
+
+      <Alert>
+        <AlertDescription>
+          Settings are read from the configuration file. Edit the config file and click "Reload" to apply changes.
+        </AlertDescription>
+      </Alert>
 
       <Tabs defaultValue="general" className="space-y-4">
         <TabsList>
@@ -69,72 +52,36 @@ export function SettingsPage() {
             <Shield className="h-4 w-4" />
             Security
           </TabsTrigger>
-          <TabsTrigger value="notifications" className="flex items-center gap-2">
-            <Bell className="h-4 w-4" />
-            Notifications
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="general" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>General Settings</CardTitle>
-              <CardDescription>Basic instance configuration</CardDescription>
+              <CardTitle>Logging</CardTitle>
+              <CardDescription>Log output configuration</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="instance-name">Instance Name</Label>
-                  <Input
-                    id="instance-name"
-                    value={generalSettings.instanceName}
-                    onChange={(e) => setGeneralSettings({ ...generalSettings, instanceName: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="log-level">Log Level</Label>
-                  <select
-                    id="log-level"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
-                    value={generalSettings.logLevel}
-                    onChange={(e) => setGeneralSettings({ ...generalSettings, logLevel: e.target.value })}
-                  >
-                    <option value="debug">Debug</option>
-                    <option value="info">Info</option>
-                    <option value="warn">Warning</option>
-                    <option value="error">Error</option>
-                  </select>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="max-connections">Max Connections</Label>
-                <Input
-                  id="max-connections"
-                  type="number"
-                  value={generalSettings.maxConnections}
-                  onChange={(e) => setGeneralSettings({ ...generalSettings, maxConnections: parseInt(e.target.value) })}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Graceful Shutdown</Label>
-                  <p className="text-sm text-muted-foreground">Wait for active connections to close on shutdown</p>
-                </div>
-                <Switch
-                  checked={generalSettings.gracefulShutdown}
-                  onCheckedChange={(checked) => setGeneralSettings({ ...generalSettings, gracefulShutdown: checked })}
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => toast.info("Settings reset")}>
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                  Reset
-                </Button>
-                <Button onClick={() => handleSave('General')}>
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Changes
-                </Button>
-              </div>
+            <CardContent className="space-y-3">
+              <ConfigRow label="Log Level" value={c?.logging?.level || 'info'} />
+              <ConfigRow label="Log Format" value={c?.logging?.format || 'json'} />
+              <ConfigRow label="Log Output" value={c?.logging?.output || 'stdout'} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Server</CardTitle>
+              <CardDescription>Connection and timeout settings</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <ConfigRow label="Max Connections" value={c?.server?.max_connections ?? 10000} />
+              <ConfigRow label="Max Connections Per Source" value={c?.server?.max_connections_per_source ?? 100} />
+              <ConfigRow label="Max Connections Per Backend" value={c?.server?.max_connections_per_backend ?? 1000} />
+              <ConfigRow label="Proxy Timeout" value={c?.server?.proxy_timeout || '60s'} />
+              <ConfigRow label="Dial Timeout" value={c?.server?.dial_timeout || '10s'} />
+              <ConfigRow label="Max Retries" value={c?.server?.max_retries ?? 3} />
+              <ConfigRow label="Max Idle Connections" value={c?.server?.max_idle_conns ?? 100} />
+              <ConfigRow label="Max Idle Conns Per Host" value={c?.server?.max_idle_conns_per_host ?? 10} />
+              <ConfigRow label="Drain Timeout" value={c?.server?.drain_timeout || '30s'} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -142,60 +89,35 @@ export function SettingsPage() {
         <TabsContent value="admin" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Admin Interface</CardTitle>
-              <CardDescription>API and Web UI settings</CardDescription>
+              <CardTitle>Admin API</CardTitle>
+              <CardDescription>Admin server configuration</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>API Enabled</Label>
-                  <p className="text-sm text-muted-foreground">Enable REST API endpoints</p>
-                </div>
-                <Switch
-                  checked={adminSettings.apiEnabled}
-                  onCheckedChange={(checked) => setAdminSettings({ ...adminSettings, apiEnabled: checked })}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Web UI Enabled</Label>
-                  <p className="text-sm text-muted-foreground">Enable web interface</p>
-                </div>
-                <Switch
-                  checked={adminSettings.webUIEnabled}
-                  onCheckedChange={(checked) => setAdminSettings({ ...adminSettings, webUIEnabled: checked })}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Metrics Enabled</Label>
-                  <p className="text-sm text-muted-foreground">Enable Prometheus metrics endpoint</p>
-                </div>
-                <Switch
-                  checked={adminSettings.metricsEnabled}
-                  onCheckedChange={(checked) => setAdminSettings({ ...adminSettings, metricsEnabled: checked })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="api-key">API Key</Label>
-                <Input
-                  id="api-key"
-                  type="password"
-                  placeholder="Enter API key for authentication"
-                  value={adminSettings.apiKey}
-                  onChange={(e) => setAdminSettings({ ...adminSettings, apiKey: e.target.value })}
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => toast.info("Settings reset")}>
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                  Reset
-                </Button>
-                <Button onClick={() => handleSave('Admin')}>
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Changes
-                </Button>
-              </div>
+            <CardContent className="space-y-3">
+              <ConfigRow label="Listen Address" value={c?.admin?.address || ':9090'} />
+              <ConfigRow label="Rate Limit Max Requests" value={c?.admin?.rate_limit_max_requests ?? 'default'} />
+              <ConfigRow label="Rate Limit Window" value={c?.admin?.rate_limit_window || '1m'} />
+              <ConfigRow label="MCP Audit Logging" value={c?.admin?.mcp_audit ? 'Enabled' : 'Disabled'} />
+              <ConfigRow label="MCP Address" value={c?.admin?.mcp_address || '(auto)'} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Cluster</CardTitle>
+              <CardDescription>Clustering configuration</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <ConfigRow label="Enabled" value={c?.cluster?.enabled ? 'Yes' : 'No'} />
+              {c?.cluster?.enabled && (
+                <>
+                  <ConfigRow label="Node ID" value={c?.cluster?.node_id || '-'} />
+                  <ConfigRow label="Bind Address" value={`${c?.cluster?.bind_addr || '0.0.0.0'}:${c?.cluster?.bind_port || 7946}`} />
+                  <ConfigRow label="Peers" value={c?.cluster?.peers?.length ?? 0} />
+                  <ConfigRow label="Data Directory" value={c?.cluster?.data_dir || '(none)'} />
+                  <ConfigRow label="Election Tick" value={c?.cluster?.election_tick || '2s'} />
+                  <ConfigRow label="Heartbeat Tick" value={c?.cluster?.heartbeat_tick || '500ms'} />
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -203,58 +125,55 @@ export function SettingsPage() {
         <TabsContent value="network" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Network Settings</CardTitle>
-              <CardDescription>TCP and connection settings</CardDescription>
+              <CardTitle>Listeners</CardTitle>
+              <CardDescription>Configured listener endpoints</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="tcp-keepalive">TCP Keepalive</Label>
-                  <select
-                    id="tcp-keepalive"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="30s">30 seconds</option>
-                    <option value="1m">1 minute</option>
-                    <option value="5m">5 minutes</option>
-                  </select>
+            <CardContent className="space-y-3">
+              {c?.listeners?.map((l: any, i: number) => (
+                <div key={i} className="p-3 rounded-lg border space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{l.name}</span>
+                    <div className="flex gap-2">
+                      <Badge variant="outline">{l.protocol || 'http'}</Badge>
+                      <Badge variant="secondary">{l.address}</Badge>
+                    </div>
+                  </div>
+                  {l.routes?.length > 0 && (
+                    <div className="text-xs text-muted-foreground">
+                      {l.routes.length} route(s): {l.routes.map((r: any) => r.path).join(', ')}
+                    </div>
+                  )}
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="read-timeout">Read Timeout</Label>
-                  <select
-                    id="read-timeout"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="30s">30 seconds</option>
-                    <option value="1m">1 minute</option>
-                    <option value="5m">5 minutes</option>
-                  </select>
+              )) || (
+                <p className="text-sm text-muted-foreground">No listeners configured</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Pools</CardTitle>
+              <CardDescription>Backend pool configuration</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {c?.pools?.map((p: any, i: number) => (
+                <div key={i} className="p-3 rounded-lg border space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{p.name}</span>
+                    <div className="flex gap-2">
+                      <Badge variant="outline">{p.algorithm}</Badge>
+                      <Badge variant="secondary">{p.backends?.length ?? 0} backends</Badge>
+                    </div>
+                  </div>
+                  {p.health_check && (
+                    <div className="text-xs text-muted-foreground">
+                      Health: {p.health_check.type} {p.health_check.path} every {p.health_check.interval}
+                    </div>
+                  )}
                 </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>PROXY Protocol</Label>
-                  <p className="text-sm text-muted-foreground">Accept PROXY protocol headers</p>
-                </div>
-                <Switch defaultChecked={false} />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>HTTP/2</Label>
-                  <p className="text-sm text-muted-foreground">Enable HTTP/2 support</p>
-                </div>
-                <Switch defaultChecked={true} />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => toast.info("Settings reset")}>
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                  Reset
-                </Button>
-                <Button onClick={() => handleSave('Network')}>
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Changes
-                </Button>
-              </div>
+              )) || (
+                <p className="text-sm text-muted-foreground">No pools configured</p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -262,134 +181,78 @@ export function SettingsPage() {
         <TabsContent value="security" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Security Settings</CardTitle>
-              <CardDescription>TLS and security configuration</CardDescription>
+              <CardTitle>TLS</CardTitle>
+              <CardDescription>TLS configuration</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Minimum TLS Version</Label>
-                  <p className="text-sm text-muted-foreground">Minimum TLS version for HTTPS</p>
-                </div>
-                <select className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm">
-                  <option value="1.2">TLS 1.2</option>
-                  <option value="1.3">TLS 1.3</option>
-                </select>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>HSTS</Label>
-                  <p className="text-sm text-muted-foreground">Enable HTTP Strict Transport Security</p>
-                </div>
-                <Switch defaultChecked={true} />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>OCSP Stapling</Label>
-                  <p className="text-sm text-muted-foreground">Enable OCSP stapling for TLS</p>
-                </div>
-                <Switch defaultChecked={true} />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => toast.info("Settings reset")}>
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                  Reset
-                </Button>
-                <Button onClick={() => handleSave('Security')}>
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Changes
-                </Button>
-              </div>
+            <CardContent className="space-y-3">
+              <ConfigRow label="Enabled" value={c?.tls ? 'Yes' : 'No'} />
+              {c?.tls && (
+                <>
+                  <ConfigRow label="Certificate File" value={c?.tls?.cert_file || '(none)'} />
+                  <ConfigRow label="Key File" value={c?.tls?.key_file ? '(configured)' : '(none)'} />
+                  <ConfigRow label="ACME Enabled" value={c?.tls?.acme?.enabled ? 'Yes' : 'No'} />
+                  {c?.tls?.acme?.enabled && (
+                    <ConfigRow label="ACME Email" value={c?.tls?.acme?.email || '(none)'} />
+                  )}
+                </>
+              )}
             </CardContent>
           </Card>
-        </TabsContent>
 
-        <TabsContent value="notifications" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Notifications</CardTitle>
-              <CardDescription>Alert and notification settings</CardDescription>
+              <CardTitle>WAF</CardTitle>
+              <CardDescription>Web Application Firewall</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-4">
-                <h4 className="text-sm font-medium">Channels</h4>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Email Notifications</Label>
-                  </div>
-                  <Switch
-                    checked={notificationSettings.emailEnabled}
-                    onCheckedChange={(checked) => setNotificationSettings({ ...notificationSettings, emailEnabled: checked })}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Slack Notifications</Label>
-                  </div>
-                  <Switch
-                    checked={notificationSettings.slackEnabled}
-                    onCheckedChange={(checked) => setNotificationSettings({ ...notificationSettings, slackEnabled: checked })}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Webhook</Label>
-                  </div>
-                  <Switch
-                    checked={notificationSettings.webhookEnabled}
-                    onCheckedChange={(checked) => setNotificationSettings({ ...notificationSettings, webhookEnabled: checked })}
-                  />
-                </div>
-              </div>
+            <CardContent className="space-y-3">
+              <ConfigRow label="Enabled" value={c?.waf?.enabled ? 'Yes' : 'No'} />
+              {c?.waf?.enabled && (
+                <>
+                  <ConfigRow label="Mode" value={c?.waf?.mode || 'unknown'} />
+                  <ConfigRow label="IP ACL" value={c?.waf?.ip_acl?.enabled ? 'Enabled' : 'Disabled'} />
+                  <ConfigRow label="Rate Limiting" value={c?.waf?.rate_limit?.enabled ? 'Enabled' : 'Disabled'} />
+                  <ConfigRow label="Sanitizer" value={c?.waf?.sanitizer?.enabled ? 'Enabled' : 'Disabled'} />
+                  <ConfigRow label="Detection" value={c?.waf?.detection?.enabled ? 'Enabled' : 'Disabled'} />
+                  <ConfigRow label="Bot Detection" value={c?.waf?.bot_detection?.enabled ? 'Enabled' : 'Disabled'} />
+                  <ConfigRow label="Response Headers" value={c?.waf?.response?.security_headers?.enabled ? 'Enabled' : 'Disabled'} />
+                </>
+              )}
+            </CardContent>
+          </Card>
 
-              <div className="space-y-4 pt-4 border-t">
-                <h4 className="text-sm font-medium">Events</h4>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Backend Down</Label>
-                    <p className="text-sm text-muted-foreground">Notify when a backend becomes unhealthy</p>
-                  </div>
-                  <Switch
-                    checked={notificationSettings.onBackendDown}
-                    onCheckedChange={(checked) => setNotificationSettings({ ...notificationSettings, onBackendDown: checked })}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>High Latency</Label>
-                    <p className="text-sm text-muted-foreground">Notify when response time exceeds threshold</p>
-                  </div>
-                  <Switch
-                    checked={notificationSettings.onHighLatency}
-                    onCheckedChange={(checked) => setNotificationSettings({ ...notificationSettings, onHighLatency: checked })}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>WAF Block</Label>
-                    <p className="text-sm text-muted-foreground">Notify on WAF rule triggers</p>
-                  </div>
-                  <Switch
-                    checked={notificationSettings.onWAFBlock}
-                    onCheckedChange={(checked) => setNotificationSettings({ ...notificationSettings, onWAFBlock: checked })}
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => toast.info("Settings reset")}>
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                  Reset
-                </Button>
-                <Button onClick={() => handleSave('Notification')}>
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Changes
-                </Button>
-              </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>CORS</CardTitle>
+              <CardDescription>Cross-Origin Resource Sharing</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <ConfigRow label="Enabled" value={c?.middleware?.cors?.enabled ? 'Yes' : 'No'} />
+              {c?.middleware?.cors?.enabled && (
+                <>
+                  <ConfigRow label="Allowed Origins" value={c?.middleware?.cors?.allowed_origins?.join(', ') || '*'} />
+                  <ConfigRow label="Allowed Methods" value={c?.middleware?.cors?.allowed_methods?.join(', ') || 'GET,POST,PUT,DELETE'} />
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+
+      <div className="flex justify-end">
+        <Button onClick={handleReload}>
+          <RotateCcw className="mr-2 h-4 w-4" />
+          Reload Configuration
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function ConfigRow({ label, value }: { label: string; value: any }) {
+  return (
+    <div className="flex items-center justify-between py-1">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="text-sm font-medium font-mono">{String(value)}</span>
     </div>
   )
 }

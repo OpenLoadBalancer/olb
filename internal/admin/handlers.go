@@ -4,6 +4,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -830,6 +831,85 @@ func (s *Server) getWAFStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeSuccess(w, s.wafStatus())
+}
+
+// getMiddlewareStatus handles GET /api/v1/middleware/status
+func (s *Server) getMiddlewareStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only GET is allowed")
+		return
+	}
+
+	if s.middlewareStatus == nil {
+		writeSuccess(w, []MiddlewareStatusItem{})
+		return
+	}
+
+	writeSuccess(w, s.middlewareStatus())
+}
+
+// getEvents handles GET /api/v1/events
+func (s *Server) getEvents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only GET is allowed")
+		return
+	}
+
+	events := make([]EventItem, 0)
+
+	// Collect backend health events
+	if s.healthChecker != nil && s.poolManager != nil {
+		pools := s.poolManager.GetAllPools()
+		for _, pool := range pools {
+			backends := pool.GetAllBackends()
+			healthy := 0
+			for _, b := range backends {
+				if b.IsHealthy() {
+					healthy++
+				}
+				// Check individual backend health result
+				result := s.healthChecker.GetResult(b.ID)
+				if result != nil {
+					eventType := "success"
+					msg := "healthy"
+					if !result.Healthy {
+						eventType = "warning"
+						if result.Error != nil {
+							msg = result.Error.Error()
+						} else {
+							msg = "unhealthy"
+						}
+					}
+					events = append(events, EventItem{
+						ID:        "health-" + b.ID,
+						Type:      eventType,
+						Message:   "Backend " + b.ID + " (" + b.Address + ") is " + msg,
+						Timestamp: result.Timestamp.Format(time.RFC3339),
+					})
+				}
+			}
+
+			// Pool summary
+			if len(backends) > 0 && healthy < len(backends) {
+				events = append(events, EventItem{
+					ID:        "pool-" + pool.Name,
+					Type:      "warning",
+					Message:   fmt.Sprintf("Pool %s: %d/%d backends healthy", pool.Name, healthy, len(backends)),
+					Timestamp: time.Now().Format(time.RFC3339),
+				})
+			}
+		}
+	}
+
+	// Add system uptime event
+	events = append(events, EventItem{
+		ID:        "system-start",
+		Type:      "info",
+		Message:   "System started",
+		Timestamp: s.startTime.Format(time.RFC3339),
+	})
+
+	writeSuccess(w, events)
 }
 
 // Helper functions
