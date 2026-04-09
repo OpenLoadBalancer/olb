@@ -81,7 +81,7 @@ OpenLoadBalancer is a remarkably complete load balancer implementation with 97% 
 - [ ] **Add fuzzing tests** -- Add Go native fuzz tests (`func FuzzXxx`) for: HTTP request parsing, SNI ClientHello parsing, WAF detection engines, config parsing. ~16h
 - [ ] **Add end-to-end cluster tests** -- Test 3-node Raft cluster: leader failover, config replication, join/leave, split-brain recovery. ~16h
 - [ ] **Add TLS integration tests** -- Test mTLS handshake, certificate rotation, OCSP stapling, SNI routing with real TLS. ~8h
-- [ ] **Test coverage enforcement per-package** -- Add CI check for minimum 85% per-package (not just average). ~2h
+- [x] **Test coverage enforcement per-package** -- Add CI check for minimum 85% per-package (not just average). ~2h
 
 **Estimated effort:** 94 hours
 
