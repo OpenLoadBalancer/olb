@@ -129,7 +129,7 @@ OpenLoadBalancer is a remarkably complete load balancer implementation with 97% 
 - [ ] **Create release signing key** -- Set up GPG key for binary signing and verification. ~2h
 - [x] **Final security audit** -- Run gosec, nancy, govulncheck against final codebase. Address any findings. ~4h
 - [ ] **Tag v1.0.0 release** -- Update CHANGELOG, tag release, trigger GoReleaser. ~1h
-- [ ] **Write v1.0.0 release blog post** -- Update docs/blog-v1.0.0.md with accurate metrics and release date. ~4h
+- [x] **Write v1.0.0 release blog post** -- Update docs/blog-v1.0.0.md with accurate metrics and release date. ~4h
 - [ ] **Set up monitoring for production** -- Deploy Prometheus alerting rules, Grafana dashboard, verify alerting pipeline. ~4h
 
 **Estimated effort:** 31-63 hours

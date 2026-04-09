@@ -88,6 +88,23 @@ coverage-check: test
 	fi; \
 	echo "PASS: Coverage check passed"
 
+## coverage-check-packages: Verify per-package coverage meets minimum threshold (default 85%)
+coverage-check-packages: test
+	@THRESHOLD=85; \
+	echo "Checking per-package coverage (threshold: $${THRESHOLD}%)..."; \
+	FAIL=0; \
+	go tool cover -func=coverage.out | grep -v total | \
+		awk -F'/' '{pkg=""; for(i=1;i<=NF-1;i++){if(i>1)pkg=pkg"/";pkg=pkg$$i}} {print pkg, $$NF}' | \
+		awk '{cov[$$1]+=$$3; cnt[$$1]++} END {for(p in cov) {printf "%s %.1f\n", p, cov[p]/cnt[p]}}' | \
+		sort | \
+		while read pkg pct; do \
+			IPCT=$$(echo "$$pct" | sed 's/\..*//'); \
+			if [ "$$IPCT" -lt "$$THRESHOLD" ] 2>/dev/null; then \
+				echo "WARN: $$pkg $${pct}% < $${THRESHOLD}%"; \
+			fi; \
+		done; \
+	echo "Per-package coverage check complete"
+
 ## bench: Run benchmarks
 bench:
 	@echo "Running benchmarks..."
