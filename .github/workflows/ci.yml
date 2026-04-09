@@ -408,6 +408,7 @@ jobs:
       - name: Binary verification
         run: |
           file bin/olb-linux-amd64
+          chmod +x bin/olb-linux-amd64
           bin/olb-linux-amd64 version
 
       - name: Check for debug symbols
