@@ -2,6 +2,7 @@ package ratelimit
 
 import (
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 )
@@ -414,17 +415,18 @@ func TestCov_GetOrCreateBucket_ConcurrentRace(t *testing.T) {
 	start := make(chan struct{})
 	const n = 20
 	results := make([]*TokenBucket, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
 
 	for i := 0; i < n; i++ {
 		go func(idx int) {
 			<-start
 			results[idx] = rl.getOrCreateBucket(key, rule)
+			wg.Done()
 		}(i)
 	}
 	close(start)
-
-	// Give goroutines time to complete
-	time.Sleep(50 * time.Millisecond)
+	wg.Wait()
 
 	// All results should be the same bucket instance
 	first := results[0]
