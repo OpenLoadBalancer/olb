@@ -1,0 +1,2 @@
+import{j as e}from"./vendor-radix-Ffye7wjE.js";import{c as a}from"./index-CXuqaK0d.js";function m({className:s}){return e.jsx("div",{className:a("p-6 rounded-lg border bg-card",s),children:e.jsxs("div",{className:"space-y-3",children:[e.jsx("div",{className:"h-4 w-1/3 bg-muted rounded animate-pulse"}),e.jsx("div",{className:"h-8 w-2/3 bg-muted rounded animate-pulse"}),e.jsx("div",{className:"h-4 w-full bg-muted rounded animate-pulse"})]})})}export{m as L};
+//# sourceMappingURL=loading-86IJOoN2.js.map
