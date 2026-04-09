@@ -12,9 +12,11 @@ import (
 // ReopenHandler handles SIGUSR1 for log file reopening.
 // This is useful for log rotation tools like logrotate.
 type ReopenHandler struct {
-	outputs []*RotatingFileOutput
-	sigCh   chan os.Signal
-	stopCh  chan struct{}
+	outputs   []*RotatingFileOutput
+	sigCh     chan os.Signal
+	stopCh    chan struct{}
+	startOnce sync.Once
+	stopOnce  sync.Once
 }
 
 // NewReopenHandler creates a new signal handler for log reopening.
@@ -31,26 +33,30 @@ func (h *ReopenHandler) AddOutput(out *RotatingFileOutput) {
 	h.outputs = append(h.outputs, out)
 }
 
-// Start starts listening for SIGUSR1.
+// Start starts listening for SIGUSR1. Safe to call multiple times.
 func (h *ReopenHandler) Start() {
-	signal.Notify(h.sigCh, syscall.SIGUSR1)
+	h.startOnce.Do(func() {
+		signal.Notify(h.sigCh, syscall.SIGUSR1)
 
-	go func() {
-		for {
-			select {
-			case <-h.sigCh:
-				h.reopen()
-			case <-h.stopCh:
-				return
+		go func() {
+			for {
+				select {
+				case <-h.sigCh:
+					h.reopen()
+				case <-h.stopCh:
+					return
+				}
 			}
-		}
-	}()
+		}()
+	})
 }
 
-// Stop stops the signal handler.
+// Stop stops the signal handler. Safe to call multiple times.
 func (h *ReopenHandler) Stop() {
-	close(h.stopCh)
-	signal.Stop(h.sigCh)
+	h.stopOnce.Do(func() {
+		close(h.stopCh)
+		signal.Stop(h.sigCh)
+	})
 }
 
 // reopen reopens all registered outputs.

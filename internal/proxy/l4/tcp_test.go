@@ -242,16 +242,20 @@ func TestTCPProxy_Stop_WithActiveConnections(t *testing.T) {
 
 	proxy := NewTCPProxy(pool, NewSimpleBalancer(), &TCPProxyConfig{
 		DialTimeout: 2 * time.Second,
-		IdleTimeout: 30 * time.Second,
+		IdleTimeout: 2 * time.Second,
 	})
 
 	client, server := net.Pipe()
-	defer client.Close()
 
 	go proxy.HandleConnection(server)
 
-	// Write some data
+	// Write some data and read it back so the pipe doesn't block
 	client.Write([]byte("test"))
+	buf := make([]byte, 4)
+	client.Read(buf)
+
+	// Close the client to unblock the proxy's copy goroutines
+	client.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -260,7 +264,6 @@ func TestTCPProxy_Stop_WithActiveConnections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Stop error: %v", err)
 	}
-	client.Close()
 }
 
 // --- TCPListener Tests ---

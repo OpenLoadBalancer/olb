@@ -266,8 +266,8 @@ func TestDecodeField_Float(t *testing.T) {
 	// Float is type 15, which is extended (>7).
 	// Extended: control byte has typeNum=0 in top 3 bits, next byte is actualType-7
 	buf := make([]byte, 0, 7)
-	buf = append(buf, 0x00|4)                   // typeNum=0 (extended), sizeValue=4 in lower 5 bits
-	buf = append(buf, byte(mmdbTypeFloat-7))     // extended type byte = 8
+	buf = append(buf, 0x00|4)                // typeNum=0 (extended), sizeValue=4 in lower 5 bits
+	buf = append(buf, byte(mmdbTypeFloat-7)) // extended type byte = 8
 	tmp := make([]byte, 4)
 	binary.BigEndian.PutUint32(tmp, bits)
 	buf = append(buf, tmp...)
@@ -314,12 +314,12 @@ func TestDecodeField_Array(t *testing.T) {
 	// Code reads sizeValue from lower 5 bits of extByte = 4, so it reads 4 elements
 	extByte := byte(mmdbTypeArray - 7) // 4
 	buf := make([]byte, 0, 50)
-	buf = append(buf, 0x00)                    // typeNum=0 (extended), original lower bits ignored by code
-	buf = append(buf, extByte)                  // extended type byte → size=4
-	buf = append(buf, encodeString("a")...)     // element 0
-	buf = append(buf, encodeString("b")...)     // element 1
-	buf = append(buf, encodeString("c")...)     // element 2
-	buf = append(buf, encodeString("d")...)     // element 3
+	buf = append(buf, 0x00)                 // typeNum=0 (extended), original lower bits ignored by code
+	buf = append(buf, extByte)              // extended type byte → size=4
+	buf = append(buf, encodeString("a")...) // element 0
+	buf = append(buf, encodeString("b")...) // element 1
+	buf = append(buf, encodeString("c")...) // element 2
+	buf = append(buf, encodeString("d")...) // element 3
 
 	r := &mmdbReader{data: buf}
 	res, _ := r.decodeField(0)

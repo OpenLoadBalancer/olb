@@ -2452,9 +2452,11 @@ func TestE2E_MCP(t *testing.T) {
 
 	proxyPort := getFreePort(t)
 	adminPort := getFreePort(t)
+	mcpPort := getFreePort(t)
 
 	yamlCfg := fmt.Sprintf(`admin:
   address: "127.0.0.1:%d"
+  mcp_address: "127.0.0.1:%d"
 listeners:
   - name: http
     address: "127.0.0.1:%d"
@@ -2472,7 +2474,7 @@ pools:
       interval: 1s
       timeout: 1s
       path: /health
-`, adminPort, proxyPort, backendAddr)
+`, adminPort, mcpPort, proxyPort, backendAddr)
 
 	cfgPath := writeYAML(t, yamlCfg)
 	cfg, err := config.Load(cfgPath)
@@ -2493,8 +2495,7 @@ pools:
 		eng.Shutdown(ctx)
 	})
 
-	// MCP runs on admin port + 1
-	mcpAddr := fmt.Sprintf("127.0.0.1:%d", adminPort+1)
+	mcpAddr := fmt.Sprintf("127.0.0.1:%d", mcpPort)
 	waitForReady(t, mcpAddr, 5*time.Second)
 
 	client := &http.Client{Timeout: 5 * time.Second}
