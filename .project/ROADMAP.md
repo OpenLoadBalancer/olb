@@ -78,7 +78,7 @@ OpenLoadBalancer is a remarkably complete load balancer implementation with 97% 
 - [ ] **Add React component tests** -- Set up Vitest + React Testing Library for WebUI. Write tests for all 11 pages and shared components. ~20h
 - [ ] **Add load test suite** -- Create automated load tests using vegeta or custom Go HTTP clients. Test at 10K, 50K, 100K concurrent connections. ~16h
 - [ ] **Add chaos testing** -- Test behavior under: backend failures during request, config reload during traffic, cluster leader election during traffic, OOM conditions. ~16h
-- [ ] **Add fuzzing tests** -- Add Go native fuzz tests (`func FuzzXxx`) for: HTTP request parsing, SNI ClientHello parsing, WAF detection engines, config parsing. ~16h
+- [x] **Add fuzzing tests** -- Add Go native fuzz tests (`func FuzzXxx`) for: HTTP request parsing, SNI ClientHello parsing, WAF detection engines, config parsing. ~16h
 - [ ] **Add end-to-end cluster tests** -- Test 3-node Raft cluster: leader failover, config replication, join/leave, split-brain recovery. ~16h
 - [ ] **Add TLS integration tests** -- Test mTLS handshake, certificate rotation, OCSP stapling, SNI routing with real TLS. ~8h
 - [x] **Test coverage enforcement per-package** -- Add CI check for minimum 85% per-package (not just average). ~2h
