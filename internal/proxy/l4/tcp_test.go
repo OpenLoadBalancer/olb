@@ -163,7 +163,11 @@ func TestTCPProxy_HandleConnection_Echo(t *testing.T) {
 	}
 	client.Close()
 	wg.Wait()
-	<-done
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for proxy to complete")
+	}
 }
 
 func TestTCPProxy_HandleConnection_CancelledContext(t *testing.T) {
@@ -640,7 +644,11 @@ func TestCopyBidirectional_DataTransfer(t *testing.T) {
 	}
 
 	clientConn.Close()
-	<-done
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for proxy to complete")
+	}
 }
 
 // --- isNormalCloseError coverage ---
@@ -1126,7 +1134,11 @@ func TestTCPProxy_HandleConnection_WithKeepalive(t *testing.T) {
 	}
 
 	client.Close()
-	<-done
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for proxy to complete")
+	}
 }
 
 // --- TCPListener Stop_WithActiveConnections already covered by TestTCPProxy_Stop_WithActiveConnections ---

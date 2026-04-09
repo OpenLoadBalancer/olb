@@ -454,7 +454,11 @@ func TestCopyBidirectional_DataBothDirections(t *testing.T) {
 
 	clientConn.Close()
 	wg.Wait()
-	<-done
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for copy to complete")
+	}
 
 	_ = totalBytes1
 	_ = totalBytes2
@@ -796,7 +800,11 @@ func TestTCPProxy_ProxyConnections_MultipleRounds(t *testing.T) {
 	}
 
 	proxyConn.Close()
-	<-done
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting to complete")
+	}
 }
 
 // ===========================================================================
@@ -848,7 +856,11 @@ func TestCopyWithBuffer_ZeroIdleTimeout(t *testing.T) {
 	}
 
 	src.Close()
-	<-done
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting to complete")
+	}
 }
 
 // ===========================================================================
@@ -1122,7 +1134,11 @@ func TestUDPProxy_ReceiveFromBackend_ZeroLengthRead(t *testing.T) {
 	session.close()
 	proxy.running.Store(false)
 	proxy.cancel()
-	<-done
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting to complete")
+	}
 }
 
 // ===========================================================================
@@ -1261,7 +1277,11 @@ func TestTCPProxy_ProxyConnections_ConcurrentBothDirections(t *testing.T) {
 
 	wg.Wait()
 	proxyConn.Close()
-	<-done
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting to complete")
+	}
 }
 
 // ===========================================================================
@@ -1797,7 +1817,7 @@ func TestTCPProxy_Stop_ContextTimeout(t *testing.T) {
 		}
 		defer conn.Close()
 		// Hold the connection open to keep connWg alive
-		time.Sleep(5 * time.Second)
+		time.Sleep(500 * time.Millisecond)
 	}()
 
 	// Simulate an active connection by manually adding to connWg
@@ -1900,7 +1920,11 @@ func TestTCPProxy_HandleConnection_NoBackends_Cov3(t *testing.T) {
 		t.Error("expected error when no backends available")
 	}
 
-	<-done
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting to complete")
+	}
 }
 
 func TestTCPProxy_HandleConnection_MaxConnections_Cov3(t *testing.T) {
@@ -2308,7 +2332,11 @@ func TestPROXYListener_Accept_UntrustedSource_Cov3(t *testing.T) {
 	conn.Write([]byte("PROXY TCP4 192.168.1.1 192.168.1.2 12345 443\r\n"))
 	conn.Close()
 
-	<-done
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting to complete")
+	}
 }
 
 // ===========================================================================
@@ -2431,7 +2459,11 @@ func TestSNIRouter_RouteConnection_NoRouteNoDefault_Cov3(t *testing.T) {
 	client.Write(buildClientHelloWithSNI("unknown.openloadbalancer.dev"))
 	client.Close()
 
-	<-done
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting to complete")
+	}
 }
 
 func TestSNIRouter_RouteConnection_WithDefaultBackend_Cov3(t *testing.T) {

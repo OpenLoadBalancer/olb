@@ -346,7 +346,11 @@ func TestTCPProxy_CopyWithTimeout_ZeroTimeout(t *testing.T) {
 	}
 
 	src.Close()
-	<-done
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for CopyBidirectional to complete")
+	}
 }
 
 // --- CopyBidirectional panic recovery ---

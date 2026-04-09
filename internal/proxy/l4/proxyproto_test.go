@@ -899,7 +899,11 @@ func TestBufferedConn_Read(t *testing.T) {
 		t.Errorf("Second read = %q, want World!", string(buf2[:n2]))
 	}
 
-	<-done
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for read to complete")
+	}
 }
 
 // Helper functions to build PROXY protocol v2 headers
@@ -1235,7 +1239,7 @@ func TestPROXYListener_ReadTimeout(t *testing.T) {
 		defer conn.Close()
 
 		// Just wait - don't send anything
-		time.Sleep(10 * time.Second)
+		time.Sleep(2 * time.Second)
 	}()
 
 	// Accept should timeout or return error
@@ -1252,7 +1256,7 @@ func TestPROXYListener_ReadTimeout(t *testing.T) {
 		if acceptErr == nil {
 			t.Error("Accept should have failed due to timeout")
 		}
-	case <-time.After(7 * time.Second):
+	case <-time.After(3 * time.Second):
 		// Timeout waiting for accept
 		t.Log("Accept didn't return within expected time, but this may be OK depending on implementation")
 	}

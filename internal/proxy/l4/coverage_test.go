@@ -181,7 +181,11 @@ func TestUDPProxy_ReceiveFromBackend_ForwardsData(t *testing.T) {
 	session.close()
 	proxy.running.Store(false)
 	proxy.cancel()
-	<-done
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for receiveFromBackend to exit")
+	}
 }
 
 func TestCopyBidirectional_BidirectionalEcho(t *testing.T) {
@@ -226,7 +230,11 @@ func TestCopyBidirectional_BidirectionalEcho(t *testing.T) {
 		t.Errorf("received %q, want %q", string(buf[:n]), string(testData))
 	}
 	clientConn.Close()
-	<-done
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for CopyBidirectional to complete")
+	}
 	wg.Wait()
 }
 
