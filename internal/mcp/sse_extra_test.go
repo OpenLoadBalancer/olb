@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -526,12 +528,33 @@ func TestSSETransport_HandleMessage_InvalidJSONRPC(t *testing.T) {
 // Tests: Stdio Transport Run (mcp.go:1198)
 // --------------------------------------------------------------------------
 
+// lockedWriter is a thread-safe io.Writer that buffers all written data.
+type lockedWriter struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (w *lockedWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buf.Write(p)
+}
+
+func (w *lockedWriter) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buf.String()
+}
+
 func TestStdioTransport_Run(t *testing.T) {
 	s := newTestServer()
-	input := bytes.NewBuffer(nil)
-	output := &bytes.Buffer{}
 
-	transport := NewStdioTransport(s, input, output)
+	// Use io.Pipe so writes from the test and reads from the transport
+	// are naturally synchronized (no concurrent access to a bytes.Buffer).
+	pr, pw := io.Pipe()
+	output := &lockedWriter{}
+
+	transport := NewStdioTransport(s, pr, output)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -543,12 +566,13 @@ func TestStdioTransport_Run(t *testing.T) {
 
 	// Write a valid JSON-RPC request
 	req := makeRequest("tools/list", nil)
-	input.Write(req)
-	input.Write([]byte("\n"))
+	pw.Write(req)
+	pw.Write([]byte("\n"))
 
 	// Give it time to process
 	time.Sleep(100 * time.Millisecond)
 	cancel()
+	pw.Close()
 
 	err := <-done
 	if err != nil {

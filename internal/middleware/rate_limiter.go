@@ -221,15 +221,15 @@ func (m *RateLimitMiddleware) allow(key string) (bool, time.Duration) {
 		}
 		actualIface, loaded := m.buckets.LoadOrStore(key, newBucket)
 		bucketIface = actualIface
+		bucket := bucketIface.(*tokenBucket)
+		bucket.mu.Lock()
+		defer bucket.mu.Unlock()
 		if loaded {
 			// Another goroutine created the bucket, use that one
-			bucket := bucketIface.(*tokenBucket)
-			bucket.mu.Lock()
-			defer bucket.mu.Unlock()
 			return m.checkAndConsume(bucket, now)
 		}
 		// We created the bucket, consume one token
-		newBucket.tokens--
+		bucket.tokens--
 		return true, 0
 	}
 

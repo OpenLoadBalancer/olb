@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -384,10 +385,10 @@ func TestHTTPSListenerServeErrorCapture(t *testing.T) {
 		IsWildcard: false,
 	})
 
-	acceptCalled := false
+	var acceptCalled atomic.Bool
 	rejectMgr := &mockConnManager{
 		acceptFunc: func(conn net.Conn) (net.Conn, error) {
-			acceptCalled = true
+			acceptCalled.Store(true)
 			conn.Close()
 			return nil, net.UnknownNetworkError("forced accept error for coverage")
 		},
@@ -428,7 +429,7 @@ func TestHTTPSListenerServeErrorCapture(t *testing.T) {
 		resp.Body.Close()
 	}
 
-	if acceptCalled {
+	if acceptCalled.Load() {
 		t.Log("ConnManager.Accept was called - exercised the reject path")
 	}
 
@@ -456,10 +457,10 @@ func TestHTTPSListenerStartWithConnManager(t *testing.T) {
 		IsWildcard: false,
 	})
 
-	acceptCalled := false
+	var acceptCalled atomic.Bool
 	mockMgr := &mockConnManager{
 		acceptFunc: func(conn net.Conn) (net.Conn, error) {
-			acceptCalled = true
+			acceptCalled.Store(true)
 			return conn, nil
 		},
 	}
@@ -499,7 +500,7 @@ func TestHTTPSListenerStartWithConnManager(t *testing.T) {
 		resp.Body.Close()
 	}
 
-	if acceptCalled {
+	if acceptCalled.Load() {
 		t.Log("ConnManager.Accept was called")
 	}
 

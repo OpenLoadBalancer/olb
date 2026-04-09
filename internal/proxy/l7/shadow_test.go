@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -687,9 +688,9 @@ func TestShadowManager_sendShadow_SkipsHopByHopHeaders(t *testing.T) {
 }
 
 func TestShadowManager_ShadowRequest_WithLiveBackend(t *testing.T) {
-	shadowReceived := 0
+	var shadowReceived atomic.Int32
 	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		shadowReceived++
+		shadowReceived.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer backendServer.Close()
@@ -716,7 +717,7 @@ func TestShadowManager_ShadowRequest_WithLiveBackend(t *testing.T) {
 	// Wait for async shadow request
 	time.Sleep(200 * time.Millisecond)
 
-	if shadowReceived == 0 {
+	if shadowReceived.Load() == 0 {
 		t.Error("expected shadow request to reach backend")
 	}
 }

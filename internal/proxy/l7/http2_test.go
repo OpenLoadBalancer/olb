@@ -1789,11 +1789,19 @@ func TestHTTP2Listener_Start_SetsStrictMode(t *testing.T) {
 	}
 
 	// Start in background
-	go listener.Start()
+	startDone := make(chan struct{})
+	go func() {
+		listener.Start()
+		close(startDone)
+	}()
 	defer listener.Stop(context.Background())
 
-	// Wait for startup
-	time.Sleep(100 * time.Millisecond)
+	// Wait for Start() to complete setup (it sets h2Server before returning)
+	select {
+	case <-startDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for listener to start")
+	}
 
 	// Verify the h2Server was configured
 	h2s := listener.h2Server
