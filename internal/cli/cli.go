@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -134,13 +135,7 @@ func (c *CLI) Help() string {
 	for name := range c.commands {
 		names = append(names, name)
 	}
-	for i := range len(names) - 1 {
-		for j := i + 1; j < len(names); j++ {
-			if names[i] > names[j] {
-				names[i], names[j] = names[j], names[i]
-			}
-		}
-	}
+	sort.Strings(names)
 
 	for _, name := range names {
 		cmd := c.commands[name]
@@ -162,13 +157,7 @@ func (c *CLI) Commands() []Command {
 	}
 
 	// Sort for consistent ordering
-	for i := range len(names) - 1 {
-		for j := i + 1; j < len(names); j++ {
-			if names[i] > names[j] {
-				names[i], names[j] = names[j], names[i]
-			}
-		}
-	}
+	sort.Strings(names)
 
 	var result []Command
 	for _, name := range names {

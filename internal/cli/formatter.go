@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"text/tabwriter"
 )
@@ -117,13 +118,7 @@ func (f *TableFormatter) formatMapSlice(rows []map[string]string) (string, error
 			headers = append(headers, key)
 		}
 		// Sort headers for consistent output
-		for i := range len(headers) - 1 {
-			for j := i + 1; j < len(headers); j++ {
-				if headers[i] > headers[j] {
-					headers[i], headers[j] = headers[j], headers[i]
-				}
-			}
-		}
+		sort.Strings(headers)
 	}
 
 	var buf bytes.Buffer

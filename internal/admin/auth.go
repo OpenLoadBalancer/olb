@@ -65,6 +65,10 @@ func (l *authFailureLimiter) isLocked(ip string) bool {
 	if !ok {
 		return false
 	}
+	if e.lockedUntil.IsZero() {
+		// Not locked out yet (hasn't reached failure threshold)
+		return false
+	}
 	if time.Now().Before(e.lockedUntil) {
 		return true
 	}
