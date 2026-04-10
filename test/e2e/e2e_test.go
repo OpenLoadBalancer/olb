@@ -429,8 +429,8 @@ func TestE2E_Middleware_RateLimit(t *testing.T) {
 	var hits atomic.Int64
 	backendAddr := startBackend(t, "rl-backend", &hits)
 
-	proxyPort := getFreePort(t)
-	adminPort := getFreePort(t)
+	proxyPH := reservePort(t)
+	adminPH := reservePort(t)
 
 	yamlCfg := fmt.Sprintf(`admin:
   address: "127.0.0.1:%d"
@@ -456,7 +456,7 @@ pools:
       interval: 1s
       timeout: 1s
       path: /health
-`, adminPort, proxyPort, backendAddr)
+`, adminPH.Port(), proxyPH.Port(), backendAddr)
 
 	cfgPath := writeYAML(t, yamlCfg)
 	cfg, err := config.Load(cfgPath)
@@ -468,7 +468,7 @@ pools:
 	if err != nil {
 		t.Fatalf("Failed to create engine: %v", err)
 	}
-	if err := eng.Start(); err != nil {
+	if err := startEngineWithPorts(eng, proxyPH, adminPH); err != nil {
 		t.Fatalf("Failed to start engine: %v", err)
 	}
 	t.Cleanup(func() {
@@ -528,8 +528,8 @@ func TestE2E_Middleware_CORS(t *testing.T) {
 	var hits atomic.Int64
 	backendAddr := startBackend(t, "cors-backend", &hits)
 
-	proxyPort := getFreePort(t)
-	adminPort := getFreePort(t)
+	proxyPH := reservePort(t)
+	adminPH := reservePort(t)
 
 	yamlCfg := fmt.Sprintf(`admin:
   address: "127.0.0.1:%d"
@@ -562,7 +562,7 @@ pools:
       interval: 1s
       timeout: 1s
       path: /health
-`, adminPort, proxyPort, backendAddr)
+`, adminPH.Port(), proxyPH.Port(), backendAddr)
 
 	cfgPath := writeYAML(t, yamlCfg)
 	cfg, err := config.Load(cfgPath)
@@ -574,7 +574,7 @@ pools:
 	if err != nil {
 		t.Fatalf("Failed to create engine: %v", err)
 	}
-	if err := eng.Start(); err != nil {
+	if err := startEngineWithPorts(eng, proxyPH, adminPH); err != nil {
 		t.Fatalf("Failed to start engine: %v", err)
 	}
 	t.Cleanup(func() {
@@ -639,8 +639,8 @@ pools:
 // TestE2E_Middleware_Compression verifies that gzip compression works when the
 // client sends Accept-Encoding: gzip and the response is large enough.
 func TestE2E_Middleware_Compression(t *testing.T) {
-	proxyPort := getFreePort(t)
-	adminPort := getFreePort(t)
+	proxyPH := reservePort(t)
+	adminPH := reservePort(t)
 
 	// Start a backend that returns a large response (>1KB to exceed min_size)
 	largeBody := strings.Repeat("The quick brown fox jumps over the lazy dog. ", 100) // ~4500 bytes
@@ -680,7 +680,7 @@ pools:
       interval: 1s
       timeout: 1s
       path: /health
-`, adminPort, proxyPort, backendAddr)
+`, adminPH.Port(), proxyPH.Port(), backendAddr)
 
 	cfgPath := writeYAML(t, yamlCfg)
 	cfg, err := config.Load(cfgPath)
@@ -692,7 +692,7 @@ pools:
 	if err != nil {
 		t.Fatalf("Failed to create engine: %v", err)
 	}
-	if err := eng.Start(); err != nil {
+	if err := startEngineWithPorts(eng, proxyPH, adminPH); err != nil {
 		t.Fatalf("Failed to start engine: %v", err)
 	}
 	t.Cleanup(func() {
@@ -777,8 +777,8 @@ func TestE2E_Middleware_RequestID(t *testing.T) {
 		fmt.Fprint(w, "Hello from reqid-backend\n")
 	})
 
-	proxyPort := getFreePort(t)
-	adminPort := getFreePort(t)
+	proxyPH := reservePort(t)
+	adminPH := reservePort(t)
 
 	yamlCfg := fmt.Sprintf(`admin:
   address: "127.0.0.1:%d"
@@ -799,7 +799,7 @@ pools:
       interval: 1s
       timeout: 1s
       path: /health
-`, adminPort, proxyPort, backendAddr)
+`, adminPH.Port(), proxyPH.Port(), backendAddr)
 
 	cfgPath := writeYAML(t, yamlCfg)
 	cfg, err := config.Load(cfgPath)
@@ -811,7 +811,7 @@ pools:
 	if err != nil {
 		t.Fatalf("Failed to create engine: %v", err)
 	}
-	if err := eng.Start(); err != nil {
+	if err := startEngineWithPorts(eng, proxyPH, adminPH); err != nil {
 		t.Fatalf("Failed to start engine: %v", err)
 	}
 	t.Cleanup(func() {
@@ -887,8 +887,8 @@ func TestE2E_AdminAPI_Backends(t *testing.T) {
 	addr1 := startBackend(t, "admin-b1", &b1Hits)
 	addr2 := startBackend(t, "admin-b2", &b2Hits)
 
-	proxyPort := getFreePort(t)
-	adminPort := getFreePort(t)
+	proxyPH := reservePort(t)
+	adminPH := reservePort(t)
 
 	yamlCfg := fmt.Sprintf(`admin:
   address: "127.0.0.1:%d"
@@ -910,7 +910,7 @@ pools:
       interval: 1s
       timeout: 1s
       path: /health
-`, adminPort, proxyPort, addr1, addr2)
+`, adminPH.Port(), proxyPH.Port(), addr1, addr2)
 
 	cfgPath := writeYAML(t, yamlCfg)
 	cfg, err := config.Load(cfgPath)
@@ -922,7 +922,7 @@ pools:
 	if err != nil {
 		t.Fatalf("Failed to create engine: %v", err)
 	}
-	if err := eng.Start(); err != nil {
+	if err := startEngineWithPorts(eng, proxyPH, adminPH); err != nil {
 		t.Fatalf("Failed to start engine: %v", err)
 	}
 	t.Cleanup(func() {
@@ -1169,8 +1169,8 @@ func TestE2E_WebUI(t *testing.T) {
 	var hits atomic.Int64
 	backendAddr := startBackend(t, "webui-backend", &hits)
 
-	proxyPort := getFreePort(t)
-	adminPort := getFreePort(t)
+	proxyPH := reservePort(t)
+	adminPH := reservePort(t)
 
 	yamlCfg := fmt.Sprintf(`admin:
   address: "127.0.0.1:%d"
@@ -1191,7 +1191,7 @@ pools:
       interval: 1s
       timeout: 1s
       path: /health
-`, adminPort, proxyPort, backendAddr)
+`, adminPH.Port(), proxyPH.Port(), backendAddr)
 
 	cfgPath := writeYAML(t, yamlCfg)
 	cfg, err := config.Load(cfgPath)
@@ -1203,7 +1203,7 @@ pools:
 	if err != nil {
 		t.Fatalf("Failed to create engine: %v", err)
 	}
-	if err := eng.Start(); err != nil {
+	if err := startEngineWithPorts(eng, proxyPH, adminPH); err != nil {
 		t.Fatalf("Failed to start engine: %v", err)
 	}
 	t.Cleanup(func() {
@@ -1257,8 +1257,8 @@ func TestE2E_WeightedDistribution(t *testing.T) {
 	addr2 := startBackend(t, "wd-b2", &b2Hits)
 	addr3 := startBackend(t, "wd-b3", &b3Hits)
 
-	proxyPort := getFreePort(t)
-	adminPort := getFreePort(t)
+	proxyPH := reservePort(t)
+	adminPH := reservePort(t)
 
 	// Weights: 1, 2, 3 (normalized from 100, 200, 300)
 	yamlCfg := fmt.Sprintf(`admin:
@@ -1285,7 +1285,7 @@ pools:
       interval: 1s
       timeout: 1s
       path: /health
-`, adminPort, proxyPort, addr1, addr2, addr3)
+`, adminPH.Port(), proxyPH.Port(), addr1, addr2, addr3)
 
 	cfgPath := writeYAML(t, yamlCfg)
 	cfg, err := config.Load(cfgPath)
@@ -1297,7 +1297,7 @@ pools:
 	if err != nil {
 		t.Fatalf("Failed to create engine: %v", err)
 	}
-	if err := eng.Start(); err != nil {
+	if err := startEngineWithPorts(eng, proxyPH, adminPH); err != nil {
 		t.Fatalf("Failed to start engine: %v", err)
 	}
 	t.Cleanup(func() {
@@ -1367,8 +1367,8 @@ func TestE2E_WAF(t *testing.T) {
 	var hits atomic.Int64
 	backendAddr := startBackend(t, "waf-backend", &hits)
 
-	proxyPort := getFreePort(t)
-	adminPort := getFreePort(t)
+	proxyPH := reservePort(t)
+	adminPH := reservePort(t)
 
 	yamlCfg := fmt.Sprintf(`admin:
   address: "127.0.0.1:%d"
@@ -1392,7 +1392,7 @@ pools:
       interval: 1s
       timeout: 1s
       path: /health
-`, adminPort, proxyPort, backendAddr)
+`, adminPH.Port(), proxyPH.Port(), backendAddr)
 
 	cfgPath := writeYAML(t, yamlCfg)
 	cfg, err := config.Load(cfgPath)
@@ -1404,7 +1404,7 @@ pools:
 	if err != nil {
 		t.Fatalf("Failed to create engine: %v", err)
 	}
-	if err := eng.Start(); err != nil {
+	if err := startEngineWithPorts(eng, proxyPH, adminPH); err != nil {
 		t.Fatalf("Failed to start engine: %v", err)
 	}
 	t.Cleanup(func() {
@@ -1466,8 +1466,8 @@ func TestE2E_WAF_RateLimiter(t *testing.T) {
 	var hits atomic.Int64
 	backendAddr := startBackend(t, "waf-rl-backend", &hits)
 
-	proxyPort := getFreePort(t)
-	adminPort := getFreePort(t)
+	proxyPH := reservePort(t)
+	adminPH := reservePort(t)
 
 	yamlCfg := fmt.Sprintf(`admin:
   address: "127.0.0.1:%d"
@@ -1499,7 +1499,7 @@ pools:
       interval: 1s
       timeout: 1s
       path: /health
-`, adminPort, proxyPort, backendAddr)
+`, adminPH.Port(), proxyPH.Port(), backendAddr)
 
 	cfgPath := writeYAML(t, yamlCfg)
 	cfg, err := config.Load(cfgPath)
@@ -1511,7 +1511,7 @@ pools:
 	if err != nil {
 		t.Fatalf("Failed to create engine: %v", err)
 	}
-	if err := eng.Start(); err != nil {
+	if err := startEngineWithPorts(eng, proxyPH, adminPH); err != nil {
 		t.Fatalf("Failed to start engine: %v", err)
 	}
 	t.Cleanup(func() {
@@ -1564,8 +1564,8 @@ func TestE2E_WAF_CommandInjection(t *testing.T) {
 	var hits atomic.Int64
 	backendAddr := startBackend(t, "waf-cmdi-backend", &hits)
 
-	proxyPort := getFreePort(t)
-	adminPort := getFreePort(t)
+	proxyPH := reservePort(t)
+	adminPH := reservePort(t)
 
 	yamlCfg := fmt.Sprintf(`admin:
   address: "127.0.0.1:%d"
@@ -1589,7 +1589,7 @@ pools:
       interval: 1s
       timeout: 1s
       path: /health
-`, adminPort, proxyPort, backendAddr)
+`, adminPH.Port(), proxyPH.Port(), backendAddr)
 
 	cfgPath := writeYAML(t, yamlCfg)
 	cfg, err := config.Load(cfgPath)
@@ -1601,7 +1601,7 @@ pools:
 	if err != nil {
 		t.Fatalf("Failed to create engine: %v", err)
 	}
-	if err := eng.Start(); err != nil {
+	if err := startEngineWithPorts(eng, proxyPH, adminPH); err != nil {
 		t.Fatalf("Failed to start engine: %v", err)
 	}
 	t.Cleanup(func() {
@@ -1647,8 +1647,8 @@ func TestE2E_WAF_MonitorMode(t *testing.T) {
 	var hits atomic.Int64
 	backendAddr := startBackend(t, "waf-monitor-backend", &hits)
 
-	proxyPort := getFreePort(t)
-	adminPort := getFreePort(t)
+	proxyPH := reservePort(t)
+	adminPH := reservePort(t)
 
 	yamlCfg := fmt.Sprintf(`admin:
   address: "127.0.0.1:%d"
@@ -1672,7 +1672,7 @@ pools:
       interval: 1s
       timeout: 1s
       path: /health
-`, adminPort, proxyPort, backendAddr)
+`, adminPH.Port(), proxyPH.Port(), backendAddr)
 
 	cfgPath := writeYAML(t, yamlCfg)
 	cfg, err := config.Load(cfgPath)
@@ -1684,7 +1684,7 @@ pools:
 	if err != nil {
 		t.Fatalf("Failed to create engine: %v", err)
 	}
-	if err := eng.Start(); err != nil {
+	if err := startEngineWithPorts(eng, proxyPH, adminPH); err != nil {
 		t.Fatalf("Failed to start engine: %v", err)
 	}
 	t.Cleanup(func() {
@@ -1724,8 +1724,8 @@ func TestE2E_WAF_SecurityHeaders(t *testing.T) {
 	var hits atomic.Int64
 	backendAddr := startBackend(t, "waf-headers-backend", &hits)
 
-	proxyPort := getFreePort(t)
-	adminPort := getFreePort(t)
+	proxyPH := reservePort(t)
+	adminPH := reservePort(t)
 
 	yamlCfg := fmt.Sprintf(`admin:
   address: "127.0.0.1:%d"
@@ -1758,7 +1758,7 @@ pools:
       interval: 1s
       timeout: 1s
       path: /health
-`, adminPort, proxyPort, backendAddr)
+`, adminPH.Port(), proxyPH.Port(), backendAddr)
 
 	cfgPath := writeYAML(t, yamlCfg)
 	cfg, err := config.Load(cfgPath)
@@ -1770,7 +1770,7 @@ pools:
 	if err != nil {
 		t.Fatalf("Failed to create engine: %v", err)
 	}
-	if err := eng.Start(); err != nil {
+	if err := startEngineWithPorts(eng, proxyPH, adminPH); err != nil {
 		t.Fatalf("Failed to start engine: %v", err)
 	}
 	t.Cleanup(func() {
@@ -1822,8 +1822,8 @@ func TestE2E_WAF_AdminStatus(t *testing.T) {
 	var hits atomic.Int64
 	backendAddr := startBackend(t, "waf-status-backend", &hits)
 
-	proxyPort := getFreePort(t)
-	adminPort := getFreePort(t)
+	proxyPH := reservePort(t)
+	adminPH := reservePort(t)
 
 	yamlCfg := fmt.Sprintf(`admin:
   address: "127.0.0.1:%d"
@@ -1847,7 +1847,7 @@ pools:
       interval: 1s
       timeout: 1s
       path: /health
-`, adminPort, proxyPort, backendAddr)
+`, adminPH.Port(), proxyPH.Port(), backendAddr)
 
 	cfgPath := writeYAML(t, yamlCfg)
 	cfg, err := config.Load(cfgPath)
@@ -1859,7 +1859,7 @@ pools:
 	if err != nil {
 		t.Fatalf("Failed to create engine: %v", err)
 	}
-	if err := eng.Start(); err != nil {
+	if err := startEngineWithPorts(eng, proxyPH, adminPH); err != nil {
 		t.Fatalf("Failed to start engine: %v", err)
 	}
 	t.Cleanup(func() {
@@ -1868,7 +1868,7 @@ pools:
 		eng.Shutdown(ctx)
 	})
 
-	adminAddr := fmt.Sprintf("127.0.0.1:%d", adminPort)
+	adminAddr := fmt.Sprintf("127.0.0.1:%d", adminPH.Port())
 	waitForReady(t, adminAddr, 5*time.Second)
 
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -1900,8 +1900,8 @@ func TestE2E_IPFilter(t *testing.T) {
 	var hits atomic.Int64
 	backendAddr := startBackend(t, "ipf-backend", &hits)
 
-	proxyPort := getFreePort(t)
-	adminPort := getFreePort(t)
+	proxyPH := reservePort(t)
+	adminPH := reservePort(t)
 
 	yamlCfg := fmt.Sprintf(`admin:
   address: "127.0.0.1:%d"
@@ -1928,7 +1928,7 @@ pools:
       interval: 1s
       timeout: 1s
       path: /health
-`, adminPort, proxyPort, backendAddr)
+`, adminPH.Port(), proxyPH.Port(), backendAddr)
 
 	cfgPath := writeYAML(t, yamlCfg)
 	cfg, err := config.Load(cfgPath)
@@ -1940,7 +1940,7 @@ pools:
 	if err != nil {
 		t.Fatalf("Failed to create engine: %v", err)
 	}
-	if err := eng.Start(); err != nil {
+	if err := startEngineWithPorts(eng, proxyPH, adminPH); err != nil {
 		t.Fatalf("Failed to start engine: %v", err)
 	}
 	t.Cleanup(func() {
@@ -1981,8 +1981,8 @@ pools:
 // TestE2E_CircuitBreaker verifies that the circuit breaker middleware opens after
 // enough backend errors and starts returning 503 Service Unavailable.
 func TestE2E_CircuitBreaker(t *testing.T) {
-	proxyPort := getFreePort(t)
-	adminPort := getFreePort(t)
+	proxyPH := reservePort(t)
+	adminPH := reservePort(t)
 
 	// Backend that always returns 500 errors
 	backendAddr := startBackendWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
@@ -2018,7 +2018,7 @@ pools:
       interval: 1s
       timeout: 1s
       path: /health
-`, adminPort, proxyPort, backendAddr)
+`, adminPH.Port(), proxyPH.Port(), backendAddr)
 
 	cfgPath := writeYAML(t, yamlCfg)
 	cfg, err := config.Load(cfgPath)
@@ -2030,7 +2030,7 @@ pools:
 	if err != nil {
 		t.Fatalf("Failed to create engine: %v", err)
 	}
-	if err := eng.Start(); err != nil {
+	if err := startEngineWithPorts(eng, proxyPH, adminPH); err != nil {
 		t.Fatalf("Failed to start engine: %v", err)
 	}
 	t.Cleanup(func() {
@@ -2100,8 +2100,8 @@ pools:
 // TestE2E_ResponseCache verifies that the response cache middleware caches
 // GET responses and serves them from cache on subsequent requests.
 func TestE2E_ResponseCache(t *testing.T) {
-	proxyPort := getFreePort(t)
-	adminPort := getFreePort(t)
+	proxyPH := reservePort(t)
+	adminPH := reservePort(t)
 
 	// Backend that returns an incrementing counter
 	var requestCount atomic.Int64
@@ -2139,7 +2139,7 @@ pools:
       interval: 1s
       timeout: 1s
       path: /health
-`, adminPort, proxyPort, backendAddr)
+`, adminPH.Port(), proxyPH.Port(), backendAddr)
 
 	cfgPath := writeYAML(t, yamlCfg)
 	cfg, err := config.Load(cfgPath)
@@ -2151,7 +2151,7 @@ pools:
 	if err != nil {
 		t.Fatalf("Failed to create engine: %v", err)
 	}
-	if err := eng.Start(); err != nil {
+	if err := startEngineWithPorts(eng, proxyPH, adminPH); err != nil {
 		t.Fatalf("Failed to start engine: %v", err)
 	}
 	t.Cleanup(func() {
@@ -2225,8 +2225,8 @@ func TestE2E_PrometheusMetrics(t *testing.T) {
 	var hits atomic.Int64
 	backendAddr := startBackend(t, "prom-backend", &hits)
 
-	proxyPort := getFreePort(t)
-	adminPort := getFreePort(t)
+	proxyPH := reservePort(t)
+	adminPH := reservePort(t)
 
 	yamlCfg := fmt.Sprintf(`admin:
   address: "127.0.0.1:%d"
@@ -2247,7 +2247,7 @@ pools:
       interval: 1s
       timeout: 1s
       path: /health
-`, adminPort, proxyPort, backendAddr)
+`, adminPH.Port(), proxyPH.Port(), backendAddr)
 
 	cfgPath := writeYAML(t, yamlCfg)
 	cfg, err := config.Load(cfgPath)
@@ -2259,7 +2259,7 @@ pools:
 	if err != nil {
 		t.Fatalf("Failed to create engine: %v", err)
 	}
-	if err := eng.Start(); err != nil {
+	if err := startEngineWithPorts(eng, proxyPH, adminPH); err != nil {
 		t.Fatalf("Failed to start engine: %v", err)
 	}
 	t.Cleanup(func() {
@@ -2906,6 +2906,51 @@ pools:
 	return path
 }
 
+// writeConfigReserved is like writeConfig but uses reserved ports to prevent
+// TOCTOU races under parallel execution. The caller must call the returned
+// release function before calling eng.Start().
+func writeConfigReserved(t *testing.T, b1, b2, b3 string) (configPath string, release func()) {
+	t.Helper()
+	proxyPH := reservePort(t)
+	adminPH := reservePort(t)
+
+	yaml := fmt.Sprintf(`global:
+  workers: 2
+
+admin:
+  address: "127.0.0.1:%d"
+
+listeners:
+  - name: http
+    address: "127.0.0.1:%d"
+    protocol: http
+    routes:
+      - path: /
+        pool: test-pool
+
+pools:
+  - name: test-pool
+    algorithm: round_robin
+    backends:
+      - address: "%s"
+      - address: "%s"
+      - address: "%s"
+    health_check:
+      type: http
+      enabled: true
+      interval: 1s
+      timeout: 1s
+      path: /health
+`, adminPH.Port(), proxyPH.Port(), b1, b2, b3)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "olb.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+	return path, func() { releasePorts(proxyPH, adminPH) }
+}
+
 func getFreePort(t *testing.T) int {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -2915,6 +2960,59 @@ func getFreePort(t *testing.T) int {
 	port := l.Addr().(*net.TCPAddr).Port
 	l.Close()
 	return port
+}
+
+// portHolder reserves a port by holding a listener open. Call Release()
+// before the engine tries to bind the port (i.e., before eng.Start()).
+type portHolder struct {
+	listener net.Listener
+	port     int
+}
+
+func reservePort(t *testing.T) *portHolder {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reservePort: %v", err)
+	}
+	t.Cleanup(func() { l.Close() })
+	return &portHolder{listener: l, port: l.Addr().(*net.TCPAddr).Port}
+}
+
+func (ph *portHolder) Port() int { return ph.port }
+
+func (ph *portHolder) Release() {
+	if ph.listener != nil {
+		ph.listener.Close()
+		ph.listener = nil
+	}
+}
+
+// releasePorts closes all held listeners, freeing their ports for the engine to bind.
+func releasePorts(holders ...*portHolder) {
+	for _, h := range holders {
+		h.Release()
+	}
+}
+
+// startEngineWithPorts releases reserved ports and starts the engine.
+// This minimizes the TOCTOU window by releasing ports and immediately
+// starting the engine in the same call. Retries up to 3 times on EADDRINUSE.
+func startEngineWithPorts(eng *engine.Engine, holders ...*portHolder) error {
+	releasePorts(holders...)
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if err := eng.Start(); err != nil {
+			lastErr = err
+			if strings.Contains(err.Error(), "bind") || strings.Contains(err.Error(), "EADDRINUSE") {
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
+			return err
+		}
+		return nil
+	}
+	return lastErr
 }
 
 func waitForReady(t *testing.T, addr string, timeout time.Duration) {
