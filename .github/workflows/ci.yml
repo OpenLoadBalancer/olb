@@ -40,18 +40,14 @@ jobs:
           go install honnef.co/go/tools/cmd/staticcheck@latest 2>/dev/null || true
           which staticcheck && staticcheck ./... || echo "staticcheck not available, skipping"
 
-  # Job 2: Test (without race detector for fast feedback)
-  test:
-    name: Test
+  # Job 2: Build Frontend (shared by test, test-race, build jobs)
+  build-frontend:
+    name: Build Frontend
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        go-version: ['1.26']
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ===== FRONTEND BUILD SETUP =====
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -72,7 +68,34 @@ jobs:
       - name: Build frontend
         working-directory: ./internal/webui
         run: npm run build
-      # ===== END FRONTEND BUILD =====
+
+      - name: Upload frontend artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-assets
+          path: |
+            internal/webui/assets/
+            internal/webui/index.html
+            internal/webui/favicon.svg
+          retention-days: 1
+
+  # Job 3: Test (without race detector for fast feedback)
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: [build-frontend]
+    strategy:
+      matrix:
+        go-version: ['1.26']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download frontend artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-assets
+          path: internal/webui/
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -91,7 +114,7 @@ jobs:
         run: go mod download
 
       - name: Run tests
-        run: go test -v -count=1 -coverprofile=coverage.out -timeout=300s ./...
+        run: go test -p 1 -v -count=1 -coverprofile=coverage.out -timeout=300s ./...
 
       - name: Generate coverage report
         run: go tool cover -func=coverage.out
@@ -133,37 +156,20 @@ jobs:
           flags: unittests
           name: codecov-umbrella
 
-  # Job 3: Race Detector Tests (Linux only, requires CGO/GCC)
+  # Job 4: Race Detector Tests (Linux only, requires CGO/GCC)
   test-race:
     name: Test (Race Detector)
     runs-on: ubuntu-latest
-    needs: [test]
+    needs: [test, build-frontend]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ===== FRONTEND BUILD SETUP =====
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Download frontend artifacts
+        uses: actions/download-artifact@v4
         with:
-          node-version: '20'
-
-      - name: Cache npm modules
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('internal/webui/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-
-
-      - name: Install frontend dependencies
-        working-directory: ./internal/webui
-        run: npm ci
-
-      - name: Build frontend
-        working-directory: ./internal/webui
-        run: npm run build
-      # ===== END FRONTEND BUILD =====
+          name: frontend-assets
+          path: internal/webui/
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -182,39 +188,22 @@ jobs:
         run: go mod download
 
       - name: Run tests with race detector
-        run: go test -race -count=1 -timeout=600s ./...
+        run: go test -p 1 -race -count=1 -timeout=600s ./...
 
-  # Job 4: Build
+  # Job 5: Build
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: [lint, test, build-frontend]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ===== FRONTEND BUILD SETUP =====
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Download frontend artifacts
+        uses: actions/download-artifact@v4
         with:
-          node-version: '20'
-
-      - name: Cache npm modules
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('internal/webui/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-
-
-      - name: Install frontend dependencies
-        working-directory: ./internal/webui
-        run: npm ci
-
-      - name: Build frontend
-        working-directory: ./internal/webui
-        run: npm run build
-      # ===== END FRONTEND BUILD =====
+          name: frontend-assets
+          path: internal/webui/
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -280,7 +269,7 @@ jobs:
           name: binaries
           path: bin/
 
-  # Job 5: Integration Tests
+  # Job 6: Integration Tests
   integration:
     name: Integration Tests
     runs-on: ubuntu-latest
@@ -297,7 +286,7 @@ jobs:
       - name: Run integration tests
         run: go test -v -count=1 -p 1 -tags=integration -timeout=300s ./test/...
 
-  # Job 6: Benchmark
+  # Job 7: Benchmark
   benchmark:
     name: Benchmark
     runs-on: ubuntu-latest
@@ -330,7 +319,7 @@ jobs:
           path: benchmark.txt
           retention-days: 30
 
-  # Job 7: Docker Build
+  # Job 8: Docker Build
   docker:
     name: Docker Build
     runs-on: ubuntu-latest

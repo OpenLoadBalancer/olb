@@ -32,24 +32,7 @@ func (e *Engine) validateConfig(cfg *config.Config) error {
 
 	// Validate pools have valid algorithms
 	for _, pool := range cfg.Pools {
-		switch pool.Algorithm {
-		case "round_robin", "rr",
-			"weighted_round_robin", "wrr",
-			"least_connections", "lc",
-			"weighted_least_connections", "wlc",
-			"least_response_time", "lrt",
-			"weighted_least_response_time", "wlrt",
-			"ip_hash", "iphash",
-			"consistent_hash", "ch", "ketama",
-			"maglev",
-			"power_of_two", "p2c",
-			"random",
-			"weighted_random", "wrandom",
-			"ring_hash", "ringhash",
-			"sticky",
-			"":
-			// Valid algorithms
-		default:
+		if pool.Algorithm != "" && balancer.Get(pool.Algorithm) == nil {
 			return fmt.Errorf("pool %s: unknown algorithm %s", pool.Name, pool.Algorithm)
 		}
 	}
@@ -103,38 +86,9 @@ func (e *Engine) applyConfig(newCfg *config.Config) error {
 	for _, poolCfg := range newCfg.Pools {
 		pool := backend.NewPool(poolCfg.Name, poolCfg.Algorithm)
 
-		// Create balancer (must match initializePools in engine.go)
-		var bal backend.Balancer
-		switch poolCfg.Algorithm {
-		case "round_robin", "rr":
-			bal = balancer.NewRoundRobin()
-		case "weighted_round_robin", "wrr":
-			bal = balancer.NewWeightedRoundRobin()
-		case "least_connections", "lc":
-			bal = balancer.NewLeastConnections()
-		case "weighted_least_connections", "wlc":
-			bal = balancer.NewWeightedLeastConnections()
-		case "least_response_time", "lrt":
-			bal = balancer.NewLeastResponseTime()
-		case "weighted_least_response_time", "wlrt":
-			bal = balancer.NewWeightedLeastResponseTime()
-		case "ip_hash", "iphash":
-			bal = balancer.NewIPHash()
-		case "consistent_hash", "ch", "ketama":
-			bal = balancer.NewConsistentHash(balancer.DefaultVirtualNodes)
-		case "maglev":
-			bal = balancer.NewMaglev()
-		case "power_of_two", "p2c":
-			bal = balancer.NewPowerOfTwo()
-		case "random":
-			bal = balancer.NewRandom()
-		case "weighted_random", "wrandom":
-			bal = balancer.NewWeightedRandom()
-		case "ring_hash", "ringhash":
-			bal = balancer.NewRingHash()
-		case "sticky":
-			bal = balancer.NewSticky(balancer.NewRoundRobin(), nil)
-		default:
+		// Create balancer using the registry
+		bal := balancer.New(poolCfg.Algorithm)
+		if bal == nil {
 			bal = balancer.NewRoundRobin()
 		}
 		pool.SetBalancer(bal)

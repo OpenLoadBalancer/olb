@@ -1,4 +1,13 @@
-# Build stage
+# Frontend build stage
+FROM node:20-alpine AS frontend
+
+WORKDIR /build/webui
+COPY internal/webui/package.json internal/webui/package-lock.json ./
+RUN npm ci
+COPY internal/webui/ ./
+RUN npm run build
+
+# Go build stage
 FROM golang:1.26-alpine AS builder
 
 # Install build dependencies
@@ -14,9 +23,14 @@ RUN go mod download
 # Copy source code
 COPY . .
 
+# Copy frontend build output into the webui directory for go:embed
+COPY --from=frontend /build/webui/assets/ /build/internal/webui/assets/
+COPY --from=frontend /build/webui/index.html /build/internal/webui/index.html
+COPY --from=frontend /build/webui/favicon.svg /build/internal/webui/favicon.svg
+
 # Build the binary
 RUN CGO_ENABLED=0 go build -trimpath \
-    -ldflags "-s -w -X github.com/openloadbalancer/olb/pkg/version.Version=$(cat VERSION 2>/dev/null || echo '0.1.0')" \
+    -ldflags "-s -w -X github.com/openloadbalancer/olb/pkg/version.Version=$(cat VERSION 2>/dev/null || git describe --tags --always --dirty 2>/dev/null || echo '0.1.0')" \
     -o bin/olb ./cmd/olb
 
 # Runtime stage

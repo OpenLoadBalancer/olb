@@ -69,8 +69,8 @@ build_application() {
     # Build frontend
     log_info "Building frontend..."
     cd internal/webui
-    pnpm install --frozen-lockfile
-    pnpm build
+    npm ci
+    npm run build
     cd ../..
 
     # Build Go binary

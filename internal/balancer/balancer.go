@@ -68,7 +68,9 @@ func Names() []string {
 func init() {
 	// Register built-in balancers
 	Register("round_robin", func() Balancer { return NewRoundRobin() })
+	Register("rr", func() Balancer { return NewRoundRobin() }) // alias
 	Register("weighted_round_robin", func() Balancer { return NewWeightedRoundRobin() })
+	Register("wrr", func() Balancer { return NewWeightedRoundRobin() }) // alias
 	Register("ip_hash", func() Balancer { return NewIPHash() })
 	Register("iphash", func() Balancer { return NewIPHash() }) // alias
 	Register("least_connections", func() Balancer { return NewLeastConnections() })
@@ -90,4 +92,9 @@ func init() {
 	Register("maglev", func() Balancer { return NewMaglev() })
 	Register("ring_hash", func() Balancer { return NewRingHash() })
 	Register("ringhash", func() Balancer { return NewRingHash() }) // alias
+	Register("rendezvous", func() Balancer { return NewRendezvousHash() })
+	Register("rendezvous_hash", func() Balancer { return NewRendezvousHash() }) // alias
+	Register("peak_ewma", func() Balancer { return NewPeakEWMA() })
+	Register("pewma", func() Balancer { return NewPeakEWMA() }) // alias
+	Register("sticky", func() Balancer { return NewSticky(NewRoundRobin(), nil) })
 }
