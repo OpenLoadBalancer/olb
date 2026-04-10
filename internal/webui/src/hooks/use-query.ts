@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { api } from '@/lib/api'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { api, APIError } from '@/lib/api'
 import { toast } from 'sonner'
 import type {
   APIPoolInfo,
@@ -17,6 +17,7 @@ interface UseQueryOptions<T> {
   onError?: (error: Error) => void
   enabled?: boolean
   refetchInterval?: number
+  retryCount?: number
 }
 
 interface QueryResult<T> {
@@ -26,37 +27,80 @@ interface QueryResult<T> {
   refetch: () => Promise<void>
 }
 
+const MAX_RETRIES = 3
+const RETRY_DELAYS = [1000, 2000, 4000]
+const TRANSIENT_STATUS_CODES = new Set([0, 502, 503, 504])
+
+function isTransientError(err: unknown): boolean {
+  if (err instanceof APIError) {
+    return TRANSIENT_STATUS_CODES.has(err.status)
+  }
+  // Network failures (no response) manifest as TypeError
+  if (err instanceof TypeError) {
+    return true
+  }
+  return false
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 export function useQuery<T>(
   queryFn: () => Promise<{ success: boolean; data?: T }>,
   options: UseQueryOptions<T> = {}
 ): QueryResult<T> {
-  const { onSuccess, onError, enabled = true, refetchInterval } = options
+  const { onSuccess, onError, enabled = true, refetchInterval, retryCount = MAX_RETRIES } = options
   const [data, setData] = useState<T | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
+  const abortedRef = useRef(false)
 
   const fetch = useCallback(async () => {
     if (!enabled) return
 
+    abortedRef.current = false
+
     try {
       setIsLoading(true)
       setError(null)
-      const response = await queryFn()
-      if (response.success && response.data !== undefined) {
-        setData(response.data)
-        onSuccess?.(response.data)
+
+      let lastError: Error | null = null
+
+      for (let attempt = 0; attempt <= retryCount; attempt++) {
+        if (abortedRef.current) return
+
+        try {
+          const response = await queryFn()
+          if (response.success && response.data !== undefined) {
+            setData(response.data)
+            onSuccess?.(response.data)
+            return
+          }
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error('Unknown error')
+
+          // Only retry transient errors, and only if we have retries left
+          if (attempt < retryCount && isTransientError(err)) {
+            await sleep(RETRY_DELAYS[attempt] ?? 4000)
+            continue
+          }
+        }
       }
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('Unknown error')
-      setError(error)
-      onError?.(error)
+
+      // All attempts exhausted
+      if (lastError) {
+        setError(lastError)
+        onError?.(lastError)
+      }
     } finally {
       setIsLoading(false)
     }
-  }, [queryFn, enabled, onSuccess, onError])
+  }, [queryFn, enabled, onSuccess, onError, retryCount])
 
   useEffect(() => {
     fetch()
+    return () => { abortedRef.current = true }
   }, [fetch])
 
   useEffect(() => {

@@ -47,20 +47,21 @@ Key design decisions that shaped OpenLoadBalancer.
 - Static memory layout — good cache locality
 - More complex to implement than a simple map, but the implementation is under 500 LOC
 
-## ADR-004: Vanilla JS/CSS for WebUI
+## ADR-004: React + TypeScript for WebUI
 
-**Status**: Accepted
+**Status**: Accepted (supersedes original "Vanilla JS/CSS" decision)
 
-**Context**: The admin dashboard needs to be embedded in the Go binary. React/Vue/Svelte bundles add complexity to the build pipeline.
+**Context**: The admin dashboard needs a modern, maintainable UI with real-time updates. A vanilla JS approach was initially chosen to minimize build complexity, but led to verbose DOM manipulation and poor developer experience for a growing feature set.
 
-**Decision**: Use vanilla JavaScript and CSS with no framework. The WebUI is embedded via `embed.FS` at compile time.
+**Decision**: Use React 19 + TypeScript + Tailwind CSS + Radix UI primitives. The production bundle is built with Vite and embedded via `embed.FS` at compile time. A standalone `dev` server provides hot module replacement during development.
 
 **Consequences**:
-- Zero build tooling — no node_modules, no webpack, no transpilation
-- Embedded in the binary — no separate static file server needed
-- Smaller binary contribution (~200KB vs ~2MB for React)
-- More verbose DOM manipulation code
-- No hot module replacement during development
+- Component-based architecture with type safety — easier to maintain and extend
+- Radix UI provides accessible, unstyled primitives — consistent behavior without heavy CSS frameworks
+- Build step required (`npm run build`) before embedding, but CI handles this automatically
+- Embedded bundle adds ~500KB to the binary (gzipped ~150KB)
+- TypeScript catches UI bugs at compile time rather than runtime
+- Hot module replacement available via `npm run dev` during development
 
 ## ADR-005: Config-Gated Middleware
 

@@ -27,26 +27,374 @@ servers:
     description: Production
 
 tags:
+  - name: System
+    description: System information and control
+  - name: Pools
+    description: Backend pool management
+  - name: Backends
+    description: Backend instance management
+  - name: Routes
+    description: Routing rules
   - name: Health
     description: Health check endpoints
-  - name: Metrics
-    description: Prometheus and runtime metrics
-  - name: Backends
-    description: Backend pool management
   - name: Config
     description: Configuration management
-  - name: Cluster
-    description: Cluster operations
+  - name: Certificates
+    description: TLS certificate information
   - name: WAF
     description: Web Application Firewall
+  - name: Middleware
+    description: Middleware status
+  - name: Events
+    description: Activity feed
+  - name: Cluster
+    description: Cluster operations
+  - name: Metrics
+    description: Prometheus and runtime metrics
 
 paths:
+  # ---------------------------------------------------------------------------
+  # System
+  # ---------------------------------------------------------------------------
+
+  /api/v1/system/info:
+    get:
+      tags: [System]
+      summary: System information
+      description: Returns version, build, uptime, and runtime information
+      operationId: getSystemInfo
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: System information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemInfoResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/system/health:
+    get:
+      tags: [System]
+      summary: System health
+      description: Returns health status with per-component checks
+      operationId: getSystemHealth
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: Health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatusResponse'
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatusResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/system/reload:
+    post:
+      tags: [System]
+      summary: Reload configuration
+      description: Triggers a hot configuration reload (protected by circuit breaker)
+      operationId: reloadConfig
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: Reload succeeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '429':
+          description: Reload already in progress or circuit breaker open
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/version:
+    get:
+      tags: [System]
+      summary: Version information
+      description: Returns version, commit, build date, Go version, and platform
+      operationId: getVersion
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: Version information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ---------------------------------------------------------------------------
+  # Pools
+  # ---------------------------------------------------------------------------
+
+  /api/v1/pools:
+    get:
+      tags: [Pools]
+      summary: List pools
+      description: Returns all backend pools with their backends and health info
+      operationId: listPools
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: List of pools
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PoolListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/pools/{name}:
+    get:
+      tags: [Pools]
+      summary: Get pool details
+      description: Returns detailed information for a specific pool
+      operationId: getPool
+      security: [{bearerAuth: []}]
+      parameters:
+        - $ref: '#/components/parameters/PoolName'
+      responses:
+        '200':
+          description: Pool details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PoolInfoResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ---------------------------------------------------------------------------
+  # Backends
+  # ---------------------------------------------------------------------------
+
+  /api/v1/backends:
+    get:
+      tags: [Backends]
+      summary: List pool names
+      description: Returns the names of all backend pools
+      operationId: listBackendPools
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: List of pool names
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackendPoolListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/backends/{pool}:
+    get:
+      tags: [Backends]
+      summary: List backends in pool
+      description: Returns all backends in a specific pool
+      operationId: listBackendsInPool
+      security: [{bearerAuth: []}]
+      parameters:
+        - $ref: '#/components/parameters/PoolName'
+      responses:
+        '200':
+          description: List of backends
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackendListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Backends]
+      summary: Add backend to pool
+      description: Adds a new backend to the specified pool (Raft-aware in clustered mode)
+      operationId: addBackend
+      security: [{bearerAuth: []}]
+      parameters:
+        - $ref: '#/components/parameters/PoolName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddBackendRequest'
+      responses:
+        '201':
+          description: Backend added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/backends/{pool}/{backend}:
+    get:
+      tags: [Backends]
+      summary: Get backend details
+      description: Returns detailed information for a specific backend
+      operationId: getBackend
+      security: [{bearerAuth: []}]
+      parameters:
+        - $ref: '#/components/parameters/PoolName'
+        - $ref: '#/components/parameters/BackendID'
+      responses:
+        '200':
+          description: Backend details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackendInfoResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [Backends]
+      summary: Update backend
+      description: Updates backend weight and/or max connections (Raft-aware in clustered mode)
+      operationId: updateBackend
+      security: [{bearerAuth: []}]
+      parameters:
+        - $ref: '#/components/parameters/PoolName'
+        - $ref: '#/components/parameters/BackendID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBackendRequest'
+      responses:
+        '200':
+          description: Backend updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      tags: [Backends]
+      summary: Remove backend
+      description: Removes a backend from the pool (Raft-aware in clustered mode)
+      operationId: removeBackend
+      security: [{bearerAuth: []}]
+      parameters:
+        - $ref: '#/components/parameters/PoolName'
+        - $ref: '#/components/parameters/BackendID'
+      responses:
+        '200':
+          description: Backend removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/backends/{pool}/{backend}/drain:
+    post:
+      tags: [Backends]
+      summary: Drain backend
+      description: Sets the backend to draining state — stops sending new connections while in-flight requests complete
+      operationId: drainBackend
+      security: [{bearerAuth: []}]
+      parameters:
+        - $ref: '#/components/parameters/PoolName'
+        - $ref: '#/components/parameters/BackendID'
+      responses:
+        '200':
+          description: Backend draining
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ---------------------------------------------------------------------------
+  # Routes
+  # ---------------------------------------------------------------------------
+
+  /api/v1/routes:
+    get:
+      tags: [Routes]
+      summary: List routes
+      description: Returns all configured routing rules
+      operationId: listRoutes
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: List of routes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ---------------------------------------------------------------------------
+  # Health
+  # ---------------------------------------------------------------------------
+
+  /api/v1/health:
+    get:
+      tags: [Health]
+      summary: Backend health status
+      description: Returns per-backend health check results including status, last check time, and latency
+      operationId: getBackendHealth
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: Health check results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /health:
     get:
-      tags:
-        - Health
-      summary: Health check
-      description: Returns the health status of the load balancer
+      tags: [Health]
+      summary: Simple health check
+      description: Returns the health status of the load balancer (no authentication required)
       operationId: getHealth
       responses:
         '200':
@@ -57,17 +405,233 @@ paths:
                 $ref: '#/components/schemas/HealthResponse'
         '503':
           description: Service is unhealthy
+
+  # ---------------------------------------------------------------------------
+  # Config
+  # ---------------------------------------------------------------------------
+
+  /api/v1/config:
+    get:
+      tags: [Config]
+      summary: Get configuration
+      description: Returns the current live configuration
+      operationId: getConfig
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: Current configuration
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthResponse'
+                $ref: '#/components/schemas/ConfigResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [Config]
+      summary: Update configuration
+      description: Replaces the live configuration (Raft propose in clustered mode, reload in standalone)
+      operationId: updateConfig
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Full configuration object matching the YAML config schema
+      responses:
+        '200':
+          description: Configuration updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: Invalid configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ---------------------------------------------------------------------------
+  # Certificates
+  # ---------------------------------------------------------------------------
+
+  /api/v1/certificates:
+    get:
+      tags: [Certificates]
+      summary: List certificates
+      description: Returns loaded TLS certificates with names, expiry timestamps, and wildcard flags
+      operationId: listCertificates
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: Certificate list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificateListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ---------------------------------------------------------------------------
+  # WAF
+  # ---------------------------------------------------------------------------
+
+  /api/v1/waf/status:
+    get:
+      tags: [WAF]
+      summary: WAF status
+      description: Returns Web Application Firewall module status and configuration
+      operationId: getWAFStatus
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: WAF status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WAFStatusResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ---------------------------------------------------------------------------
+  # Middleware
+  # ---------------------------------------------------------------------------
+
+  /api/v1/middleware/status:
+    get:
+      tags: [Middleware]
+      summary: Middleware status
+      description: Returns the status of all middleware components
+      operationId: getMiddlewareStatus
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: Middleware status list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MiddlewareStatusResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ---------------------------------------------------------------------------
+  # Events
+  # ---------------------------------------------------------------------------
+
+  /api/v1/events:
+    get:
+      tags: [Events]
+      summary: Activity feed
+      description: Returns a recent activity feed of backend health events and system events
+      operationId: getEvents
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: Event list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ---------------------------------------------------------------------------
+  # Cluster
+  # ---------------------------------------------------------------------------
+
+  /api/v1/cluster/status:
+    get:
+      tags: [Cluster]
+      summary: Cluster status
+      description: Returns full cluster status including node ID, Raft state, leader, term, and members
+      operationId: getClusterStatus
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: Cluster status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterStatusResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/cluster/join:
+    post:
+      tags: [Cluster]
+      summary: Join cluster
+      description: Joins an existing cluster using seed addresses
+      operationId: joinCluster
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClusterJoinRequest'
+      responses:
+        '200':
+          description: Successfully joined
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: Invalid seed addresses
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/cluster/leave:
+    post:
+      tags: [Cluster]
+      summary: Leave cluster
+      description: Gracefully leaves the cluster (drains connections first)
+      operationId: leaveCluster
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: Successfully left
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/cluster/members:
+    get:
+      tags: [Cluster]
+      summary: Cluster members
+      description: Lists all cluster members with Raft state and health
+      operationId: getClusterMembers
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: Member list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterMembersResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ---------------------------------------------------------------------------
+  # Metrics
+  # ---------------------------------------------------------------------------
 
   /metrics:
     get:
-      tags:
-        - Metrics
+      tags: [Metrics]
       summary: Prometheus metrics
-      description: Returns metrics in Prometheus exposition format
+      description: Returns metrics in Prometheus exposition format (no authentication required)
       operationId: getMetrics
       responses:
         '200':
@@ -77,46 +641,21 @@ paths:
               schema:
                 type: string
 
-  /api/v1/status:
+  /api/v1/metrics:
     get:
-      tags:
-        - Health
-      summary: Detailed status
-      description: Returns detailed status information
-      operationId: getStatus
-      security:
-        - bearerAuth: []
+      tags: [Metrics]
+      summary: JSON metrics
+      description: Returns all metrics in JSON format
+      operationId: getMetricsJSON
+      security: [{bearerAuth: []}]
       responses:
         '200':
-          description: Status information
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StatusResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
-  /api/v1/backends:
-    get:
-      tags:
-        - Backends
-      summary: List backends
-      description: Returns all backends in all pools
-      operationId: listBackends
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: List of backends
+          description: Metrics as JSON
           content:
             application/json:
               schema:
                 type: object
-                properties:
-                  pools:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Pool'
+                additionalProperties: true
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -127,28 +666,157 @@ components:
       scheme: bearer
       bearerFormat: JWT
 
+  parameters:
+    PoolName:
+      name: pool
+      in: path
+      required: true
+      description: Backend pool name
+      schema:
+        type: string
+
+    BackendID:
+      name: backend
+      in: path
+      required: true
+      description: Backend identifier
+      schema:
+        type: string
+
   responses:
     Unauthorized:
-      description: Unauthorized
+      description: Unauthorized — missing or invalid authentication
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              error:
-                type: string
+            $ref: '#/components/schemas/ErrorResponse'
 
     NotFound:
       description: Resource not found
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              error:
-                type: string
+            $ref: '#/components/schemas/ErrorResponse'
 
   schemas:
+    # -------------------------------------------------------------------------
+    # Common envelopes
+    # -------------------------------------------------------------------------
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          additionalProperties: true
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+
+    # -------------------------------------------------------------------------
+    # System
+    # -------------------------------------------------------------------------
+
+    SystemInfo:
+      type: object
+      properties:
+        version:
+          type: string
+          example: "1.0.0"
+        commit:
+          type: string
+          example: "abc1234"
+        build_date:
+          type: string
+          example: "2024-01-15T10:30:00Z"
+        uptime:
+          type: string
+          example: "2h30m15s"
+        state:
+          type: string
+          enum: [running, stopping, reloading]
+        go_version:
+          type: string
+          example: "go1.25.0"
+
+    SystemInfoResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/SystemInfo'
+
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy, degraded]
+        checks:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/HealthCheck'
+        timestamp:
+          type: string
+          format: date-time
+
+    HealthCheck:
+      type: object
+      properties:
+        status:
+          type: string
+        message:
+          type: string
+        count:
+          type: integer
+        total:
+          type: integer
+
+    HealthStatusResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/HealthStatus'
+
+    VersionInfo:
+      type: object
+      properties:
+        version:
+          type: string
+        commit:
+          type: string
+        build_date:
+          type: string
+        go_version:
+          type: string
+        platform:
+          type: string
+
+    VersionResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/VersionInfo'
+
     HealthResponse:
       type: object
       properties:
@@ -160,30 +828,11 @@ components:
         uptime:
           type: string
 
-    StatusResponse:
-      type: object
-      properties:
-        version:
-          type: string
-        uptime:
-          type: string
-        listeners:
-          type: array
-          items:
-            type: object
-        pools:
-          type: integer
-        backends:
-          type: integer
-        requests:
-          type: object
-          properties:
-            total:
-              type: integer
-            errors:
-              type: integer
+    # -------------------------------------------------------------------------
+    # Pools
+    # -------------------------------------------------------------------------
 
-    Pool:
+    PoolInfo:
       type: object
       properties:
         name:
@@ -193,21 +842,416 @@ components:
         backends:
           type: array
           items:
-            $ref: '#/components/schemas/Backend'
+            $ref: '#/components/schemas/BackendInfo'
+        total:
+          type: integer
+        healthy:
+          type: integer
+        health_check:
+          $ref: '#/components/schemas/HealthCheckInfo'
 
-    Backend:
+    HealthCheckInfo:
       type: object
       properties:
+        enabled:
+          type: boolean
+        interval:
+          type: integer
+          description: Interval in nanoseconds
+        timeout:
+          type: integer
+          description: Timeout in nanoseconds
+        path:
+          type: string
+        port:
+          type: integer
+
+    PoolListResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/PoolInfo'
+
+    PoolInfoResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/PoolInfo'
+
+    # -------------------------------------------------------------------------
+    # Backends
+    # -------------------------------------------------------------------------
+
+    BackendInfo:
+      type: object
+      properties:
+        id:
+          type: string
         address:
           type: string
         weight:
           type: integer
+          format: int32
+        max_conns:
+          type: integer
+          format: int32
         state:
           type: string
           enum: [up, down, draining, starting]
-        connections:
+        healthy:
+          type: boolean
+        active_conns:
           type: integer
-        requests:
+          format: int64
+        total_requests:
           type: integer
-        errors:
+          format: int64
+        total_errors:
           type: integer
+          format: int64
+        total_bytes:
+          type: integer
+          format: int64
+        avg_latency:
+          type: string
+        last_latency:
+          type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+
+    AddBackendRequest:
+      type: object
+      required: [id, address]
+      properties:
+        id:
+          type: string
+        address:
+          type: string
+        weight:
+          type: integer
+          minimum: 0
+
+    UpdateBackendRequest:
+      type: object
+      properties:
+        weight:
+          type: integer
+          format: int32
+          minimum: 0
+        max_conns:
+          type: integer
+          format: int32
+          minimum: 0
+
+    BackendPoolListResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                type: string
+
+    BackendListResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/BackendInfo'
+
+    BackendInfoResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/BackendInfo'
+
+    # -------------------------------------------------------------------------
+    # Routes
+    # -------------------------------------------------------------------------
+
+    RouteInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        host:
+          type: string
+        path:
+          type: string
+        methods:
+          type: array
+          items:
+            type: string
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        backend_pool:
+          type: string
+        priority:
+          type: integer
+
+    RouteListResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/RouteInfo'
+
+    # -------------------------------------------------------------------------
+    # Health Checks
+    # -------------------------------------------------------------------------
+
+    HealthStatusInfo:
+      type: object
+      properties:
+        backend_id:
+          type: string
+        status:
+          type: string
+        last_check:
+          type: string
+          format: date-time
+        latency:
+          type: string
+        error:
+          type: string
+
+    HealthCheckListResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/HealthStatusInfo'
+
+    # -------------------------------------------------------------------------
+    # Config
+    # -------------------------------------------------------------------------
+
+    ConfigResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              additionalProperties: true
+              description: Full configuration object matching the YAML config schema
+
+    # -------------------------------------------------------------------------
+    # Certificates
+    # -------------------------------------------------------------------------
+
+    CertificateInfo:
+      type: object
+      properties:
+        names:
+          type: array
+          items:
+            type: string
+        expiry:
+          type: integer
+          format: int64
+          description: Expiry as Unix timestamp
+        is_wildcard:
+          type: boolean
+
+    CertificateListResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/CertificateInfo'
+
+    # -------------------------------------------------------------------------
+    # WAF
+    # -------------------------------------------------------------------------
+
+    WAFStatus:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        mode:
+          type: string
+          enum: [enforce, monitor, disabled]
+        ip_acl:
+          type: object
+          additionalProperties: true
+        rate_limit:
+          type: object
+          additionalProperties: true
+        sanitizer:
+          type: object
+          additionalProperties: true
+        detection:
+          type: object
+          additionalProperties: true
+        bot_detection:
+          type: object
+          additionalProperties: true
+        response:
+          type: object
+          additionalProperties: true
+
+    WAFStatusResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/WAFStatus'
+
+    # -------------------------------------------------------------------------
+    # Middleware
+    # -------------------------------------------------------------------------
+
+    MiddlewareStatusItem:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        enabled:
+          type: boolean
+        category:
+          type: string
+
+    MiddlewareStatusResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/MiddlewareStatusItem'
+
+    # -------------------------------------------------------------------------
+    # Events
+    # -------------------------------------------------------------------------
+
+    EventItem:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [success, info, warning, error]
+        message:
+          type: string
+        timestamp:
+          type: string
+
+    EventListResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/EventItem'
+
+    # -------------------------------------------------------------------------
+    # Cluster
+    # -------------------------------------------------------------------------
+
+    ClusterStatus:
+      type: object
+      properties:
+        node_id:
+          type: string
+        state:
+          type: string
+        raft_state:
+          type: string
+          enum: [leader, follower, candidate, shutdown]
+        leader:
+          type: string
+        term:
+          type: integer
+          format: uint64
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemberInfo'
+        healthy:
+          type: boolean
+        uptime:
+          type: string
+
+    MemberInfo:
+      type: object
+      properties:
+        id:
+          type: string
+        address:
+          type: string
+        raft_state:
+          type: string
+        is_leader:
+          type: boolean
+        last_seen:
+          type: string
+          format: date-time
+        healthy:
+          type: boolean
+
+    ClusterJoinRequest:
+      type: object
+      required: [seed_addrs]
+      properties:
+        seed_addrs:
+          type: array
+          items:
+            type: string
+          minItems: 1
+
+    ClusterStatusResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/ClusterStatus'
+
+    ClusterMembersResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/MemberInfo'
+
+security:
+  - bearerAuth: []
