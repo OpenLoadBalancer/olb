@@ -326,6 +326,9 @@ func (s *Server) Stop(ctx context.Context) error {
 	if s.rateLimiter != nil {
 		s.rateLimiter.stop()
 	}
+	if s.config != nil {
+		s.config.Close()
+	}
 
 	return s.server.Shutdown(ctx)
 }

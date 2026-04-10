@@ -39,6 +39,15 @@ func readBody(r *http.Request) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(r.Body, 1<<20))
 }
 
+// readJSONBody reads a JSON request body with size limiting and strict decoding.
+// It limits the body to 1MB and disallows unknown fields.
+func readJSONBody(r *http.Request, dst any) error {
+	defer r.Body.Close()
+	dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
+	dec.DisallowUnknownFields()
+	return dec.Decode(dst)
+}
+
 // Helper type for extended backend info
 type BackendInfo struct {
 	ID            string            `json:"id"`
@@ -367,9 +376,8 @@ func (s *Server) addBackend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req AddBackendRequest
-	defer r.Body.Close()
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_JSON", "invalid JSON payload")
+	if err := readJSONBody(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
 		return
 	}
 
@@ -521,9 +529,8 @@ func (s *Server) updateBackend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req UpdateBackendRequest
-	defer r.Body.Close()
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_JSON", "invalid JSON payload")
+	if err := readJSONBody(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
 		return
 	}
 

@@ -168,6 +168,7 @@ func (h *HTTP2Handler) newHTTP2Server() *http2.Server {
 		PingTimeout:                  h.config.PingTimeout,
 		MaxUploadBufferPerConnection: h.config.MaxUploadBufferPerConnection,
 		MaxUploadBufferPerStream:     h.config.MaxUploadBufferPerStream,
+		WriteByteTimeout:             30 * time.Second,
 	}
 	// HPACK bomb protection: limit decoder header table size
 	if h.config.MaxDecoderHeaderBytes > 0 {
@@ -313,14 +314,20 @@ func (l *HTTP2Listener) Start() error {
 		PingTimeout:                  l.config.PingTimeout,
 		MaxUploadBufferPerConnection: l.config.MaxUploadBufferPerConnection,
 		MaxUploadBufferPerStream:     l.config.MaxUploadBufferPerStream,
+		WriteByteTimeout:             30 * time.Second,
 	}
 	if l.config.MaxDecoderHeaderBytes > 0 {
 		l.h2Server.MaxDecoderHeaderTableSize = l.config.MaxDecoderHeaderBytes
 	}
 
-	// Create HTTP server
+	// Create HTTP server with timeouts matching the proxy defaults
 	l.server = &http.Server{
-		Handler: l.handler,
+		Handler:           l.handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1 MB
 	}
 
 	// If TLS is configured, wrap the listener

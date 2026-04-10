@@ -99,12 +99,12 @@ func (l *HTTPListener) Start() error {
 
 	// Create HTTP server with configured timeouts
 	l.server = &http.Server{
-		Handler:        l.handler,
-		ReadTimeout:    l.readTimeout,
-		WriteTimeout:   l.writeTimeout,
-		IdleTimeout:    l.idleTimeout,
-		MaxHeaderBytes: l.maxHeaderBytes,
-		// Use our listener's address in case :0 was used
+		Handler:           l.handler,
+		ReadHeaderTimeout: l.headerTimeout,
+		ReadTimeout:       l.readTimeout,
+		WriteTimeout:      l.writeTimeout,
+		IdleTimeout:       l.idleTimeout,
+		MaxHeaderBytes:    l.maxHeaderBytes,
 	}
 
 	// Set running state before starting goroutine
