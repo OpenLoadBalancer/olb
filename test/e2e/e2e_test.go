@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -203,10 +204,9 @@ pools:
 			})
 
 			proxyAddr := cfg.Listeners[0].Address
+			adminAddr := cfg.Admin.Address
 			waitForReady(t, proxyAddr, 5*time.Second)
-
-			// Wait for health checks to mark backends healthy
-			time.Sleep(2 * time.Second)
+			waitForReady(t, adminAddr, 5*time.Second)
 
 			client := &http.Client{Timeout: 5 * time.Second}
 			successCount := 0
@@ -319,10 +319,10 @@ pools:
 	})
 
 	proxyAddr := cfg.Listeners[0].Address
+	adminAddr := cfg.Admin.Address
 	waitForReady(t, proxyAddr, 5*time.Second)
-
-	// Wait for health checks to mark all backends healthy
-	time.Sleep(3 * time.Second)
+	waitForReady(t, adminAddr, 5*time.Second)
+	time.Sleep(3 * time.Second) // Let health checker establish baseline
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
@@ -478,8 +478,9 @@ pools:
 	})
 
 	proxyAddr := cfg.Listeners[0].Address
+	adminAddr := cfg.Admin.Address
 	waitForReady(t, proxyAddr, 5*time.Second)
-	time.Sleep(2 * time.Second) // Wait for health checks
+	waitForReady(t, adminAddr, 5*time.Second)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
@@ -583,8 +584,9 @@ pools:
 	})
 
 	proxyAddr := cfg.Listeners[0].Address
+	adminAddr := cfg.Admin.Address
 	waitForReady(t, proxyAddr, 5*time.Second)
-	time.Sleep(2 * time.Second) // Wait for health checks
+	waitForReady(t, adminAddr, 5*time.Second)
 
 	// Send an OPTIONS preflight request
 	req, err := http.NewRequest("OPTIONS", fmt.Sprintf("http://%s/", proxyAddr), nil)
@@ -700,8 +702,9 @@ pools:
 	})
 
 	proxyAddr := cfg.Listeners[0].Address
+	adminAddr := cfg.Admin.Address
 	waitForReady(t, proxyAddr, 5*time.Second)
-	time.Sleep(2 * time.Second)
+	waitForReady(t, adminAddr, 5*time.Second)
 
 	// Send request with Accept-Encoding: gzip
 	// NOTE: We use a custom transport that does NOT auto-decompress,
@@ -818,8 +821,9 @@ pools:
 	})
 
 	proxyAddr := cfg.Listeners[0].Address
+	adminAddr := cfg.Admin.Address
 	waitForReady(t, proxyAddr, 5*time.Second)
-	time.Sleep(2 * time.Second)
+	waitForReady(t, adminAddr, 5*time.Second)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
@@ -1069,7 +1073,6 @@ pools:
 	adminAddr := cfg.Admin.Address
 	waitForReady(t, proxyAddr, 5*time.Second)
 	waitForReady(t, adminAddr, 5*time.Second)
-	time.Sleep(2 * time.Second)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
@@ -1133,7 +1136,7 @@ pools:
 	}
 
 	// Wait for new config to take effect and health checks
-	time.Sleep(3 * time.Second)
+	time.Sleep(1 * time.Second) // Brief wait for reload propagation
 
 	// Send requests to verify both backends receive traffic
 	b1Hits.Store(0)
@@ -1304,8 +1307,9 @@ pools:
 	})
 
 	proxyAddr := cfg.Listeners[0].Address
+	adminAddr := cfg.Admin.Address
 	waitForReady(t, proxyAddr, 5*time.Second)
-	time.Sleep(2 * time.Second) // Wait for health checks
+	waitForReady(t, adminAddr, 5*time.Second)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
@@ -1410,8 +1414,9 @@ pools:
 	})
 
 	proxyAddr := cfg.Listeners[0].Address
+	adminAddr := cfg.Admin.Address
 	waitForReady(t, proxyAddr, 5*time.Second)
-	time.Sleep(2 * time.Second) // Wait for health checks
+	waitForReady(t, adminAddr, 5*time.Second)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
@@ -1516,8 +1521,9 @@ pools:
 	})
 
 	proxyAddr := cfg.Listeners[0].Address
+	adminAddr := cfg.Admin.Address
 	waitForReady(t, proxyAddr, 5*time.Second)
-	time.Sleep(2 * time.Second)
+	waitForReady(t, adminAddr, 5*time.Second)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
@@ -1605,8 +1611,9 @@ pools:
 	})
 
 	proxyAddr := cfg.Listeners[0].Address
+	adminAddr := cfg.Admin.Address
 	waitForReady(t, proxyAddr, 5*time.Second)
-	time.Sleep(2 * time.Second)
+	waitForReady(t, adminAddr, 5*time.Second)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
@@ -1687,8 +1694,9 @@ pools:
 	})
 
 	proxyAddr := cfg.Listeners[0].Address
+	adminAddr := cfg.Admin.Address
 	waitForReady(t, proxyAddr, 5*time.Second)
-	time.Sleep(2 * time.Second)
+	waitForReady(t, adminAddr, 5*time.Second)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
@@ -1772,8 +1780,9 @@ pools:
 	})
 
 	proxyAddr := cfg.Listeners[0].Address
+	adminAddr := cfg.Admin.Address
 	waitForReady(t, proxyAddr, 5*time.Second)
-	time.Sleep(2 * time.Second)
+	waitForReady(t, adminAddr, 5*time.Second)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
@@ -1941,8 +1950,9 @@ pools:
 	})
 
 	proxyAddr := cfg.Listeners[0].Address
+	adminAddr := cfg.Admin.Address
 	waitForReady(t, proxyAddr, 5*time.Second)
-	time.Sleep(2 * time.Second) // Wait for health checks
+	waitForReady(t, adminAddr, 5*time.Second)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
@@ -2030,8 +2040,9 @@ pools:
 	})
 
 	proxyAddr := cfg.Listeners[0].Address
+	adminAddr := cfg.Admin.Address
 	waitForReady(t, proxyAddr, 5*time.Second)
-	time.Sleep(2 * time.Second) // Wait for health checks
+	waitForReady(t, adminAddr, 5*time.Second)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
@@ -2150,8 +2161,9 @@ pools:
 	})
 
 	proxyAddr := cfg.Listeners[0].Address
+	adminAddr := cfg.Admin.Address
 	waitForReady(t, proxyAddr, 5*time.Second)
-	time.Sleep(2 * time.Second) // Wait for health checks
+	waitForReady(t, adminAddr, 5*time.Second)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
@@ -2260,7 +2272,6 @@ pools:
 	adminAddr := cfg.Admin.Address
 	waitForReady(t, proxyAddr, 5*time.Second)
 	waitForReady(t, adminAddr, 5*time.Second)
-	time.Sleep(2 * time.Second) // Wait for health checks
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
@@ -2389,8 +2400,9 @@ pools:
 	})
 
 	proxyAddr := fmt.Sprintf("127.0.0.1:%d", proxyPort)
+	adminAddr := fmt.Sprintf("127.0.0.1:%d", adminPort)
 	waitForReady(t, proxyAddr, 5*time.Second)
-	time.Sleep(2 * time.Second) // Wait for health checks
+	waitForReady(t, adminAddr, 5*time.Second)
 
 	// Connect to the TCP proxy and send data
 	conn, err := net.DialTimeout("tcp", proxyAddr, 5*time.Second)
@@ -2651,9 +2663,10 @@ func TestE2E_MultipleListeners(t *testing.T) {
 
 	httpAddr := fmt.Sprintf("127.0.0.1:%d", httpPort)
 	tcpAddr := fmt.Sprintf("127.0.0.1:%d", tcpPort)
+	adminAddr := fmt.Sprintf("127.0.0.1:%d", adminPort)
 	waitForReady(t, httpAddr, 5*time.Second)
 	waitForReady(t, tcpAddr, 5*time.Second)
-	time.Sleep(2 * time.Second) // Wait for health checks
+	waitForReady(t, adminAddr, 5*time.Second)
 
 	// Test 1: HTTP listener works
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -2701,6 +2714,97 @@ func TestE2E_MultipleListeners(t *testing.T) {
 	if httpHits.Load() > 0 && tcpResponse == message {
 		t.Log("Multiple listeners confirmed: HTTP and TCP listeners both active and routing correctly")
 	}
+}
+
+// --- Polling helper functions ---
+
+// poolsResponse is the JSON envelope returned by GET /api/v1/pools.
+type poolsResponse struct {
+	Success bool       `json:"success"`
+	Data    []poolInfo `json:"data"`
+}
+
+// poolInfo represents pool data from the admin API.
+type poolInfo struct {
+	Name     string       `json:"name"`
+	Backends []backendRef `json:"backends"`
+}
+
+// backendRef represents a backend in the pools API response.
+type backendRef struct {
+	Address string `json:"address"`
+	State   string `json:"state"`
+	Healthy bool   `json:"healthy"`
+}
+
+// waitForBackendDown polls GET /api/v1/pools until a backend matching
+// backendAddr reports healthy=false. Fatals on timeout.
+func waitForBackendDown(t *testing.T, adminAddr, backendAddr string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	client := &http.Client{Timeout: 2 * time.Second}
+
+	for time.Now().Before(deadline) {
+		resp, err := client.Get(fmt.Sprintf("http://%s/api/v1/pools", adminAddr))
+		if err != nil {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		var pr poolsResponse
+		if err := json.Unmarshal(body, &pr); err != nil || !pr.Success {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+
+		for _, pool := range pr.Data {
+			for _, b := range pool.Backends {
+				if b.Address == backendAddr && !b.Healthy {
+					t.Logf("Backend %s is down (state=%s)", backendAddr, b.State)
+					return
+				}
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("Timeout waiting for backend %s to go down (waited %v)", backendAddr, timeout)
+}
+
+// waitForBackendUp polls GET /api/v1/pools until a backend matching
+// backendAddr reports healthy=true. Fatals on timeout.
+func waitForBackendUp(t *testing.T, adminAddr, backendAddr string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	client := &http.Client{Timeout: 2 * time.Second}
+
+	for time.Now().Before(deadline) {
+		resp, err := client.Get(fmt.Sprintf("http://%s/api/v1/pools", adminAddr))
+		if err != nil {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		var pr poolsResponse
+		if err := json.Unmarshal(body, &pr); err != nil || !pr.Success {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+
+		for _, pool := range pr.Data {
+			for _, b := range pool.Backends {
+				if b.Address == backendAddr && b.Healthy {
+					t.Logf("Backend %s is up", backendAddr)
+					return
+				}
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("Timeout waiting for backend %s to recover (waited %v)", backendAddr, timeout)
 }
 
 // --- Helper functions ---
