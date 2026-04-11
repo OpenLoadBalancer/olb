@@ -64,7 +64,7 @@
 
 ### Prepare for community contributions
 - [x] **CONTRIBUTING.md** — Comprehensive guide (508 lines) with examples for adding balancers, middleware, WAF detectors
-- [ ] **Code of Conduct enforcement** — Set up reporting mechanism beyond CoC text — Effort: 2h
+- [x] **Code of Conduct enforcement** — Enforcement ladder (correction/warning/temp ban/perm ban) + 14-day appeals process — Effort: 2h
 - [x] **Release automation** — `.goreleaser.yml` exists with builds, Docker multi-arch, Homebrew, nFPM, Helm, SBOM, changelog grouping. Fixed typo, added ShortCommit ldflag, removed unnecessary CGO override.
 - [ ] **Issue/PR templates** — Enhance existing templates with bug report checklists — Effort: 2h
 - [x] **Performance regression tracking** — Benchstat comparison in CI: baseline vs PR branch comparison with PR comment
@@ -74,7 +74,7 @@
 
 ### Improve Web UI maintainability and accessibility
 - [x] **TypeScript migration** — Already done: React 19 + TypeScript + Vite + Tailwind CSS
-- [ ] **Accessibility audit** — Full WCAG 2.1 AA compliance check — Effort: 8h
+- [x] **Accessibility audit** — WCAG 2.1 AA audit completed: page titles, keyboard cards, icon button labels, focus indicators, contrast fixes, loading announcements — Effort: 8h
 - [x] **ARIA labels audit** — Ensure all interactive elements have proper labels — Effort: 4h
 - [x] **Keyboard navigation** — Skip-to-content link, sidebar focus trap, Escape to close, aria-current on nav — Effort: 4h
 - [x] **Mobile responsiveness** — Flex-wrap, intermediate breakpoints, touch targets, text truncation across all pages — Effort: 4h
@@ -102,8 +102,8 @@
 | Phase 2: Security Hardening | 19h + external (19h done) | Complete (external audit pending) |
 | Phase 3: Missing Spec Features | 60h (4h done) | In progress |
 | Phase 4: Observability | 36h (36h done) | Complete |
-| Phase 5: Community | 24h (20h done) | Nearly complete |
-| Phase 6: Web UI | 48h (40h done) | Nearly complete (accessibility audit remaining) |
+| Phase 5: Community | 24h (22h done) | Nearly complete (PR templates enhanced) |
+| Phase 6: Web UI | 48h (48h done) | Complete |
 
 ## Risk Assessment
 
