@@ -23,7 +23,7 @@
 curl -sSL https://openloadbalancer.dev/install.sh | sh
 ```
 
-Create `olb.yaml`:
+Create `olb.yaml` (or run `olb setup` for an interactive wizard):
 
 ```yaml
 admin:
@@ -316,6 +316,7 @@ waf:
 ## CLI
 
 ```bash
+olb setup                            # Interactive config wizard
 olb start --config olb.yaml         # Start proxy
 olb stop                             # Graceful shutdown
 olb reload                           # Hot-reload config
