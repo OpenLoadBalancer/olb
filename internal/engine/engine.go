@@ -119,7 +119,7 @@ type Engine struct {
 
 	// Control channels
 	stopCh   chan struct{}
-	reloadCh chan struct{}
+	stopOnce sync.Once
 	wg       sync.WaitGroup
 }
 
@@ -263,6 +263,7 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 		MaxIdleConns:        maxIdleConns,
 		MaxIdleConnsPerHost: maxIdleConnsPerHost,
 		IdleConnTimeout:     idleConnTimeout,
+		PassiveChecker:      passiveChecker,
 	}
 	proxy := l7.NewHTTPProxy(proxyConfig)
 
@@ -332,6 +333,17 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 	if cfg.Admin != nil {
 		adminCfg.RateLimitMaxRequests = cfg.Admin.RateLimitMaxRequests
 		adminCfg.RateLimitWindow = cfg.Admin.RateLimitWindow
+		if cfg.Admin.Username != "" || cfg.Admin.BearerToken != "" {
+			authCfg := &admin.AuthConfig{
+				Username:     cfg.Admin.Username,
+				Password:     cfg.Admin.Password,
+				BearerTokens: []string{},
+			}
+			if cfg.Admin.BearerToken != "" {
+				authCfg.BearerTokens = append(authCfg.BearerTokens, cfg.Admin.BearerToken)
+			}
+			adminCfg.Auth = authCfg
+		}
 	}
 
 	// Wire optional admin components
@@ -365,7 +377,6 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 		sysMetricsStop:  make(chan struct{}),
 		state:           StateStopped,
 		stopCh:          make(chan struct{}),
-		reloadCh:        make(chan struct{}),
 	}
 
 	// Wire config getter and cert lister for admin API
@@ -381,6 +392,30 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 
 	// Wire middleware status provider for admin API
 	adminCfg.MiddlewareStatus = func() any { return e.buildMiddlewareStatus() }
+
+	// Wire passive health checker callbacks to update backend state
+	e.passiveChecker.OnBackendUnhealthy = func(addr string) {
+		e.mu.RLock()
+		pm := e.poolManager
+		e.mu.RUnlock()
+		if b := pm.GetBackendByAddress(addr); b != nil {
+			b.SetState(backend.StateDown)
+		}
+		e.logger.Warn("Passive health check: backend marked unhealthy",
+			logging.String("backend", addr),
+		)
+	}
+	e.passiveChecker.OnBackendRecovered = func(addr string) {
+		e.mu.RLock()
+		pm := e.poolManager
+		e.mu.RUnlock()
+		if b := pm.GetBackendByAddress(addr); b != nil {
+			b.SetState(backend.StateUp)
+		}
+		e.logger.Info("Passive health check: backend recovered",
+			logging.String("backend", addr),
+		)
+	}
 
 	// Initialize MCP server with provider adapters
 	mcpCfg := mcp.ServerConfig{
@@ -1017,7 +1052,9 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 	}
 
 	// Signal stop
-	close(e.stopCh)
+	e.stopOnce.Do(func() {
+		close(e.stopCh)
+	})
 
 	// Wait for goroutines
 	done := make(chan struct{})
@@ -1208,6 +1245,9 @@ func (e *Engine) initializePools() error {
 			}
 			b := backend.NewBackend(id, backendCfg.Address)
 			b.Weight = int32(backendCfg.Weight)
+			if backendCfg.Scheme != "" {
+				b.Scheme = backendCfg.Scheme
+			}
 			b.SetState(backend.StateUp) // Start as Up, health checker will update
 			if err := pool.AddBackend(b); err != nil {
 				return fmt.Errorf("failed to add backend %s to pool %s: %w",

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/openloadbalancer/olb/pkg/utils"
 	"time"
 )
 
@@ -134,10 +136,7 @@ func (m *Middleware) buildLogEntry(r *http.Request, rec *responseRecorder, durat
 // buildCombinedLogEntry creates Apache Combined Log Format entry.
 func (m *Middleware) buildCombinedLogEntry(r *http.Request, rec *responseRecorder, duration time.Duration, start time.Time) string {
 	// %h %l %u %t "%r" %>s %b "%{Referer}i" "%{User-agent}i"
-	ip := r.RemoteAddr
-	if idx := strings.LastIndex(ip, ":"); idx != -1 {
-		ip = ip[:idx]
-	}
+	ip := utils.ExtractIP(r.RemoteAddr)
 	if ip == "" {
 		ip = "-"
 	}
@@ -172,10 +171,7 @@ func (m *Middleware) buildCombinedLogEntry(r *http.Request, rec *responseRecorde
 // buildCommonLogEntry creates Apache Common Log Format entry.
 func (m *Middleware) buildCommonLogEntry(r *http.Request, rec *responseRecorder, duration time.Duration, start time.Time) string {
 	// %h %l %u %t "%r" %>s %b
-	ip := r.RemoteAddr
-	if idx := strings.LastIndex(ip, ":"); idx != -1 {
-		ip = ip[:idx]
-	}
+	ip := utils.ExtractIP(r.RemoteAddr)
 	if ip == "" {
 		ip = "-"
 	}
@@ -214,10 +210,7 @@ func (m *Middleware) buildJSONEntry(r *http.Request, rec *responseRecorder, dura
 		case "bytes":
 			value = fmt.Sprintf("\"bytes_sent\":%d", rec.bytesSent)
 		case "ip":
-			ip := r.RemoteAddr
-			if idx := strings.LastIndex(ip, ":"); idx != -1 {
-				ip = ip[:idx]
-			}
+			ip := utils.ExtractIP(r.RemoteAddr)
 			value = fmt.Sprintf("\"client_ip\":\"%s\"", ip)
 		case "user_agent":
 			value = fmt.Sprintf("\"user_agent\":\"%s\"", escapeJSON(r.UserAgent()))
@@ -255,10 +248,7 @@ func (m *Middleware) buildCustomEntry(r *http.Request, rec *responseRecorder, du
 		return m.buildCombinedLogEntry(r, rec, duration, start)
 	}
 
-	ip := r.RemoteAddr
-	if idx := strings.LastIndex(ip, ":"); idx != -1 {
-		ip = ip[:idx]
-	}
+	ip := utils.ExtractIP(r.RemoteAddr)
 
 	replacements := map[string]string{
 		"$timestamp":   start.Format(time.RFC3339),

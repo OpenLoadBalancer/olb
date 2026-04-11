@@ -1,171 +1,115 @@
 # Project Roadmap
 
-> Based on comprehensive codebase analysis performed on 2026-04-10
+> Based on comprehensive codebase analysis performed on 2026-04-11
 > This roadmap prioritizes work needed to bring the project to production quality.
 
 ## Current State Assessment
 
-OpenLoadBalancer is in an **exceptionally mature state** for a project of its scope. The codebase implements ~99% of the specification across 400 Go files with 92% average test coverage. All core functionality — L4/L7 proxying, 16 balancer algorithms, clustering, WAF, MCP, Web UI, CLI — is implemented and tested. The project has been through a security audit with all 29 findings resolved.
+**Where the project stands**: OpenLoadBalancer is feature-complete at v1.0. All 305 tasks from the specification are implemented. The codebase has ~87% test coverage, comprehensive CI/CD, 16 load balancing algorithms, a 6-layer WAF, Raft clustering, MCP AI integration, and an embedded Web UI. The project is production-viable for most use cases.
 
-**Key blockers for production readiness:** Minimal. The only substantive code issue is OAuth2 middleware test coverage at 27.8%. The rest is infrastructure/release operations.
+**Key blockers for production**: None critical. The main risks are operational (single author, no external audit) rather than technical.
 
-**What's working well:**
-- Extraordinary test depth (2.65:1 test-to-source ratio)
-- Zero-dependency discipline maintained throughout
-- Clean architecture with proper separation of concerns
-- Comprehensive security hardening
-- Full CI/CD pipeline with race detection, security scanning, and cross-platform builds
+**What's working well**: Dependency discipline, test coverage, CI/CD pipeline, documentation, performance benchmarks, security features.
 
 ---
 
-## Phase 1: Critical Fixes (Week 1)
+## Phase 1: Code Structure Improvements (Week 1-2)
 
-### Must-fix items blocking production confidence
+### Refactor oversized files for maintainability
+- [ ] **Split engine.go** (1,803 LOC) into focused files: `engine.go` (struct + lifecycle), `pool_setup.go`, `route_setup.go`, `component_wiring.go`, `tls_setup.go` — Effort: 8h
+- [ ] **Split gossip.go** (1,739 LOC) into: `gossip.go` (core), `membership.go`, `probe.go`, `broadcast.go` — Effort: 6h
+- [ ] **Split advanced_commands.go** (1,458 LOC) into per-command-group files — Effort: 4h
+- [ ] **Split config parsers** — toml.go (1,595 LOC) into lexer/parser/decoder — Effort: 4h each
 
-- [ ] **Raise OAuth2 middleware test coverage to 85%+** — `internal/middleware/oauth2/` currently at 27.8%. Add tests for: JWKS key fetching and caching, token introspection endpoint, OIDC discovery, ECDSA/RSA key validation, expired token rejection, audience validation. **Effort: ~4h**
+## Phase 2: Security Hardening (Week 3-4)
 
-- [ ] **Fix e2e test flakiness under parallel execution** — `test/e2e/` tests fail when run alongside other packages but pass individually. Root cause: port conflicts from parallel test execution. Fix: use isolated port ranges per test, or add `-p 1` for e2e package in CI. **Effort: ~2h**
+### Strengthen default security posture
+- [ ] **Admin API auth by default** — Add startup warning when admin auth is not configured, consider requiring explicit `auth: none` for unsecured deployments — Effort: 2h
+- [ ] **Admin API rate limiting** — Add built-in rate limit to admin endpoints (especially POST /reload, config mutations) — Effort: 4h
+- [ ] **Fix IPv6 host parsing** — Replace `strings.LastIndex(host, ":")` with `net.SplitHostPort()` in 7+ locations across router, engine, middleware, SSRF detection — Effort: 2h
+- [ ] **Fix Backend.GetURL() scheme** — Add `scheme` field to backend config, default to `http://` but allow `https://` — Effort: 2h
+- [ ] **Wire passive health checker** — Connect `OnBackendUnhealthy`/`OnBackendRecovered` callbacks to pool manager state updates — Effort: 4h
+- [ ] **Default body size limit** — Enable body_limit middleware with a sensible default (e.g., 10MB) even without explicit config — Effort: 2h
+- [ ] **Security headers by default** — Enable basic security headers (X-Content-Type-Options, X-Frame-Options) on admin API — Effort: 2h
+- [ ] **Shutdown guard** — Use `sync.Once` for `close(e.stopCh)` to prevent double-close panic — Effort: 1h
+- [ ] **External security audit** — Commission a third-party security review of the WAF, TLS, and authentication code — Effort: External
 
-- [ ] **Clean up webui-build-temp directory** — `internal/webui-build-temp/` contains stale build artifacts. Either add to `.gitignore` or remove and ensure build process doesn't create tracked artifacts. **Effort: ~15min**
+## Phase 3: Missing Spec Features (Week 5-6)
 
-- [ ] **Align Dockerfile VERSION with git tags** — Dockerfile reads `VERSION` file (`cat VERSION 2>/dev/null || echo '0.1.0'`) but project uses git tags via `git describe`. Update Dockerfile to use git-based version. **Effort: ~30min**
+### Complete spec compliance
+- [ ] **Exec health checks** — Implement external command health check type per spec §9.1 — Effort: 4h
+  - File: `internal/health/exec_check.go`
+  - Support command templates with `{{.Address}}`, `{{.Port}}`
+  - Exit code 0 = healthy
+- [ ] **Request-context aware balancer** — Extend `Balancer.Next()` to accept request context per spec §8.1 — Effort: 16h
+  - Interface change: `Next(ctx *RequestContext, backends []*backend.Backend) *backend.Backend`
+  - Update all 16 algorithm implementations
+  - Enables content-based routing in future
+- [ ] **Brotli compression** — Pure Go brotli implementation per spec §10.6 — Effort: 40h+
+  - This is a significant undertaking. Consider deferring to v1.1.
 
-- [ ] **Fix CI frontend build duplication** — `.github/workflows/ci.yml` runs Node.js setup + `npm ci` + `npm run build` independently in 3 jobs (test, test-race, build). Refactor to share the frontend build artifact across jobs or create a dedicated `build-frontend` job. **Effort: ~2h**
+## Phase 4: Observability Improvements (Week 7-8)
 
-- [ ] **Fix deploy.sh pnpm/npm inconsistency** — `scripts/deploy.sh` runs `pnpm install --frozen-lockfile` but project only has `npm` scripts and CI uses `npm ci`. Align to one package manager. **Effort: ~30min**
+### Enhance production monitoring
+- [ ] **Structured error responses** — Standardize API error format: `{"error": "code", "message": "details", "request_id": "..."}` — Effort: 4h
+- [ ] **Distributed tracing** — Add OpenTelemetry-compatible trace propagation (W3C Trace Context headers) — Effort: 16h
+- [ ] **Health check aggregation** — Add `/api/v1/system/health` that checks all subsystems (listeners, backends, TLS, cluster) — Effort: 4h
+- [ ] **Metrics histograms** — Add latency percentile histograms (p50, p90, p95, p99) to Prometheus output — Effort: 8h
+- [ ] **Grafana dashboard improvements** — Update provided Grafana dashboards with all new metrics — Effort: 4h
 
-- [ ] **Add frontend build step to Dockerfile** — The Dockerfile doesn't include Node.js or a frontend build step. Add a Node.js build stage before the Go build so standalone `docker build` works without pre-built assets. **Effort: ~1h**
+## Phase 5: Community & Sustainability (Week 9-10)
 
-- [ ] **Refactor duplicated algorithm switch-case** — `internal/engine/engine.go` and `internal/engine/config.go` both have a 16-case algorithm name switch. Use the existing `balancer.Get()` registry instead. **Effort: ~1h**
+### Prepare for community contributions
+- [ ] **Add CONTRIBUTING.md examples** — Expand with examples for adding discovery providers, admin API endpoints — Effort: 4h
+- [ ] **Code of Conduct enforcement** — Set up reporting mechanism beyond CoC text — Effort: 2h
+- [ ] **Release automation** — Add `.goreleaser.yml` for automated multi-platform releases — Effort: 4h
+- [ ] **Issue/PR templates** — Enhance existing templates with bug report checklists — Effort: 2h
+- [ ] **Performance regression tracking** — Add `benchstat` comparison in CI for PRs — Effort: 4h
+- [ ] **Architecture Decision Records** — Formalize ADRs for key decisions (balancer registry, middleware pattern, etc.) — Effort: 8h
 
-## Phase 2: Release Operations (Week 1-2)
+## Phase 6: Web UI Modernization (Week 11-14)
 
-### Complete the v1.0.0 release process
+### Improve Web UI maintainability and accessibility
+- [ ] **TypeScript migration** — Add TypeScript to WebUI build pipeline — Effort: 20h
+- [ ] **Accessibility audit** — Full WCAG 2.1 AA compliance check — Effort: 8h
+- [ ] **ARIA labels audit** — Ensure all interactive elements have proper labels — Effort: 4h
+- [ ] **Keyboard navigation** — Verify tab order, focus management, skip links — Effort: 4h
+- [ ] **Mobile responsiveness** — Test and fix on mobile viewports — Effort: 4h
+- [ ] **Bundle size optimization** — Code splitting, lazy loading of pages — Effort: 8h
 
-- [ ] **Configure GHCR permissions for Docker push** — TASKS.md §5.7 notes "Docker images published (GHCR push needs repo permissions)". Set up GitHub Container Registry permissions and test `docker push` workflow. **Effort: ~1h**
+## Beyond v1.0: Future Enhancements
 
-- [ ] **Verify all cross-platform binaries** — Run `make build-all` and verify each binary starts correctly: linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64, windows/arm64, freebsd/amd64. **Effort: ~1h**
+### Features and improvements for future versions
+- [ ] **HTTP/3 (QUIC) support** — Spec mentioned `quic.go` as future work
+- [ ] **GeoIP database** — Spec mentioned embedded GeoIP DB for geo-based routing
+- [ ] **WebAssembly plugins** — Extend plugin system with WASM runtime
+- [ ] **API gateway features** — Request transformation, API versioning, request/response validation
+- [ ] **Service mesh integration** — xDS API support for Envoy-compatible service mesh
+- [ ] **Hot config rollback** — Automatic rollback if new config causes errors within grace period
+- [ ] **Multi-process mode** — Shared-nothing multi-process for zero-downtime upgrades
+- [ ] **WebUI real-time updates** — Server-Sent Events or WebSocket push for live dashboard updates
 
-- [ ] **Test Homebrew formula** — Verify `Formula/` directory has correct formula that installs and runs correctly on macOS. **Effort: ~30min**
-
-- [ ] **Test install script** — Verify `scripts/` install script works on clean Linux and macOS systems. **Effort: ~30min**
-
-- [ ] **Tag and release v1.0.0** — Create annotated tag, trigger release workflow, verify GitHub release assets, verify Docker image published. **Effort: ~1h**
-
-## Phase 3: Hardening (Week 3-4)
-
-### Security, edge cases, and reliability improvements
-
-- [ ] **Add request body size limit enforcement** — Verify body_limit middleware is properly wired for all listener types and tested with oversized payloads. **Effort: ~2h**
-
-- [ ] **Add connection timeout hardening** — Verify slow loris protection is effective. Add integration test for slow connection attack. **Effort: ~3h**
-
-- [ ] **Add HTTP/2 specific hardening** — Test HPACK bomb protection, stream multiplexing limits, SETTINGS frame flood protection. **Effort: ~4h**
-
-- [ ] **Add cluster partition recovery test** — Test network partition scenario with 5 nodes, verify split-brain protection works, verify recovery after partition heals. **Effort: ~4h**
-
-- [ ] **Add admin API rate limiting** — Currently the admin API has auth but no built-in rate limiting. Add rate limiting to prevent brute-force auth attempts. **Effort: ~2h**
-
-- [ ] **Add request/response body validation for admin API** — Ensure all admin API endpoints properly validate JSON input, reject malformed data. **Effort: ~3h**
-
-## Phase 4: Testing Enhancement (Week 5-6)
-
-### Improve test coverage for lower-coverage packages
-
-- [ ] **Raise admin package coverage from 85.3% to 90%+** — Add tests for error paths in handlers, WebSocket event streaming, config API edge cases. **Effort: ~4h**
-
-- [ ] **Raise CLI package coverage from 86.4% to 90%+** — Add tests for TUI rendering, advanced command error paths, shell completion generation. **Effort: ~4h**
-
-- [ ] **Raise engine package coverage from 87.7% to 90%+** — Add tests for reload error scenarios, component initialization failures, concurrent start/stop. **Effort: ~4h**
-
-- [ ] **Add load/stress tests** — Create dedicated load test suite that verifies: 100K+ concurrent connections, sustained 50K+ RPS, memory stability over 24h soak. **Effort: ~8h**
-
-- [ ] **Add chaos testing for cluster** — Random node kills, network delays, disk full scenarios for Raft cluster. **Effort: ~8h**
-
-- [ ] **Add React component tests** — The WebUI has zero frontend tests. Add Vitest + React Testing Library tests for critical pages (dashboard, pools, listeners, WAF). Target: 60%+ component coverage. **Effort: ~8h**
-
-- [ ] **Refactor CLI top.go** — Split `internal/cli/top.go` (1,078 LOC) into separate files: `tui.go`, `screen.go`, `input.go`, `layout.go`, `terminal.go`. **Effort: ~2h**
-
-- [ ] **Replace bubble-sort with sort.Slice in CLI** — `internal/cli/cli.go`, `formatter.go`, `parser.go` use manual bubble-sort. Replace with idiomatic `sort.Slice`. **Effort: ~30min**
-
-## Phase 5: Performance & Optimization (Week 7-8)
-
-### Performance tuning based on benchmark analysis
-
-- [ ] **Profile and optimize L7 proxy hot path** — Run `go tool pprof` under sustained load. Target: reduce per-request allocation count. Current proxy overhead is 137µs — target <100µs. **Effort: ~8h**
-
-- [ ] **Benchmark on dedicated hardware** — Current benchmarks are from development machine. Run on production-equivalent hardware (8-core, 16GB RAM) to get accurate numbers. Compare against nginx/HAProxy/Caddy. **Effort: ~4h**
-
-- [ ] **Optimize connection pool hit rate** — Add metrics for pool hit/miss rate. Tune pool size based on actual traffic patterns. **Effort: ~4h**
-
-- [ ] **Add memory pressure testing** — Verify behavior under memory pressure (near OOM). Test GC impact on tail latencies. **Effort: ~4h**
-
-- [ ] **Optimize WAF detection hot path** — Profile WAF regex matching under load. Consider Aho-Corasick for multi-pattern matching if needed. **Effort: ~8h**
-
-## Phase 6: Documentation & DX (Week 9-10)
-
-### Documentation polish and developer experience
-
-- [ ] **Generate OpenAPI spec** — Create `openapi.yaml` from the admin API implementation. Consider auto-generation from Go handler comments. **Effort: ~8h**
-
-- [ ] **Add architecture decision records (ADRs)** — Document key decisions: why custom parsers instead of libraries, why Raft from scratch, why React instead of vanilla JS, why not use grpc-go. **Effort: ~4h**
-
-- [ ] **Create migration guides** — Nginx → OLB, HAProxy → OLB, Caddy → OLB, Traefik → OLB config migration guides with examples. **Effort: ~8h**
-
-- [ ] **Add Grafana dashboard templates** — Expand `deploy/grafana/` with comprehensive dashboards for: overview, backends, WAF, cluster, TLS. **Effort: ~6h**
-
-- [ ] **Create video/interactive tutorial** — 5-minute getting started demo. Embed in website or link from README. **Effort: ~4h**
-
-- [ ] **Add shared state management to WebUI** — Multiple pages fetch the same data independently (pools, health). Implement a lightweight shared cache (e.g., SWR or React Query pattern) to reduce redundant API calls. **Effort: ~4h**
-
-- [ ] **Add error retry with backoff to WebUI** — The `useQuery` hook has no automatic retry. Add exponential backoff for transient network errors. **Effort: ~2h**
-
-- [ ] **Expand WebUI CRUD capabilities** — Currently most management pages show "requires config file update" toasts. Implement full CRUD for pools, routes, listeners, and middleware via admin API. **Effort: ~16h**
-
-- [ ] **Add WebUI accessibility improvements** — Add `aria-live` regions for dynamic content, skip-to-content link, consistent focus management. **Effort: ~4h**
-
-## Phase 7: Post-Release Features (Week 11+)
-
-### Features and improvements for v1.1+
-
-- [ ] **HTTP/3 (QUIC) support** — Spec mentions this as "future". Requires QUIC implementation or `quic-go` dependency (would break zero-dep goal unless implemented from scratch). **Effort: ~80h**
-
-- [ ] **Brotli compression** — Spec mentions pure Go Brotli. Currently only gzip/deflate. Requires implementing Brotli from scratch to maintain zero-dep. **Effort: ~40h**
-
-- [ ] **RBAC for admin API** — Spec mentions "RBAC (future)". Implement role-based access control for admin API (read-only, operator, admin roles). **Effort: ~16h**
-
-- [ ] **GeoIP database integration** — Spec mentions "GeoIP (embedded DB, future)". Requires embedded GeoIP database with periodic updates. **Effort: ~24h**
-
-- [ ] **WebAssembly plugin support** — Currently supports Go `.so` plugins. Add WASM-based plugin sandboxing for safer, more portable plugins. **Effort: ~40h**
-
-- [ ] **Consul service discovery verification** — Verify and test Consul provider works with real Consul cluster. Add integration tests. **Effort: ~8h**
-
-- [ ] **Prometheus remote write** — Add ability to push metrics to remote Prometheus instance instead of only pull-based scraping. **Effort: ~16h**
-
-- [ ] **Configuration dry-run/diff API** — Add admin API endpoint that validates and diffs a proposed config change without applying it. **Effort: ~8h**
+---
 
 ## Effort Summary
 
 | Phase | Estimated Hours | Priority | Dependencies |
-|-------|----------------|----------|--------------|
-| Phase 1: Critical Fixes | ~12h | CRITICAL | None |
-| Phase 2: Release Operations | ~4h | CRITICAL | Phase 1 |
-| Phase 3: Hardening | ~18h | HIGH | Phase 2 |
-| Phase 4: Testing Enhancement | ~42h | HIGH | Phase 3 |
-| Phase 5: Performance | ~28h | MEDIUM | Phase 4 |
-| Phase 6: Documentation & DX | ~56h | MEDIUM | Phase 2 |
-| Phase 7: Post-Release Features | ~232h | LOW | Phase 2 |
-| **Total (Phases 1-6)** | **~160h** | | |
-| **Total (All Phases)** | **~392h** | | |
+|---|---|---|---|
+| Phase 1: Code Structure | 22h | MEDIUM | None |
+| Phase 2: Security Hardening | 19h + external | HIGH | None |
+| Phase 3: Missing Spec Features | 60h | LOW | Phase 1 |
+| Phase 4: Observability | 36h | MEDIUM | None |
+| Phase 5: Community | 24h | MEDIUM | None |
+| Phase 6: Web UI | 48h | LOW | None |
+| **Total** | **~210h** | | |
 
 ## Risk Assessment
 
 | Risk | Probability | Impact | Mitigation |
-|------|-------------|--------|------------|
-| OAuth2 middleware has undiscovered bugs | High | Medium | Prioritize test coverage to 85%+ before release |
-| E2E test flakiness masks real failures | Medium | Medium | Fix parallel test isolation, add dedicated CI job |
-| Single contributor bus factor | High | High | Document thoroughly, encourage community contributions |
-| Performance regression under production load | Medium | High | Run benchmarks on dedicated hardware, add load tests |
-| Cluster split-brain under network partition | Low | Critical | Add chaos tests, verify Raft implementation |
-| Security vulnerability in custom parsers | Low | Critical | Fuzz testing exists, add continuous fuzzing via CI |
-| Zero-dep policy prevents HTTP/3 support | High | Low | Defer HTTP/3 to v2.0 or accept quic-go exception |
+|---|---|---|---|
+| Single author burnout | Medium | Critical | Phase 5 (community) is the mitigation |
+| Security vulnerability in WAF | Medium | High | External audit (Phase 2) |
+| Performance regression in future changes | Low | High | Benchmark CI + benchstat |
+| Admin API exposure in production | Medium | High | Default auth enforcement (Phase 2) |
+| Breaking balancer interface change | Medium | Medium | Phase 3 careful migration |
+| Web UI tech debt accumulation | Medium | Low | TypeScript migration (Phase 6) |

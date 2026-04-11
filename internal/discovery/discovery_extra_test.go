@@ -2061,14 +2061,20 @@ func TestFileProvider_PollLoop_FileDeletedAndRecreated(t *testing.T) {
 }
 
 // --------------------------------------------------------------------------
-// Tests: Static file provider loadServices YAML error path
+// Tests: Static file provider YAML parsing
 // --------------------------------------------------------------------------
 
-func TestStaticFileProvider_YAMLFormatError(t *testing.T) {
+func TestStaticFileProvider_YAMLFormat(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := tmpDir + "/services.yaml"
 
-	content := `services: []`
+	content := `services:
+  - address: "10.0.0.1"
+    port: 8080
+    tags:
+      - "web"
+  - address: "10.0.0.2"
+    port: 8081`
 	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
 		t.Fatalf("Failed to write file: %v", err)
 	}
@@ -2079,21 +2085,48 @@ func TestStaticFileProvider_YAMLFormatError(t *testing.T) {
 		Options: map[string]string{"file": filePath, "format": "yaml"},
 	}
 
-	_, err := NewStaticFileProvider(config)
+	provider, err := NewStaticFileProvider(config)
 	if err != nil {
 		t.Fatalf("NewStaticFileProvider error: %v", err)
 	}
 
-	// This just tests the constructor succeeds; the YAML format error
-	// is triggered in loadServices when format != "json"
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	provider, _ := NewStaticFileProvider(config)
+	err = provider.Start(ctx)
+	if err != nil {
+		t.Fatalf("Start error: %v", err)
+	}
+	provider.Stop()
+}
+
+func TestStaticFileProvider_YAMLInvalidFormat(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := tmpDir + "/services.yaml"
+
+	content := "[invalid yaml {"
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write file: %v", err)
+	}
+
+	config := &ProviderConfig{
+		Type:    ProviderTypeStatic,
+		Name:    "yaml-invalid",
+		Options: map[string]string{"file": filePath, "format": "yaml"},
+	}
+
+	provider, err := NewStaticFileProvider(config)
+	if err != nil {
+		t.Fatalf("NewStaticFileProvider error: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	err = provider.Start(ctx)
 	if err == nil {
 		provider.Stop()
-		t.Error("Expected error for YAML format (not implemented)")
+		t.Error("Expected error for invalid YAML")
 	}
 }
 

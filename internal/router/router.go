@@ -3,6 +3,7 @@ package router
 
 import (
 	"net/http"
+	"net"
 	"strings"
 	"sync"
 
@@ -186,9 +187,9 @@ func (r *Router) Match(req *http.Request) (*RouteMatch, bool) {
 		host = req.URL.Host
 	}
 
-	// Strip port if present
-	if colonIdx := strings.LastIndex(host, ":"); colonIdx != -1 {
-		host = host[:colonIdx]
+	// Strip port if present (handles IPv6 bracket notation)
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
 	}
 
 	path := req.URL.Path

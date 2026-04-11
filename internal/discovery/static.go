@@ -3,7 +3,9 @@ package discovery
 import (
 	"context"
 	"encoding/json"
+
 	"fmt"
+	"github.com/openloadbalancer/olb/internal/config/yaml"
 	"maps"
 	"os"
 	"path/filepath"
@@ -231,8 +233,10 @@ func (p *StaticFileProvider) loadServices() error {
 			return fmt.Errorf("failed to parse JSON: %w", err)
 		}
 	} else {
-		// For YAML, we'd need a YAML parser - simplified for now
-		return fmt.Errorf("YAML format not yet implemented")
+		// YAML format
+		if err := yaml.Unmarshal(data, &config); err != nil {
+			return fmt.Errorf("failed to parse YAML: %w", err)
+		}
 	}
 
 	// Track current service IDs

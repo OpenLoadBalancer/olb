@@ -461,3 +461,26 @@ func TestBackendGetURL_Concurrent(t *testing.T) {
 		}
 	}
 }
+
+func TestBackendGetURL_HTTPSScheme(t *testing.T) {
+	b := NewBackend("backend1", "127.0.0.1:8443")
+	b.Scheme = "https"
+
+	u := b.GetURL()
+	if u.Scheme != "https" {
+		t.Errorf("GetURL().Scheme = %v, want https", u.Scheme)
+	}
+	if u.Host != "127.0.0.1:8443" {
+		t.Errorf("GetURL().Host = %v, want 127.0.0.1:8443", u.Host)
+	}
+}
+
+func TestBackendGetURL_DefaultScheme(t *testing.T) {
+	b := NewBackend("backend1", "10.0.0.1:3000")
+	// Scheme defaults to "http" from NewBackend
+
+	u := b.GetURL()
+	if u.Scheme != "http" {
+		t.Errorf("GetURL().Scheme = %v, want http (default)", u.Scheme)
+	}
+}

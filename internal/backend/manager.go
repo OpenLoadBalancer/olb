@@ -169,3 +169,19 @@ func (pm *PoolManager) PoolCount() int {
 	defer pm.mu.RUnlock()
 	return len(pm.pools)
 }
+
+// GetBackendByAddress searches for a backend across all pools by its address.
+// Returns the backend if found, nil otherwise.
+func (pm *PoolManager) GetBackendByAddress(addr string) *Backend {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	for _, pool := range pm.pools {
+		for _, b := range pool.Backends {
+			if b.Address == addr {
+				return b
+			}
+		}
+	}
+	return nil
+}

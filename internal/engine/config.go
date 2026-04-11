@@ -101,6 +101,9 @@ func (e *Engine) applyConfig(newCfg *config.Config) error {
 			}
 			b := backend.NewBackend(id, backendCfg.Address)
 			b.Weight = int32(backendCfg.Weight)
+			if backendCfg.Scheme != "" {
+				b.Scheme = backendCfg.Scheme
+			}
 			if err := pool.AddBackend(b); err != nil {
 				return fmt.Errorf("failed to add backend %s to pool %s: %w",
 					id, poolCfg.Name, err)
@@ -154,6 +157,7 @@ func (e *Engine) applyConfig(newCfg *config.Config) error {
 		ProxyTimeout:    60 * time.Second,
 		DialTimeout:     10 * time.Second,
 		MaxRetries:      3,
+		PassiveChecker:  e.passiveChecker,
 	}
 	newProxy := l7.NewHTTPProxy(newProxyConfig)
 

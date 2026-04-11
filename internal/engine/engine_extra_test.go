@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -804,6 +805,37 @@ func TestShutdown_NilContext(t *testing.T) {
 
 	err = engine.Shutdown(nil)
 	t.Logf("Shutdown(nil) on stopped engine returned: %v", err)
+}
+
+func TestShutdown_ConcurrentNoPanic(t *testing.T) {
+	cfg := createTestConfig()
+	configPath := createTempConfigFile(t, cfg)
+	engine, err := New(cfg, configPath)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	if err := engine.Start(); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Two concurrent Shutdown calls must not panic on double-close of stopCh
+	go func() {
+		defer wg.Done()
+		engine.Shutdown(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		engine.Shutdown(ctx)
+	}()
+
+	wg.Wait()
 }
 
 // ============================================================================

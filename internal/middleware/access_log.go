@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/openloadbalancer/olb/pkg/utils"
 	"sync"
 	"time"
 
@@ -382,10 +384,7 @@ func escapeJSON(s string) string {
 
 // extractIP extracts the IP address from a host:port string.
 func extractIP(addr string) string {
-	if i := strings.LastIndex(addr, ":"); i != -1 {
-		return addr[:i]
-	}
-	return addr
+	return utils.ExtractIP(addr)
 }
 
 // logBufferPool is a pool for log entry buffers.

@@ -21,6 +21,9 @@ type Backend struct {
 	// Address is the network address (host:port) of the backend.
 	Address string
 
+	// Scheme is the protocol scheme (http or https). Defaults to "http".
+	Scheme string
+
 	// Weight is the load balancing weight for this backend.
 	Weight int32
 
@@ -60,6 +63,7 @@ func NewBackend(id, address string) *Backend {
 	b := &Backend{
 		ID:       id,
 		Address:  address,
+		Scheme:   "http",
 		Weight:   1,
 		state:    NewAtomicState(StateStarting),
 		metadata: make(map[string]string),
@@ -260,11 +264,15 @@ func (b *Backend) GetURL() *url.URL {
 	}
 
 	// Slow path: parse and cache
-	u, err := url.Parse("http://" + b.Address)
+	scheme := b.Scheme
+	if scheme == "" {
+		scheme = "http"
+	}
+	u, err := url.Parse(scheme + "://" + b.Address)
 	if err != nil {
 		// Return a default URL if parsing fails
 		u = &url.URL{
-			Scheme: "http",
+			Scheme: scheme,
 			Host:   b.Address,
 		}
 	}

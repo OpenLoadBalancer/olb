@@ -696,6 +696,7 @@ type Backend struct {
 	ID      string `yaml:"id" json:"id"`
 	Address string `yaml:"address" json:"address"`
 	Weight  int    `yaml:"weight" json:"weight"`
+	Scheme  string `yaml:"scheme" json:"scheme"`
 }
 
 // HealthCheck represents health check configuration.
@@ -729,6 +730,9 @@ type Admin struct {
 	MCPAudit             bool   `yaml:"mcp_audit" json:"mcp_audit"`
 	RateLimitMaxRequests int    `yaml:"rate_limit_max_requests" json:"rate_limit_max_requests"`
 	RateLimitWindow      string `yaml:"rate_limit_window" json:"rate_limit_window"`
+	Username             string `yaml:"username" json:"-"`
+	Password             string `yaml:"password" json:"-"`
+	BearerToken          string `yaml:"bearer_token" json:"-"`
 }
 
 // Logging represents logging configuration.

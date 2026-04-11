@@ -368,7 +368,7 @@ func TestStaticFileProvider_FileNotFound(t *testing.T) {
 	}
 }
 
-func TestStaticFileProvider_YAMLNotImplemented(t *testing.T) {
+func TestStaticFileProvider_YAMLFormatBasic(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "services.yaml")
 
@@ -390,9 +390,10 @@ func TestStaticFileProvider_YAMLNotImplemented(t *testing.T) {
 
 	ctx := context.Background()
 	err = provider.Start(ctx)
-	if err == nil {
-		t.Error("Expected error for YAML format")
+	if err != nil {
+		t.Fatalf("Start error (YAML should be supported): %v", err)
 	}
+	provider.Stop()
 }
 
 func TestStaticProvider_Stop(t *testing.T) {

@@ -4,6 +4,7 @@ package forcessl
 import (
 	"net/http"
 	"strconv"
+	"net"
 	"strings"
 )
 
@@ -124,10 +125,10 @@ func (m *Middleware) isHTTPS(r *http.Request) bool {
 
 // buildHTTPSURL builds the HTTPS redirect URL.
 func (m *Middleware) buildHTTPSURL(r *http.Request) string {
-	// Get host without port
+	// Get host without port (handles IPv6 bracket notation)
 	host := r.Host
-	if colonIdx := strings.LastIndex(host, ":"); colonIdx != -1 {
-		host = host[:colonIdx]
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
 	}
 
 	// Build URL

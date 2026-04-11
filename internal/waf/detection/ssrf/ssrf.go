@@ -108,7 +108,9 @@ func (d *Detector) analyzeURLs(input, location string) *detection.Finding {
 					host = host[:slashIdx]
 				}
 				host = strings.TrimSuffix(host, ":")
-				if colonIdx := strings.LastIndex(host, ":"); colonIdx > 0 {
+				if h, _, err := net.SplitHostPort(host); err == nil {
+					host = h
+				} else if colonIdx := strings.LastIndex(host, ":"); colonIdx > 0 {
 					host = host[:colonIdx]
 				}
 				if isInternalHost(host) {

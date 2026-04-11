@@ -3,6 +3,7 @@ package engine
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/openloadbalancer/olb/internal/admin"
@@ -190,14 +191,11 @@ func getMCPAddress(cfg *config.Config) string {
 		return ""
 	}
 
-	// Find the last colon to get the port
-	idx := strings.LastIndex(adminAddr, ":")
-	if idx < 0 {
+	// Split host and port (handles IPv6 bracket notation)
+	host, portStr, err := net.SplitHostPort(adminAddr)
+	if err != nil {
 		return ""
 	}
-
-	host := adminAddr[:idx]
-	portStr := adminAddr[idx+1:]
 	var port int
 	for _, ch := range portStr {
 		if ch >= '0' && ch <= '9' {
@@ -207,7 +205,7 @@ func getMCPAddress(cfg *config.Config) string {
 		}
 	}
 
-	return fmt.Sprintf("%s:%d", host, port+1)
+	return net.JoinHostPort(host, fmt.Sprintf("%d", port+1))
 }
 
 // engineRaftProposer implements admin.RaftProposer by proposing config changes

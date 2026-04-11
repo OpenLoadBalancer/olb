@@ -52,6 +52,7 @@ type HTTPProxy struct {
 	poolManager     *backend.PoolManager
 	connPoolManager *conn.PoolManager
 	healthChecker   *health.Checker
+	passiveChecker *health.PassiveChecker
 	middlewareChain *middleware.Chain
 
 	// Protocol-specific handlers
@@ -94,6 +95,7 @@ type Config struct {
 	MaxIdleConns        int
 	MaxIdleConnsPerHost int
 	IdleConnTimeout     time.Duration
+	PassiveChecker      *health.PassiveChecker
 	ShadowConfig        *ShadowConfig
 }
 
@@ -146,6 +148,7 @@ func NewHTTPProxy(config *Config) *HTTPProxy {
 		poolManager:         config.PoolManager,
 		connPoolManager:     config.ConnPoolManager,
 		healthChecker:       config.HealthChecker,
+		passiveChecker:     config.PassiveChecker,
 		middlewareChain:     config.MiddlewareChain,
 		wsHandler:           NewWebSocketHandler(nil),
 		grpcHandler:         NewGRPCHandler(nil),
@@ -334,6 +337,9 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request, reqCtx 
 		}
 		if err != nil {
 			selectedBackend.RecordError()
+			if p.passiveChecker != nil {
+				p.passiveChecker.RecordFailure(selectedBackend.Address)
+			}
 			p.getErrorHandler()(w, r, err)
 		}
 		return
@@ -381,12 +387,18 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request, reqCtx 
 		// Attempt to proxy request
 		err := p.proxyRequest(w, r, reqCtx, selectedBackend)
 		if err == nil {
+			if p.passiveChecker != nil {
+				p.passiveChecker.RecordSuccess(selectedBackend.Address)
+			}
 			// Success
 			return
 		}
 
 		lastErr = err
 		selectedBackend.RecordError()
+		if p.passiveChecker != nil {
+			p.passiveChecker.RecordFailure(selectedBackend.Address)
+		}
 
 		// Check if error is retryable
 		if !isRetryableError(err) {
