@@ -44,7 +44,7 @@
   - Stderr captured for error messages
   - Tests: `internal/health/exec_test.go`
 - [x] **Static discovery YAML** — Replaced stub with actual YAML parsing using internal parser
-- [ ] **Request-context aware balancer** — Extend `Balancer.Next()` to accept request context per spec §8.1 — Effort: 16h
+- [x] **Request-context aware balancer** — Extend `Balancer.Next()` to accept request context per spec §8.1 — Effort: 16h
   - Interface change: `Next(ctx *RequestContext, backends []*backend.Backend) *backend.Backend`
   - Update all 16 algorithm implementations
   - Enables content-based routing in future
@@ -58,7 +58,7 @@
 - [x] **Distributed tracing** — W3C Trace Context + B3 + Jaeger propagation in `internal/middleware/trace/`, baggage, sampling, span management
 - [x] **Health check aggregation** — `/api/v1/system/health` endpoint already exists in admin server
 - [x] **Metrics histograms** — `HistogramVec` with `request_duration`, configurable buckets, latency tracking already implemented
-- [ ] **Grafana dashboard improvements** — Update provided Grafana dashboards with all new metrics — Effort: 4h
+- [x] **Grafana dashboard improvements** — Update provided Grafana dashboards with all new metrics — Effort: 4h
 
 ## Phase 5: Community & Sustainability (Week 9-10)
 
