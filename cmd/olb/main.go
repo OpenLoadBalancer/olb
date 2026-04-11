@@ -37,6 +37,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	c.Register(&cli.ConfigCommand{})
 	c.Register(&cli.BackendCommand{})
 	c.Register(&cli.HealthCommand{})
+	c.Register(&cli.SetupCommand{})
 
 	if err := c.Run(args); err != nil {
 		fmt.Fprintf(stderr, "Error: %v\n", err)
