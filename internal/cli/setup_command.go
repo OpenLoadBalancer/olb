@@ -81,8 +81,8 @@ func (s *SetupCommand) Run(args []string) error {
 	enableHC := promptYesNo(reader, "Enable health checks?", true)
 	var hcType, hcPath, hcInterval string
 	if enableHC {
-			hcOptions := []string{"http", "tcp", "grpc"}
-			hcType = hcOptions[promptChoice(reader, "Health check type", hcOptions, 0)]
+		hcOptions := []string{"http", "tcp", "grpc"}
+		hcType = hcOptions[promptChoice(reader, "Health check type", hcOptions, 0)]
 		if hcType == "http" || hcType == "grpc" {
 			hcPath = prompt(reader, "Health check path", "/health")
 		}
@@ -112,12 +112,12 @@ func (s *SetupCommand) Run(args []string) error {
 		algorithm:         []string{"round_robin", "weighted_round_robin", "least_connections", "ip_hash", "consistent_hash", "random", "power_of_two"}[algIdx],
 		backends:          backends,
 		enableHC:          enableHC,
-		hcType:           hcType,
-		hcPath:           hcPath,
-		hcInterval:       hcInterval,
+		hcType:            hcType,
+		hcPath:            hcPath,
+		hcInterval:        hcInterval,
 		enableRateLimit:   enableRateLimit,
-		rps:              rps,
-		enableCORS:       enableCORS,
+		rps:               rps,
+		enableCORS:        enableCORS,
 		enableCompression: enableCompression,
 	})
 
@@ -142,15 +142,15 @@ type backendEntry struct {
 }
 
 type configParams struct {
-	adminAddr, adminUser, adminPass   string
+	adminAddr, adminUser, adminPass     string
 	listenName, listenAddr, listenProto string
-	poolName, algorithm                string
-	backends                           []backendEntry
-	enableHC                           bool
-	hcType, hcPath, hcInterval        string
-	enableRateLimit                    bool
-	rps                                int
-	enableCORS, enableCompression      bool
+	poolName, algorithm                 string
+	backends                            []backendEntry
+	enableHC                            bool
+	hcType, hcPath, hcInterval          string
+	enableRateLimit                     bool
+	rps                                 int
+	enableCORS, enableCompression       bool
 }
 
 // --- Prompt helpers ---
@@ -233,7 +233,7 @@ func generateConfig(p configParams) string {
 	// Middleware
 	if p.enableRateLimit || p.enableCORS || p.enableCompression {
 		b.WriteString("\nmiddleware:\n")
-		
+
 	}
 	if p.enableRateLimit {
 		b.WriteString("  rate_limit:\n")

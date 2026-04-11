@@ -61,7 +61,7 @@ func TestPromptYesNo(t *testing.T) {
 		{"yes\n", true},
 		{"n\n", false},
 		{"no\n", false},
-		{"\n", true},  // default true
+		{"\n", true}, // default true
 	}
 	for _, tt := range tests {
 		r := bufio.NewReader(strings.NewReader(tt.input))
@@ -162,10 +162,10 @@ func TestGenerateConfig_WithHealthCheck(t *testing.T) {
 		poolName:    "web",
 		algorithm:   "round_robin",
 		backends:    []backendEntry{{address: "127.0.0.1:3001"}},
-		enableHC:   true,
-		hcType:     "http",
-		hcPath:     "/healthz",
-		hcInterval: "5s",
+		enableHC:    true,
+		hcType:      "http",
+		hcPath:      "/healthz",
+		hcInterval:  "5s",
 	})
 
 	for _, want := range []string{
@@ -189,9 +189,9 @@ func TestGenerateConfig_HealthCheckTCP(t *testing.T) {
 		poolName:    "web",
 		algorithm:   "round_robin",
 		backends:    []backendEntry{{address: "127.0.0.1:3001"}},
-		enableHC:   true,
-		hcType:     "tcp",
-		hcInterval: "10s",
+		enableHC:    true,
+		hcType:      "tcp",
+		hcInterval:  "10s",
 	})
 
 	if !strings.Contains(got, "type: tcp") {
@@ -212,8 +212,8 @@ func TestGenerateConfig_WithMiddleware(t *testing.T) {
 		algorithm:         "round_robin",
 		backends:          []backendEntry{{address: "127.0.0.1:3001"}},
 		enableRateLimit:   true,
-		rps:              500,
-		enableCORS:       true,
+		rps:               500,
+		enableCORS:        true,
 		enableCompression: true,
 	})
 
@@ -274,20 +274,20 @@ func TestSetupCommand_Run_WritesFile(t *testing.T) {
 
 	// Feed all defaults
 	input := strings.Join([]string{
-		"",    // admin addr
-		"",    // no username
-		"",    // listener name
-		"",    // listen addr
-		"1",   // protocol http
-		"",    // pool name
-		"1",   // algorithm
-		"",    // backend addr
-		"",    // weight
-		"n",   // another backend
-		"n",   // health checks
-		"n",   // rate limit
-		"n",   // CORS
-		"n",   // compression
+		"",  // admin addr
+		"",  // no username
+		"",  // listener name
+		"",  // listen addr
+		"1", // protocol http
+		"",  // pool name
+		"1", // algorithm
+		"",  // backend addr
+		"",  // weight
+		"n", // another backend
+		"n", // health checks
+		"n", // rate limit
+		"n", // CORS
+		"n", // compression
 	}, "\n") + "\n"
 
 	// Redirect stdin
