@@ -1441,11 +1441,13 @@ func TestWebSocketProxy_ServeHTTP_NoBalancerBackend(t *testing.T) {
 // nilBalancer always returns nil from Next
 type nilBalancer struct{}
 
-func (n *nilBalancer) Name() string                             { return "nil" }
-func (n *nilBalancer) Next(_ *backend.RequestContext, _ []*backend.Backend) *backend.Backend { return nil }
-func (n *nilBalancer) Add(*backend.Backend)                     {}
-func (n *nilBalancer) Remove(string)                            {}
-func (n *nilBalancer) Update(*backend.Backend)                  {}
+func (n *nilBalancer) Name() string { return "nil" }
+func (n *nilBalancer) Next(_ *backend.RequestContext, _ []*backend.Backend) *backend.Backend {
+	return nil
+}
+func (n *nilBalancer) Add(*backend.Backend)    {}
+func (n *nilBalancer) Remove(string)           {}
+func (n *nilBalancer) Update(*backend.Backend) {}
 
 // --- proxyWebSocket: error reported through errChan (non-close error) ---
 

@@ -111,7 +111,7 @@ type Engine struct {
 	prevConfig      *config.Config // previous config for rollback
 	rollbackTimer   *time.Timer    // grace period timer
 	errorCount      int64          // errors since last reload
-	reloadTimestamp time.Time       // when last reload happened
+	reloadTimestamp time.Time      // when last reload happened
 
 	// Runtime state
 	state     State

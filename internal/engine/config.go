@@ -327,7 +327,7 @@ func (e *Engine) applyConfigNoRollback(newCfg *config.Config) error {
 		PoolManager:     newPoolManager,
 		ConnPoolManager: e.connPoolMgr,
 		HealthChecker:   newHealthChecker,
-		MiddlewareChain:  newMiddlewareChain,
+		MiddlewareChain: newMiddlewareChain,
 		ProxyTimeout:    60 * time.Second,
 		DialTimeout:     10 * time.Second,
 		MaxRetries:      3,
