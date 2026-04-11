@@ -6,7 +6,7 @@ before:
   hooks:
     - go mod tidy
     - go generate ./...
-uilds:
+builds:
   - id: olb
     main: ./cmd/olb
     binary: olb
@@ -26,22 +26,14 @@ before:
     ldflags:
       - -s -w
       - -X github.com/openloadbalancer/olb/pkg/version.Version={{.Version}}
-      - -X github.com/openloadbalancer/olb/pkg/version.Commit={{.Commit}}
+      - -X github.com/openloadbalancer/olb/pkg/version.Commit={{.FullCommit}}
+      - -X github.com/openloadbalancer/olb/pkg/version.ShortCommit={{.ShortCommit}}
       - -X github.com/openloadbalancer/olb/pkg/version.Date={{.Date}}
     flags:
       - -trimpath
-    overrides:
-      - goos: darwin
+    ignore:
+      - goos: freebsd
         goarch: arm64
-        env:
-          - CGO_ENABLED=1
-          - CC=o64-clang
-          - CXX=o64-clang++
-
-universal_binaries:
-  - id: olb
-    name_template: "olb_{{.Version}}_darwin_universal"
-    replace: true
 
 archives:
   - id: olb
@@ -62,6 +54,10 @@ archives:
 checksum:
   name_template: "checksums.txt"
   algorithm: sha256
+
+sboms:
+  - id: default
+    artifacts: archive
 
 snapshot:
   name_template: "{{.Version}}-next"
