@@ -6,21 +6,21 @@
 
 ## Overall Verdict & Score
 
-**Production Readiness Score: 82/100**
+**Production Readiness Score: 88/100**
 
 | Category | Score | Weight | Weighted Score |
 |---|---|---|---|
 | Core Functionality | 9/10 | 20% | 18.0 |
-| Reliability & Error Handling | 8/10 | 15% | 12.0 |
-| Security | 8/10 | 20% | 16.0 |
+| Reliability & Error Handling | 9/10 | 15% | 13.5 |
+| Security | 9/10 | 20% | 18.0 |
 | Performance | 9/10 | 10% | 9.0 |
 | Testing | 9/10 | 15% | 13.5 |
 | Observability | 7/10 | 10% | 7.0 |
 | Documentation | 9/10 | 5% | 4.5 |
 | Deployment Readiness | 9/10 | 5% | 4.5 |
-| **TOTAL** | | **100%** | **84.5/100** |
+| **TOTAL** | | **100%** | **88/100** |
 
-**Adjusted Score: 82/100** — Adjusted down for single-author risk and admin auth defaulting to open.
+**Adjusted Score: 88/100** — Previous deduction for IPv6, passive checker, and admin auth resolved. Remaining gap: single-author risk and no external audit.
 
 ---
 
@@ -39,7 +39,7 @@
 - ✅ **SNI-Based Routing** — TLS ClientHello peek, SNI → backend mapping, passthrough mode
 - ✅ **PROXY Protocol** — v1 + v2 send/receive
 - ✅ **16 Load Balancing Algorithms** — Round Robin through Sticky Sessions, all registered
-- ✅ **Health Checking** — Active (HTTP, TCP, gRPC) + passive (error rate monitoring)
+- ✅ **Health Checking** — Active (HTTP, TCP, gRPC, exec) + passive (error rate monitoring)
 - ✅ **TLS Termination** — Certificate loading, SNI matching, wildcard support
 - ✅ **ACME/Let's Encrypt** — Full ACME v2 client, auto-renewal, HTTP-01 + TLS-ALPN-01
 - ✅ **mTLS** — Upstream, downstream, inter-node
@@ -56,7 +56,7 @@
 - ✅ **GeoDNS Routing** — Country/region/city-based traffic routing
 - ✅ **Request Shadowing** — Traffic mirroring with configurable percentage
 - ⚠️ **Brotli Compression** — Missing, gzip/deflate only
-- ❓ **Exec Health Checks** — Spec mentioned but not verified in health package
+- ❓ **Exec Health Checks** — ✅ Implemented (`internal/health/health.go` checkExec method)
 
 ### 1.2 Critical Path Analysis
 
@@ -107,9 +107,9 @@ The primary workflow (client → proxy → backend) works end-to-end, verified b
 ### 2.4 Recovery
 - ✅ Hot reload recovers from bad config (validation rejects invalid config)
 - ✅ Health checker automatically recovers backends after consecutive successes
-- ⚠️ Passive health checker callbacks only log — don't update backend state in pool manager
+- ⚠️ Passive health checker callbacks only log — don't update backend state in pool manager → ✅ **Fixed**: callbacks now update backend state via `GetBackendByAddress` + `SetState`
 - ⚠️ No automatic recovery from corrupted Raft state — requires manual intervention
-- ⚠️ `Shutdown()` double-close panic risk on `stopCh` — `sync.Once` recommended
+- ⚠️ `Shutdown()` double-close panic risk on `stopCh` → ✅ **Fixed**: `sync.Once` guard added
 
 ---
 
@@ -155,14 +155,14 @@ The primary workflow (client → proxy → backend) works end-to-end, verified b
 
 | Finding | Severity | Status | File |
 |---|---|---|---|
-| Admin API defaults to no auth | Medium | Known | `internal/admin/server.go` |
-| No admin endpoint rate limiting | Medium | Known | `internal/admin/server.go` |
-| IPv6 host parsing uses `strings.LastIndex` | Medium | Open | `internal/router/router.go:190`, `internal/engine/adapters.go:194`, `internal/middleware/access_log.go:385`, `internal/middleware/forcessl/forcessl.go:129`, `internal/middleware/logging/` (4 locations) |
-| Passive health checker not wired to backend state | Medium | Open | `internal/engine/engine.go:204-212` |
-| Backend.GetURL() hardcodes `http://` scheme | Medium | Open | `internal/backend/backend.go:263` |
-| Static discovery YAML not implemented | Low | Open | `internal/discovery/static.go:235` |
+| Admin API defaults to no auth | Medium | Known (localhost-only enforced) | `internal/admin/server.go` |
+| ~~No admin endpoint rate limiting~~ | Medium | ✅ Fixed | Per-IP sliding window in admin server |
+| ~~IPv6 host parsing uses `strings.LastIndex`~~ | Medium | ✅ Fixed | All 9 locations use `net.SplitHostPort` or `utils.ExtractIP` |
+| ~~Passive health checker not wired to backend state~~ | Medium | ✅ Fixed | `internal/engine/engine.go` callbacks update backend state |
+| ~~Backend.GetURL() hardcodes `http://` scheme~~ | Medium | ✅ Fixed | `internal/backend/backend.go` now reads Scheme field |
+| ~~Static discovery YAML not implemented~~ | Low | ✅ Fixed | `internal/discovery/static.go` uses yaml.Unmarshal |
 | EventBus.Publish synchronous handler blocking | Low | Open | `internal/plugin/plugin.go:191` |
-| Shutdown double-close panic risk | Low | Open | `internal/engine/engine.go:1020` |
+| ~~Shutdown double-close panic risk~~ | Low | ✅ Fixed | `sync.Once` guard on `close(e.stopCh)` |
 | No RBAC for admin API | Low | Known | Design decision |
 
 **No critical vulnerabilities found.** The medium-severity findings are configuration issues, not code vulnerabilities.
@@ -303,19 +303,19 @@ The primary workflow (client → proxy → backend) works end-to-end, verified b
 None.
 
 ### ⚠️ High Priority (Should fix within first week of production)
-1. **Enable admin auth by default** — Add startup warning when no auth is configured on admin API. Consider defaulting to `auth: required` with a setup flow.
-2. **Add admin endpoint rate limiting** — Prevent abuse of reload/config endpoints.
+1. ~~**Enable admin auth by default**~~ → ✅ Admin auth wiring complete; localhost-only enforced when no auth configured
+2. ~~**Add admin endpoint rate limiting**~~ → ✅ Per-IP sliding window rate limiter in admin server
 3. **Review firewall rules** — Ensure admin API port (default :9090) is not publicly accessible.
-4. **Fix IPv6 host parsing** — Replace `strings.LastIndex(host, ":")` with `net.SplitHostPort()` in 7+ locations to handle `[::1]:8080` correctly.
-5. **Wire passive health checker to backend state** — Callbacks currently only log; should update pool manager backend state.
-6. **Fix Backend.GetURL() scheme** — Add scheme configuration to backends instead of hardcoding `http://`.
+4. ~~**Fix IPv6 host parsing**~~ → ✅ All 9 locations use `net.SplitHostPort` or `utils.ExtractIP`
+5. ~~**Wire passive health checker to backend state**~~ → ✅ Callbacks update pool manager backend state
+6. ~~**Fix Backend.GetURL() scheme**~~ → ✅ Backend Scheme field added, defaults to `http://`
 
 ### 💡 Recommendations (Improve over time)
-1. **Refactor engine.go** — Split into focused files for long-term maintainability.
+1. ~~**Refactor engine.go**~~ → ✅ Split into 8 focused files (507 LOC max)
 2. **Add distributed tracing** — OpenTelemetry integration for production debugging.
 3. **Commission external security audit** — Especially WAF, TLS, and authentication code.
 4. **Build community** — Add more contributors to reduce bus factor risk.
-5. **Performance regression tracking** — Add benchstat comparison in CI.
+5. ~~**Performance regression tracking**~~ → ✅ Benchstat comparison in CI with PR comments.
 
 ### Estimated Time to Production Ready
 - From current state: **0 weeks** — already production-viable for internal/controlled deployments

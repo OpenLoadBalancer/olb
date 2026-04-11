@@ -131,7 +131,10 @@ func (e *Engine) applyConfig(newCfg *config.Config) error {
 		}
 	}
 
-	// 5. Atomic swap - replace router and pools
+	// 5. Rebuild middleware chain from new config
+	newMiddlewareChain := createMiddlewareChain(newCfg, e.logger, e.metrics)
+
+	// 6. Atomic swap - replace router and pools
 	// We need to update the proxy with new components
 	e.mu.Lock()
 	oldRouter := e.router
@@ -143,6 +146,7 @@ func (e *Engine) applyConfig(newCfg *config.Config) error {
 	e.healthChecker = newHealthChecker
 	e.adminServer.SetHealthChecker(newHealthChecker)
 	e.config = newCfg
+	e.middlewareChain = newMiddlewareChain
 
 	// Update proxy components
 	// Note: The proxy references the router and pool manager directly,
@@ -153,7 +157,7 @@ func (e *Engine) applyConfig(newCfg *config.Config) error {
 		PoolManager:     newPoolManager,
 		ConnPoolManager: e.connPoolMgr,
 		HealthChecker:   newHealthChecker,
-		MiddlewareChain: e.middlewareChain,
+		MiddlewareChain: newMiddlewareChain,
 		ProxyTimeout:    60 * time.Second,
 		DialTimeout:     10 * time.Second,
 		MaxRetries:      3,
