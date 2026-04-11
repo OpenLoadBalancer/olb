@@ -116,28 +116,28 @@ export function DashboardPage() {
           <p className="text-muted-foreground">Overview of your OpenLoadBalancer instance</p>
         </div>
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className={cn("h-2 w-2 rounded-full", health?.status === 'healthy' ? "bg-green-500" : "bg-red-500")} />
+          <div className="flex items-center gap-2" role="status" aria-live="polite" aria-label="System health status">
+            <div className={cn("h-2 w-2 rounded-full", health?.status === 'healthy' ? "bg-green-500" : "bg-red-500")} aria-hidden="true" />
             <span className="text-sm text-muted-foreground">
               {health?.status === 'healthy' ? "Live" : "Degraded"}
             </span>
           </div>
-          <Button variant="outline" size="sm" onClick={handleRefresh}>
-            <RefreshCw className="mr-2 h-4 w-4" />
+          <Button variant="outline" size="sm" onClick={handleRefresh} aria-label="Refresh dashboard data">
+            <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
             Refresh
           </Button>
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="mr-2 h-4 w-4" />
+          <Button variant="outline" size="sm" onClick={handleExport} aria-label="Export dashboard data as JSON">
+            <Download className="mr-2 h-4 w-4" aria-hidden="true" />
             Export
           </Button>
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4" role="region" aria-label="Key metrics">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Pools</CardTitle>
-            <Layers className="h-4 w-4 text-muted-foreground" />
+            <Layers className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{pools?.length ?? 0}</div>
@@ -148,7 +148,7 @@ export function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Routes</CardTitle>
-            <Radio className="h-4 w-4 text-muted-foreground" />
+            <Radio className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{routes?.length ?? 0}</div>
@@ -159,7 +159,7 @@ export function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Backends</CardTitle>
-            <Server className="h-4 w-4 text-muted-foreground" />
+            <Server className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{pools?.reduce((sum, p) => sum + p.backends.length, 0) ?? 0}</div>
@@ -173,7 +173,7 @@ export function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total Requests</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
+            <Activity className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalRequests > 0 ? (totalRequests / 1000000).toFixed(1) + 'M' : '0'}</div>
