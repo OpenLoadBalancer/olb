@@ -2114,7 +2114,7 @@ olb completion fish
 
 Terminal UI showing real-time stats:
 ```
-┌─ OpenLoadBalancer v1.0.0 ─── node-1 ─── uptime: 3d 14h 22m ──────────┐
+┌─ OpenLoadBalancer v0.1.0 ─── node-1 ─── uptime: 3d 14h 22m ──────────┐
 │                                                                        │
 │  Requests/s: ████████████████████░░░░░  1,247/s  (peak: 3,891)       │
 │  Active Conn: ██████░░░░░░░░░░░░░░░░░   342/4096                     │
@@ -2650,7 +2650,7 @@ Every package has comprehensive unit tests:
 - [ ] Inter-node mTLS
 - [ ] Cluster Web UI page
 
-### Phase 5: AI Integration + Polish (v1.0.0)
+### Phase 5: AI Integration + Polish (v0.1.0)
 - [ ] MCP server (stdio + HTTP transport)
 - [ ] MCP tools (query, modify, diagnose)
 - [ ] MCP resources + prompt templates

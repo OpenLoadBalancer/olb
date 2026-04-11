@@ -810,7 +810,7 @@ middleware:
 
 #### Startup Success
 ```json
-{"ts":"2026-01-15T10:00:00Z","level":"info","msg":"OpenLoadBalancer v1.0.0 starting"}
+{"ts":"2026-01-15T10:00:00Z","level":"info","msg":"OpenLoadBalancer v0.1.0 starting"}
 {"ts":"2026-01-15T10:00:00Z","level":"info","msg":"Listener started","name":"https","address":":443"}
 {"ts":"2026-01-15T10:00:00Z","level":"info","msg":"Engine started successfully"}
 ```

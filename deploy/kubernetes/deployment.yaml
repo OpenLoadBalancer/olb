@@ -6,7 +6,7 @@ metadata:
   labels:
     app.kubernetes.io/name: olb
     app.kubernetes.io/instance: olb
-    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/component: load-balancer
     app.kubernetes.io/part-of: openloadbalancer
     app.kubernetes.io/managed-by: kubectl
@@ -26,7 +26,7 @@ spec:
       labels:
         app.kubernetes.io/name: olb
         app.kubernetes.io/instance: olb
-        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/version: "0.1.0"
         app.kubernetes.io/component: load-balancer
         app.kubernetes.io/part-of: openloadbalancer
       annotations:

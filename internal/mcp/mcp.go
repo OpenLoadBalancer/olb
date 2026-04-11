@@ -31,7 +31,7 @@ const mcpProtocolVersion = "2024-11-05"
 // Server name and version.
 const (
 	serverName    = "olb-mcp"
-	serverVersion = "1.0.0"
+	serverVersion = "0.1.0"
 )
 
 // JSON-RPC error codes.

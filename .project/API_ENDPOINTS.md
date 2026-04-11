@@ -37,7 +37,7 @@ The Admin API provides 30+ HTTP endpoints for runtime management of OpenLoadBala
 **Example Response** (`/system/info`):
 ```json
 {
-  "version": "1.0.0",
+  "version": "0.1.0",
   "commit": "abc123",
   "build_date": "2025-04-05",
   "go_version": "go1.25.0",

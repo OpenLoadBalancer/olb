@@ -24,7 +24,7 @@ func newMockServer() *httptest.Server {
 			return
 		}
 		resp := admin.SystemInfo{
-			Version:   "1.0.0",
+			Version:   "0.1.0",
 			Commit:    "abc123",
 			BuildDate: "2024-01-01",
 			Uptime:    "1h30m",
@@ -215,7 +215,7 @@ func newAuthMockServer() *httptest.Server {
 			return
 		}
 
-		resp := admin.SystemInfo{Version: "1.0.0"}
+		resp := admin.SystemInfo{Version: "0.1.0"}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 	})
@@ -291,7 +291,7 @@ func TestClient_GetSystemInfo_Success(t *testing.T) {
 	if info == nil {
 		t.Fatal("expected info to be non-nil")
 	}
-	if info.Version != "1.0.0" {
+	if info.Version != "0.1.0" {
 		t.Errorf("expected version '1.0.0', got %s", info.Version)
 	}
 	if info.Commit != "abc123" {
@@ -569,7 +569,7 @@ func TestClient_AuthWithToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error with valid token: %v", err)
 	}
-	if info.Version != "1.0.0" {
+	if info.Version != "0.1.0" {
 		t.Errorf("expected version '1.0.0', got %s", info.Version)
 	}
 
@@ -592,7 +592,7 @@ func TestClient_AuthWithBasicAuth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if info.Version != "1.0.0" {
+	if info.Version != "0.1.0" {
 		t.Errorf("expected version '1.0.0', got %s", info.Version)
 	}
 }
@@ -800,7 +800,7 @@ func TestClient_AuthFailures(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(admin.SystemInfo{Version: "1.0.0"})
+		json.NewEncoder(w).Encode(admin.SystemInfo{Version: "0.1.0"})
 	}))
 	defer server.Close()
 
@@ -840,7 +840,7 @@ func TestClient_AuthFailures(t *testing.T) {
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
-		if info.Version != "1.0.0" {
+		if info.Version != "0.1.0" {
 			t.Errorf("expected version 1.0.0, got %s", info.Version)
 		}
 	})
@@ -852,7 +852,7 @@ func TestClient_AuthFailures(t *testing.T) {
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
-		if info.Version != "1.0.0" {
+		if info.Version != "0.1.0" {
 			t.Errorf("expected version 1.0.0, got %s", info.Version)
 		}
 	})

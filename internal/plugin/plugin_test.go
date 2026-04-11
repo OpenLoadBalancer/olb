@@ -160,7 +160,7 @@ func TestNewPluginManager(t *testing.T) {
 
 func TestRegisterPlugin(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("test-plugin", "1.0.0")
+	p := newMockPlugin("test-plugin", "0.1.0")
 
 	err := pm.RegisterPlugin(p)
 	if err != nil {
@@ -179,7 +179,7 @@ func TestRegisterPlugin(t *testing.T) {
 
 func TestRegisterPlugin_DuplicateName(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p1 := newMockPlugin("duplicate", "1.0.0")
+	p1 := newMockPlugin("duplicate", "0.1.0")
 	p2 := newMockPlugin("duplicate", "2.0.0")
 
 	if err := pm.RegisterPlugin(p1); err != nil {
@@ -197,7 +197,7 @@ func TestRegisterPlugin_NotAllowed(t *testing.T) {
 		AllowedPlugins: []string{"allowed-plugin"},
 	}
 	pm := NewPluginManager(cfg)
-	p := newMockPlugin("blocked-plugin", "1.0.0")
+	p := newMockPlugin("blocked-plugin", "0.1.0")
 
 	err := pm.RegisterPlugin(p)
 	if err == nil {
@@ -210,7 +210,7 @@ func TestRegisterPlugin_Allowed(t *testing.T) {
 		AllowedPlugins: []string{"allowed-plugin"},
 	}
 	pm := NewPluginManager(cfg)
-	p := newMockPlugin("allowed-plugin", "1.0.0")
+	p := newMockPlugin("allowed-plugin", "0.1.0")
 
 	err := pm.RegisterPlugin(p)
 	if err != nil {
@@ -224,7 +224,7 @@ func TestRegisterPlugin_Allowed(t *testing.T) {
 
 func TestPluginLifecycle_InitStartStop(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("lifecycle", "1.0.0")
+	p := newMockPlugin("lifecycle", "0.1.0")
 
 	if err := pm.RegisterPlugin(p); err != nil {
 		t.Fatalf("RegisterPlugin() error = %v", err)
@@ -252,7 +252,7 @@ func TestPluginLifecycle_InitStartStop(t *testing.T) {
 
 func TestPluginLifecycle_InitError(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("fail-init", "1.0.0")
+	p := newMockPlugin("fail-init", "0.1.0")
 	p.initErr = fmt.Errorf("init failed")
 
 	if err := pm.RegisterPlugin(p); err != nil {
@@ -267,7 +267,7 @@ func TestPluginLifecycle_InitError(t *testing.T) {
 
 func TestPluginLifecycle_StartError(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("fail-start", "1.0.0")
+	p := newMockPlugin("fail-start", "0.1.0")
 	p.startErr = fmt.Errorf("start failed")
 
 	if err := pm.RegisterPlugin(p); err != nil {
@@ -288,11 +288,11 @@ func TestStopAll_ReverseOrder(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
 	var stopOrder []string
 
-	p1 := newMockPlugin("first", "1.0.0")
+	p1 := newMockPlugin("first", "0.1.0")
 	p1.stopOrder = &stopOrder
-	p2 := newMockPlugin("second", "1.0.0")
+	p2 := newMockPlugin("second", "0.1.0")
 	p2.stopOrder = &stopOrder
-	p3 := newMockPlugin("third", "1.0.0")
+	p3 := newMockPlugin("third", "0.1.0")
 	p3.stopOrder = &stopOrder
 
 	// Register in order: first, second, third
@@ -325,8 +325,8 @@ func TestStopAll_ReverseOrder(t *testing.T) {
 func TestStopAll_ErrorContinues(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
 
-	p1 := newMockPlugin("ok-plugin", "1.0.0")
-	p2 := newMockPlugin("err-plugin", "1.0.0")
+	p1 := newMockPlugin("ok-plugin", "0.1.0")
+	p2 := newMockPlugin("err-plugin", "0.1.0")
 	p2.stopErr = fmt.Errorf("stop error")
 
 	if err := pm.RegisterPlugin(p1); err != nil {
@@ -361,7 +361,7 @@ func TestStopAll_ErrorContinues(t *testing.T) {
 func TestListPlugins(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
 
-	if err := pm.RegisterPlugin(newMockPlugin("alpha", "1.0.0")); err != nil {
+	if err := pm.RegisterPlugin(newMockPlugin("alpha", "0.1.0")); err != nil {
 		t.Fatal(err)
 	}
 	if err := pm.RegisterPlugin(newMockPlugin("beta", "2.0.0")); err != nil {
@@ -380,8 +380,8 @@ func TestListPlugins(t *testing.T) {
 	if infos[1].Name != "beta" {
 		t.Errorf("infos[1].Name = %q, want %q", infos[1].Name, "beta")
 	}
-	if infos[0].Version != "1.0.0" {
-		t.Errorf("infos[0].Version = %q, want %q", infos[0].Version, "1.0.0")
+	if infos[0].Version != "0.1.0" {
+		t.Errorf("infos[0].Version = %q, want %q", infos[0].Version, "0.1.0")
 	}
 	if infos[1].Version != "2.0.0" {
 		t.Errorf("infos[1].Version = %q, want %q", infos[1].Version, "2.0.0")
@@ -403,7 +403,7 @@ func TestGetPlugin_NotFound(t *testing.T) {
 
 func TestPluginAPI_RegisterMiddleware(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("mw-plugin", "1.0.0")
+	p := newMockPlugin("mw-plugin", "0.1.0")
 
 	if err := pm.RegisterPlugin(p); err != nil {
 		t.Fatal(err)
@@ -444,7 +444,7 @@ func TestPluginAPI_RegisterMiddleware(t *testing.T) {
 
 func TestPluginAPI_RegisterMiddleware_Duplicate(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("mw-dup", "1.0.0")
+	p := newMockPlugin("mw-dup", "0.1.0")
 
 	if err := pm.RegisterPlugin(p); err != nil {
 		t.Fatal(err)
@@ -469,7 +469,7 @@ func TestPluginAPI_RegisterMiddleware_Duplicate(t *testing.T) {
 
 func TestPluginAPI_RegisterBalancer(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("bal-plugin", "1.0.0")
+	p := newMockPlugin("bal-plugin", "0.1.0")
 
 	if err := pm.RegisterPlugin(p); err != nil {
 		t.Fatal(err)
@@ -503,7 +503,7 @@ func TestPluginAPI_RegisterBalancer(t *testing.T) {
 
 func TestPluginAPI_RegisterHealthCheck(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("hc-plugin", "1.0.0")
+	p := newMockPlugin("hc-plugin", "0.1.0")
 
 	if err := pm.RegisterPlugin(p); err != nil {
 		t.Fatal(err)
@@ -537,7 +537,7 @@ func TestPluginAPI_RegisterHealthCheck(t *testing.T) {
 
 func TestPluginAPI_RegisterDiscovery(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("disc-plugin", "1.0.0")
+	p := newMockPlugin("disc-plugin", "0.1.0")
 
 	if err := pm.RegisterPlugin(p); err != nil {
 		t.Fatal(err)
@@ -571,7 +571,7 @@ func TestPluginAPI_RegisterDiscovery(t *testing.T) {
 
 func TestPluginAPI_LoggerMetricsConfig(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("api-test", "1.0.0")
+	p := newMockPlugin("api-test", "0.1.0")
 
 	if err := pm.RegisterPlugin(p); err != nil {
 		t.Fatal(err)
@@ -718,7 +718,7 @@ func TestEventBus_UnsubscribeNonexistent(t *testing.T) {
 
 func TestEventBus_PluginAPISubscribePublish(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("event-plugin", "1.0.0")
+	p := newMockPlugin("event-plugin", "0.1.0")
 
 	if err := pm.RegisterPlugin(p); err != nil {
 		t.Fatal(err)
@@ -830,7 +830,7 @@ func TestBuiltinEventConstants(t *testing.T) {
 func TestPluginInfo_Fields(t *testing.T) {
 	info := PluginInfo{
 		Name:        "test",
-		Version:     "1.0.0",
+		Version:     "0.1.0",
 		Description: "A test plugin",
 		Author:      "Author Name",
 		License:     "MIT",
@@ -839,8 +839,8 @@ func TestPluginInfo_Fields(t *testing.T) {
 	if info.Name != "test" {
 		t.Errorf("Name = %q, want %q", info.Name, "test")
 	}
-	if info.Version != "1.0.0" {
-		t.Errorf("Version = %q, want %q", info.Version, "1.0.0")
+	if info.Version != "0.1.0" {
+		t.Errorf("Version = %q, want %q", info.Version, "0.1.0")
 	}
 	if info.Description != "A test plugin" {
 		t.Errorf("Description = %q, want %q", info.Description, "A test plugin")
@@ -904,7 +904,7 @@ func TestMultiplePlugins_FullIntegration(t *testing.T) {
 	// Register 3 plugins
 	for i := 0; i < 3; i++ {
 		name := fmt.Sprintf("plugin-%d", i)
-		if err := pm.RegisterPlugin(newMockPlugin(name, "1.0.0")); err != nil {
+		if err := pm.RegisterPlugin(newMockPlugin(name, "0.1.0")); err != nil {
 			t.Fatalf("RegisterPlugin(%q) error = %v", name, err)
 		}
 	}
@@ -1020,7 +1020,7 @@ func TestPluginManager_ConcurrentAccess(t *testing.T) {
 	// Pre-register some plugins
 	for i := 0; i < 5; i++ {
 		name := fmt.Sprintf("concurrent-%d", i)
-		if err := pm.RegisterPlugin(newMockPlugin(name, "1.0.0")); err != nil {
+		if err := pm.RegisterPlugin(newMockPlugin(name, "0.1.0")); err != nil {
 			t.Fatal(err)
 		}
 	}

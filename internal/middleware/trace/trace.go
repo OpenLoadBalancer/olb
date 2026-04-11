@@ -31,7 +31,7 @@ func DefaultConfig() Config {
 	return Config{
 		Enabled:         false,
 		ServiceName:     "openloadbalancer",
-		ServiceVersion:  "1.0.0",
+		ServiceVersion:  "0.1.0",
 		Propagators:     []string{"w3c", "b3"},
 		SampleRate:      1.0,
 		BaggageHeaders:  []string{"X-Request-ID", "X-User-ID", "X-Tenant-ID"},

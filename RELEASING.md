@@ -27,7 +27,7 @@ Before creating a release, ensure:
 
 ```bash
 # Create release branch
-git checkout -b release/v1.0.0
+git checkout -b release/v0.1.0
 
 # Update version references (if any)
 # Update CHANGELOG.md with release date
@@ -50,10 +50,10 @@ Move items from `[Unreleased]` to new version section:
 ### 3. Create Pull Request
 
 ```bash
-git push origin release/v1.0.0
+git push origin release/v0.1.0
 ```
 
-Create PR on GitHub with title: `Release v1.0.0`
+Create PR on GitHub with title: `Release v0.1.0`
 
 ### 4. Merge and Tag
 
@@ -64,10 +64,10 @@ git checkout main
 git pull origin main
 
 # Create signed tag
-git tag -s v1.0.0 -m "Release v1.0.0"
+git tag -s v0.1.0 -m "Release v0.1.0"
 
 # Push tag
-git push origin v1.0.0
+git push origin v0.1.0
 ```
 
 ### 5. CI/CD Build
@@ -89,7 +89,7 @@ GitHub Actions will automatically:
 
 Docker images are published to:
 - `ghcr.io/openloadbalancer/olb:latest`
-- `ghcr.io/openloadbalancer/olb:v1.0.0`
+- `ghcr.io/openloadbalancer/olb:v0.1.0`
 
 ## Binary Artifacts
 

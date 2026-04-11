@@ -114,7 +114,7 @@ curl http://localhost:8081/api/v1/system/info
 
 ```json
 {
-  "version": "1.0.0",
+  "version": "0.1.0",
   "go_version": "go1.23.0",
   "uptime_seconds": 86400,
   "state": "running",

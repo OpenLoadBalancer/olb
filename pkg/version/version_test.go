@@ -78,7 +78,7 @@ func TestInfo(t *testing.T) {
 	origDate := Date
 
 	// Set test values
-	Version = "v1.0.0"
+	Version = "v0.1.0"
 	Commit = "abcdef1234567890"
 	ShortCommit = "abcdef1"
 	Date = "2024-01-01T00:00:00Z"
@@ -102,8 +102,8 @@ func TestInfo(t *testing.T) {
 	}
 
 	// Check values
-	if info["version"] != "v1.0.0" {
-		t.Errorf("Info()[version] = %q, want %q", info["version"], "v1.0.0")
+	if info["version"] != "v0.1.0" {
+		t.Errorf("Info()[version] = %q, want %q", info["version"], "v0.1.0")
 	}
 	if info["commit"] != "abcdef1234567890" {
 		t.Errorf("Info()[commit] = %q, want %q", info["commit"], "abcdef1234567890")

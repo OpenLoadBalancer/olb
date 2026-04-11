@@ -15,7 +15,7 @@ middleware:
   trace:
     enabled: false
     service_name: "openloadbalancer"  # Service name for spans
-    service_version: "1.0.0"          # Service version
+    service_version: "0.1.0"          # Service version
     propagators:                      # Trace propagation formats
       - w3c                           # W3C Trace Context (traceparent/tracestate)
       - b3                            # B3 single header

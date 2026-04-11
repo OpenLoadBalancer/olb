@@ -819,7 +819,7 @@ curl -sf http://localhost:8081/api/v1/status | jq
 {
   "state": "running",
   "uptime": "72h15m30s",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "listeners": 2,
   "pools": 3,
   "routes": 5

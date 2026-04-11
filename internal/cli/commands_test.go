@@ -893,7 +893,7 @@ func TestStatusCommand_JSONFormat(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(map[string]any{
-				"version": "1.0.0",
+				"version": "0.1.0",
 				"uptime":  "1h30m",
 			})
 			return
@@ -1071,7 +1071,7 @@ func TestStatusCommand_TableFormat(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(map[string]any{
-				"version":   "1.0.0",
+				"version":   "0.1.0",
 				"uptime":    "1h30m",
 				"listeners": float64(3),
 				"backends":  float64(5),
@@ -1104,7 +1104,7 @@ func TestStatusCommand_UnknownFormat(t *testing.T) {
 		if r.URL.Path == "/api/v1/system/info" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]any{"version": "1.0.0"})
+			json.NewEncoder(w).Encode(map[string]any{"version": "0.1.0"})
 			return
 		}
 		if r.URL.Path == "/api/v1/system/health" {
@@ -1221,7 +1221,7 @@ func TestStatusCommand_HealthUnhealthy(t *testing.T) {
 		if r.URL.Path == "/api/v1/system/info" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]any{"version": "1.0.0"})
+			json.NewEncoder(w).Encode(map[string]any{"version": "0.1.0"})
 			return
 		}
 		if r.URL.Path == "/api/v1/system/health" {
@@ -1357,7 +1357,7 @@ func TestStatusCommand_SuccessfulWithHealthError(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(map[string]any{
-				"version":    "1.0.0",
+				"version":    "0.1.0",
 				"uptime":     "2h",
 				"listeners":  float64(2),
 				"backends":   float64(4),
@@ -1507,7 +1507,7 @@ func TestStatusCommand_HealthEndpointNon200(t *testing.T) {
 		if r.URL.Path == "/api/v1/system/info" {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]any{
-				"version": "1.0.0",
+				"version": "0.1.0",
 				"uptime":  "1h",
 			})
 			return

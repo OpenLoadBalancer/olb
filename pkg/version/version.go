@@ -6,7 +6,7 @@ import "runtime"
 
 var (
 	// Version is the semantic version of the build.
-	// Injected at build time: -X github.com/openloadbalancer/olb/pkg/version.Version=v0.1.0
+	// Injected at build time: -X github.com/openloadbalancer/olb/pkg/version.Version=0.1.0
 	Version = "dev"
 
 	// Commit is the full git commit SHA.

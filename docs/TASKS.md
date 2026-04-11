@@ -666,7 +666,7 @@
 
 ---
 
-## Phase 5: AI Integration + Polish (v1.0.0)
+## Phase 5: AI Integration + Polish (v0.1.0)
 
 ### 5.1 MCP Server
 - [x] Implement MCP JSON-RPC protocol handler
@@ -738,7 +738,7 @@
 - [x] Install script (curl | sh)
 - [x] GitHub Actions release workflow
 
-### 5.7 v1.0.0 Release
+### 5.7 v0.1.0 Release
 - [x] All tests pass with -race (CI job on Linux)
 - [x] All benchmarks meet targets
 - [x] Documentation complete
@@ -747,7 +747,7 @@
 - [x] Homebrew formula published
 - [x] GitHub release with binaries
 - [x] Blog post / announcement
-- [x] Tag v1.0.0
+- [x] Tag v0.1.0
 
 ---
 

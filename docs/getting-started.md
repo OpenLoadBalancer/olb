@@ -99,7 +99,7 @@ olb start --config olb.yaml
 You should see output like:
 
 ```
-{"ts":"2026-03-15T10:00:00Z","level":"info","msg":"OpenLoadBalancer v1.0.0 starting"}
+{"ts":"2026-03-15T10:00:00Z","level":"info","msg":"OpenLoadBalancer v0.1.0 starting"}
 {"ts":"2026-03-15T10:00:00Z","level":"info","msg":"Listener started","name":"http","address":":8080"}
 ```
 

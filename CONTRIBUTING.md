@@ -492,8 +492,8 @@ func TestDetectCRLF_Injection(t *testing.T) {
 
 1. Update version in relevant files
 2. Update CHANGELOG.md with release date
-3. Create git tag: `git tag -a v1.0.0 -m "Release v1.0.0"`
-4. Push tag: `git push origin v1.0.0`
+3. Create git tag: `git tag -a v0.1.0 -m "Release v0.1.0"`
+4. Push tag: `git push origin v0.1.0`
 5. CI will build and create release automatically
 
 ## Getting Help

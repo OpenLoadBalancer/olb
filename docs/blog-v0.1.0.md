@@ -1,8 +1,8 @@
-# Announcing OpenLoadBalancer v1.0.0
+# Announcing OpenLoadBalancer v0.1.0
 
 **A high-performance, minimal-dependency load balancer written in Go**
 
-Today we're releasing OpenLoadBalancer (OLB) v1.0.0 — a production-ready load balancer built with Go's standard library. Only 3 external dependencies (golang.org/x/{crypto,net,text}), single binary, batteries included.
+Today we're releasing OpenLoadBalancer (OLB) v0.1.0 — a production-ready load balancer built with Go's standard library. Only 3 external dependencies (golang.org/x/{crypto,net,text}), single binary, batteries included.
 
 ## Why Another Load Balancer?
 
@@ -76,7 +76,7 @@ curl -fsSL https://openloadbalancer.dev/install.sh | sh
 brew tap openloadbalancer/olb && brew install olb
 
 # Or with Docker
-docker pull ghcr.io/openloadbalancer/olb:v1.0.0
+docker pull ghcr.io/openloadbalancer/olb:v0.1.0
 
 # Create minimal config
 cat > olb.yaml << 'YAML'
@@ -126,7 +126,7 @@ Full security audit performed with gosec and govulncheck. 0 vulnerabilities in a
 
 - **Website**: https://openloadbalancer.dev
 - **GitHub**: https://github.com/openloadbalancer/olb
-- **Release**: https://github.com/openloadbalancer/olb/releases/tag/v1.0.0
+- **Release**: https://github.com/openloadbalancer/olb/releases/tag/v0.1.0
 - **Documentation**: https://openloadbalancer.dev/docs
 
 ## License

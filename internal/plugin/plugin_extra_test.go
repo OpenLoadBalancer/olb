@@ -25,7 +25,7 @@ import (
 
 func TestPluginAPI_RegisterHealthCheck_Duplicate(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("hc-dup", "1.0.0")
+	p := newMockPlugin("hc-dup", "0.1.0")
 	pm.RegisterPlugin(p)
 	pm.StartAll()
 
@@ -46,7 +46,7 @@ func TestPluginAPI_RegisterHealthCheck_Duplicate(t *testing.T) {
 
 func TestPluginAPI_RegisterDiscovery_Duplicate(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("disc-dup", "1.0.0")
+	p := newMockPlugin("disc-dup", "0.1.0")
 	pm.RegisterPlugin(p)
 	pm.StartAll()
 
@@ -71,7 +71,7 @@ func TestPluginAPI_RegisterDiscovery_Duplicate(t *testing.T) {
 
 func TestPluginAPI_RegisterBalancer_Duplicate(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("bal-dup", "1.0.0")
+	p := newMockPlugin("bal-dup", "0.1.0")
 	pm.RegisterPlugin(p)
 	pm.StartAll()
 
@@ -192,8 +192,8 @@ func TestLoadDir_MixedFilesAndSubdirs(t *testing.T) {
 func TestStopAll_FirstErrorReturned(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
 
-	p1 := newMockPlugin("stop-ok", "1.0.0")
-	p2 := newMockPlugin("stop-fail", "1.0.0")
+	p1 := newMockPlugin("stop-ok", "0.1.0")
+	p2 := newMockPlugin("stop-fail", "0.1.0")
 	p2.stopErr = fmt.Errorf("stop error")
 
 	pm.RegisterPlugin(p1)
@@ -223,7 +223,7 @@ func TestStopAll_FirstErrorReturned(t *testing.T) {
 func TestPluginAPI_NilConfig(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
 	pm.SetConfig(nil)
-	p := newMockPlugin("nil-cfg", "1.0.0")
+	p := newMockPlugin("nil-cfg", "0.1.0")
 	pm.RegisterPlugin(p)
 	pm.StartAll()
 
@@ -236,7 +236,7 @@ func TestPluginAPI_NilConfig(t *testing.T) {
 func TestPluginAPI_NilMetrics(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
 	pm.SetMetrics(nil)
-	p := newMockPlugin("nil-metrics", "1.0.0")
+	p := newMockPlugin("nil-metrics", "0.1.0")
 	pm.RegisterPlugin(p)
 	pm.StartAll()
 
@@ -252,7 +252,7 @@ func TestPluginAPI_NilMetrics(t *testing.T) {
 
 func TestGetHealthCheckFactory_AfterRegistration(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("hc-get-test", "1.0.0")
+	p := newMockPlugin("hc-get-test", "0.1.0")
 	pm.RegisterPlugin(p)
 	pm.StartAll()
 
@@ -278,7 +278,7 @@ func TestGetHealthCheckFactory_AfterRegistration(t *testing.T) {
 
 func TestGetDiscoveryFactory_AfterRegistration(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("disc-get-test", "1.0.0")
+	p := newMockPlugin("disc-get-test", "0.1.0")
 	pm.RegisterPlugin(p)
 	pm.StartAll()
 
@@ -406,7 +406,7 @@ func TestLoadDir_EmptyDirectoryPath(t *testing.T) {
 
 func TestGetBalancerFactory_AfterRegistration(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("bal-get-test", "1.0.0")
+	p := newMockPlugin("bal-get-test", "0.1.0")
 	pm.RegisterPlugin(p)
 	pm.StartAll()
 
@@ -436,7 +436,7 @@ func TestGetBalancerFactory_AfterRegistration(t *testing.T) {
 
 func TestGetMiddlewareFactory_AfterRegistration(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("mw-get-test", "1.0.0")
+	p := newMockPlugin("mw-get-test", "0.1.0")
 	pm.RegisterPlugin(p)
 	pm.StartAll()
 
@@ -685,7 +685,7 @@ func TestMockDiscoveryProvider_AllMethods(t *testing.T) {
 
 func TestMiddlewareFactory_ReturnsError(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("mw-err", "1.0.0")
+	p := newMockPlugin("mw-err", "0.1.0")
 	pm.RegisterPlugin(p)
 	pm.StartAll()
 
@@ -715,7 +715,7 @@ func TestMiddlewareFactory_ReturnsError(t *testing.T) {
 
 func TestBalancerFactory_ReturnsError(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("bal-err", "1.0.0")
+	p := newMockPlugin("bal-err", "0.1.0")
 	pm.RegisterPlugin(p)
 	pm.StartAll()
 
@@ -743,7 +743,7 @@ func TestBalancerFactory_ReturnsError(t *testing.T) {
 
 func TestHealthCheckFactory_ReturnsError(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("hc-err", "1.0.0")
+	p := newMockPlugin("hc-err", "0.1.0")
 	pm.RegisterPlugin(p)
 	pm.StartAll()
 
@@ -771,7 +771,7 @@ func TestHealthCheckFactory_ReturnsError(t *testing.T) {
 
 func TestDiscoveryFactory_ReturnsError(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("disc-err", "1.0.0")
+	p := newMockPlugin("disc-err", "0.1.0")
 	pm.RegisterPlugin(p)
 	pm.StartAll()
 
@@ -803,7 +803,7 @@ func TestDiscoveryFactory_ReturnsError(t *testing.T) {
 
 func TestMiddlewareFactory_ReceivesConfig(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("mw-cfg", "1.0.0")
+	p := newMockPlugin("mw-cfg", "0.1.0")
 	pm.RegisterPlugin(p)
 	pm.StartAll()
 
@@ -842,7 +842,7 @@ func TestMiddlewareFactory_ReceivesConfig(t *testing.T) {
 
 func TestPluginAPI_MultipleEventsFromPlugin(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("multi-events", "1.0.0")
+	p := newMockPlugin("multi-events", "0.1.0")
 	pm.RegisterPlugin(p)
 	pm.StartAll()
 
@@ -882,7 +882,7 @@ func TestPluginAPI_MultipleEventsFromPlugin(t *testing.T) {
 
 func TestPluginAPI_SubscribeReturnsIDs(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("sub-id-test", "1.0.0")
+	p := newMockPlugin("sub-id-test", "0.1.0")
 	pm.RegisterPlugin(p)
 	pm.StartAll()
 
@@ -951,13 +951,13 @@ func TestPluginManager_MultipleAllowedPlugins(t *testing.T) {
 	pm := NewPluginManager(cfg)
 
 	for _, name := range []string{"alpha", "beta", "gamma"} {
-		if err := pm.RegisterPlugin(newMockPlugin(name, "1.0.0")); err != nil {
+		if err := pm.RegisterPlugin(newMockPlugin(name, "0.1.0")); err != nil {
 			t.Fatalf("RegisterPlugin(%q) error = %v", name, err)
 		}
 	}
 
 	// Non-allowed plugin should fail
-	err := pm.RegisterPlugin(newMockPlugin("delta", "1.0.0"))
+	err := pm.RegisterPlugin(newMockPlugin("delta", "0.1.0"))
 	if err == nil {
 		t.Error("RegisterPlugin() should fail for non-allowed plugin")
 	}
@@ -977,7 +977,7 @@ func TestPluginManager_MultipleAllowedPlugins(t *testing.T) {
 
 func TestPluginManager_RestartAfterStop(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("restart", "1.0.0")
+	p := newMockPlugin("restart", "0.1.0")
 	pm.RegisterPlugin(p)
 
 	// First start/stop cycle
@@ -1110,7 +1110,7 @@ func TestPluginManager_ConcurrentRegisterAndList(t *testing.T) {
 		wg.Add(2)
 		go func(i int) {
 			defer wg.Done()
-			pm.RegisterPlugin(newMockPlugin(fmt.Sprintf("concurrent-reg-%d", i), "1.0.0"))
+			pm.RegisterPlugin(newMockPlugin(fmt.Sprintf("concurrent-reg-%d", i), "0.1.0"))
 		}(i)
 		go func() {
 			defer wg.Done()
@@ -1131,7 +1131,7 @@ func TestPluginManager_ConcurrentRegisterAndList(t *testing.T) {
 
 func TestPluginAPI_LoggerIsNamed(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("logger-test", "1.0.0")
+	p := newMockPlugin("logger-test", "0.1.0")
 	pm.RegisterPlugin(p)
 	pm.StartAll()
 
@@ -1151,7 +1151,7 @@ func TestPluginManager_SetLoggerThenPluginAPI(t *testing.T) {
 	customLogger := logging.NewWithDefaults()
 	pm.SetLogger(customLogger)
 
-	p := newMockPlugin("logger-update", "1.0.0")
+	p := newMockPlugin("logger-update", "0.1.0")
 	pm.RegisterPlugin(p)
 	pm.StartAll()
 
@@ -1173,7 +1173,7 @@ func TestPluginManager_SetMetricsThenPluginAPI(t *testing.T) {
 	customMetrics := metrics.NewRegistry()
 	pm.SetMetrics(customMetrics)
 
-	p := newMockPlugin("metrics-update", "1.0.0")
+	p := newMockPlugin("metrics-update", "0.1.0")
 	pm.RegisterPlugin(p)
 	pm.StartAll()
 
@@ -1193,7 +1193,7 @@ func TestPluginManager_SetConfigThenPluginAPI(t *testing.T) {
 	customConfig := &config.Config{Version: "test-2.0"}
 	pm.SetConfig(customConfig)
 
-	p := newMockPlugin("config-update", "1.0.0")
+	p := newMockPlugin("config-update", "0.1.0")
 	pm.RegisterPlugin(p)
 	pm.StartAll()
 
@@ -1296,7 +1296,7 @@ func TestPluginManager_PluginVersion(t *testing.T) {
 
 func TestFactory_NilConfigDoesNotPanic(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
-	p := newMockPlugin("nil-cfg-factory", "1.0.0")
+	p := newMockPlugin("nil-cfg-factory", "0.1.0")
 	pm.RegisterPlugin(p)
 	pm.StartAll()
 

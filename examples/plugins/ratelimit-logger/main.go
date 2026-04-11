@@ -112,7 +112,7 @@ func (p *RateLimitLoggerPlugin) Name() string {
 // Version returns the plugin version. Use semantic versioning so operators
 // can track which version is deployed.
 func (p *RateLimitLoggerPlugin) Version() string {
-	return "1.0.0"
+	return "0.1.0"
 }
 
 // ---------------------------------------------------------------------------

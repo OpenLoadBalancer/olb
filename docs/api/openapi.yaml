@@ -12,7 +12,7 @@ info:
 
     ## Rate Limiting
     API requests are rate-limited to 1000 requests per minute per IP.
-  version: 1.0.0
+  version: 0.1.0
   contact:
     name: OpenLoadBalancer Team
     url: https://openloadbalancer.dev
@@ -736,7 +736,7 @@ components:
       properties:
         version:
           type: string
-          example: "1.0.0"
+          example: "0.1.0"
         commit:
           type: string
           example: "abc1234"

@@ -318,7 +318,7 @@ func TestBoxDrawingCharacters(t *testing.T) {
 func TestMetricsFetcher(t *testing.T) {
 	// Create a mock server
 	mockData := &admin.SystemInfo{
-		Version:   "1.0.0",
+		Version:   "0.1.0",
 		Commit:    "abc123",
 		BuildDate: "2024-01-01",
 		Uptime:    "1h30m",
@@ -411,7 +411,7 @@ func TestTUIViewSwitching(t *testing.T) {
 func TestDashboardData(t *testing.T) {
 	data := &DashboardData{
 		SystemInfo: &admin.SystemInfo{
-			Version: "1.0.0",
+			Version: "0.1.0",
 			Uptime:  "1h",
 		},
 		Pools: []admin.BackendPool{
@@ -432,7 +432,7 @@ func TestDashboardData(t *testing.T) {
 		Timestamp: time.Now(),
 	}
 
-	if data.SystemInfo.Version != "1.0.0" {
+	if data.SystemInfo.Version != "0.1.0" {
 		t.Errorf("Expected version 1.0.0, got %s", data.SystemInfo.Version)
 	}
 	if len(data.Pools) != 1 {
@@ -600,7 +600,7 @@ func TestMetricsFetcher_FetchSystemInfo(t *testing.T) {
 			resp := admin.Response{
 				Success: true,
 				Data: admin.SystemInfo{
-					Version: "1.0.0",
+					Version: "0.1.0",
 					Uptime:  "5m",
 					State:   "running",
 				},
@@ -614,7 +614,7 @@ func TestMetricsFetcher_FetchSystemInfo(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if info.Version != "1.0.0" {
+		if info.Version != "0.1.0" {
 			t.Errorf("expected version 1.0.0, got %s", info.Version)
 		}
 	})
@@ -845,7 +845,7 @@ func TestTUIRenderOverview(t *testing.T) {
 
 	data := &DashboardData{
 		SystemInfo: &admin.SystemInfo{
-			Version: "1.0.0",
+			Version: "0.1.0",
 			Uptime:  "5m",
 			State:   "running",
 		},

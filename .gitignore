@@ -96,3 +96,4 @@ data/
 
 node_modules/
 internal/webui-build-temp/
+cli_cover.html

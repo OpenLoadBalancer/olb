@@ -31,13 +31,13 @@ func (m *MockCommand) Run(args []string) error {
 }
 
 func TestNew(t *testing.T) {
-	cli := New("olb", "1.0.0")
+	cli := New("olb", "0.1.0")
 
 	if cli.Name() != "olb" {
 		t.Errorf("expected name 'olb', got '%s'", cli.Name())
 	}
 
-	if cli.Version() != "1.0.0" {
+	if cli.Version() != "0.1.0" {
 		t.Errorf("expected version '1.0.0', got '%s'", cli.Version())
 	}
 
@@ -50,7 +50,7 @@ func TestNewWithWriters(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 
-	cli := NewWithWriters("olb", "1.0.0", &out, &errOut)
+	cli := NewWithWriters("olb", "0.1.0", &out, &errOut)
 
 	if cli.Name() != "olb" {
 		t.Errorf("expected name 'olb', got '%s'", cli.Name())
@@ -59,13 +59,13 @@ func TestNewWithWriters(t *testing.T) {
 	// Test that output goes to custom writers
 	cli.Run([]string{"--version"})
 
-	if !strings.Contains(out.String(), "1.0.0") {
+	if !strings.Contains(out.String(), "0.1.0") {
 		t.Errorf("expected version in output, got: %s", out.String())
 	}
 }
 
 func TestCLI_Register(t *testing.T) {
-	cli := New("olb", "1.0.0")
+	cli := New("olb", "0.1.0")
 	cmd := &MockCommand{name: "test", description: "Test command"}
 
 	cli.Register(cmd)
@@ -96,7 +96,7 @@ func TestCLI_Register(t *testing.T) {
 }
 
 func TestCLI_RegisterOverwrite(t *testing.T) {
-	cli := New("olb", "1.0.0")
+	cli := New("olb", "0.1.0")
 	cmd1 := &MockCommand{name: "test", description: "First command"}
 	cmd2 := &MockCommand{name: "test", description: "Second command"}
 
@@ -116,7 +116,7 @@ func TestCLI_RegisterOverwrite(t *testing.T) {
 func TestCLI_Run_NoCommand(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	cli := NewWithWriters("olb", "1.0.0", &out, &errOut)
+	cli := NewWithWriters("olb", "0.1.0", &out, &errOut)
 
 	err := cli.Run([]string{})
 	if err != nil {
@@ -132,7 +132,7 @@ func TestCLI_Run_NoCommand(t *testing.T) {
 func TestCLI_Run_Help(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	cli := NewWithWriters("olb", "1.0.0", &out, &errOut)
+	cli := NewWithWriters("olb", "0.1.0", &out, &errOut)
 
 	err := cli.Run([]string{"--help"})
 	if err != nil {
@@ -147,7 +147,7 @@ func TestCLI_Run_Help(t *testing.T) {
 func TestCLI_Run_HelpShort(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	cli := NewWithWriters("olb", "1.0.0", &out, &errOut)
+	cli := NewWithWriters("olb", "0.1.0", &out, &errOut)
 
 	err := cli.Run([]string{"-h"})
 	if err != nil {
@@ -162,14 +162,14 @@ func TestCLI_Run_HelpShort(t *testing.T) {
 func TestCLI_Run_Version(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	cli := NewWithWriters("olb", "1.0.0", &out, &errOut)
+	cli := NewWithWriters("olb", "0.1.0", &out, &errOut)
 
 	err := cli.Run([]string{"--version"})
 	if err != nil {
 		t.Errorf("expected no error, got: %v", err)
 	}
 
-	if !strings.Contains(out.String(), "1.0.0") {
+	if !strings.Contains(out.String(), "0.1.0") {
 		t.Errorf("expected version in output, got: %s", out.String())
 	}
 }
@@ -177,14 +177,14 @@ func TestCLI_Run_Version(t *testing.T) {
 func TestCLI_Run_VersionShort(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	cli := NewWithWriters("olb", "1.0.0", &out, &errOut)
+	cli := NewWithWriters("olb", "0.1.0", &out, &errOut)
 
 	err := cli.Run([]string{"-v"})
 	if err != nil {
 		t.Errorf("expected no error, got: %v", err)
 	}
 
-	if !strings.Contains(out.String(), "1.0.0") {
+	if !strings.Contains(out.String(), "0.1.0") {
 		t.Errorf("expected version in output, got: %s", out.String())
 	}
 }
@@ -192,7 +192,7 @@ func TestCLI_Run_VersionShort(t *testing.T) {
 func TestCLI_Run_UnknownCommand(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	cli := NewWithWriters("olb", "1.0.0", &out, &errOut)
+	cli := NewWithWriters("olb", "0.1.0", &out, &errOut)
 
 	err := cli.Run([]string{"unknown"})
 	if err == nil {
@@ -207,7 +207,7 @@ func TestCLI_Run_UnknownCommand(t *testing.T) {
 func TestCLI_Run_Command(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	cli := NewWithWriters("olb", "1.0.0", &out, &errOut)
+	cli := NewWithWriters("olb", "0.1.0", &out, &errOut)
 	cmd := &MockCommand{name: "test", description: "Test command"}
 	cli.Register(cmd)
 
@@ -228,7 +228,7 @@ func TestCLI_Run_Command(t *testing.T) {
 func TestCLI_Run_CommandError(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	cli := NewWithWriters("olb", "1.0.0", &out, &errOut)
+	cli := NewWithWriters("olb", "0.1.0", &out, &errOut)
 	cmd := &MockCommand{name: "test", description: "Test command", returnErr: errors.New("command failed")}
 	cli.Register(cmd)
 
@@ -245,7 +245,7 @@ func TestCLI_Run_CommandError(t *testing.T) {
 func TestCLI_Run_CommandHelp(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	cli := NewWithWriters("olb", "1.0.0", &out, &errOut)
+	cli := NewWithWriters("olb", "0.1.0", &out, &errOut)
 	cmd := &MockCommand{name: "test", description: "Test command description"}
 	cli.Register(cmd)
 
@@ -266,7 +266,7 @@ func TestCLI_Run_CommandHelp(t *testing.T) {
 func TestCLI_Run_CommandHelpUnknown(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	cli := NewWithWriters("olb", "1.0.0", &out, &errOut)
+	cli := NewWithWriters("olb", "0.1.0", &out, &errOut)
 
 	err := cli.Run([]string{"--help", "unknown"})
 	if err == nil {
@@ -279,7 +279,7 @@ func TestCLI_Run_CommandHelpUnknown(t *testing.T) {
 }
 
 func TestCLI_Help(t *testing.T) {
-	cli := New("olb", "1.0.0")
+	cli := New("olb", "0.1.0")
 	cli.Register(&MockCommand{name: "start", description: "Start the server"})
 	cli.Register(&MockCommand{name: "stop", description: "Stop the server"})
 	cli.Register(&MockCommand{name: "status", description: "Show status"})
@@ -319,7 +319,7 @@ func TestCLI_Help(t *testing.T) {
 }
 
 func TestCLI_HelpSorted(t *testing.T) {
-	cli := New("olb", "1.0.0")
+	cli := New("olb", "0.1.0")
 	cli.Register(&MockCommand{name: "zebra", description: "Zebra command"})
 	cli.Register(&MockCommand{name: "alpha", description: "Alpha command"})
 	cli.Register(&MockCommand{name: "mike", description: "Mike command"})
@@ -341,7 +341,7 @@ func TestCLI_HelpSorted(t *testing.T) {
 }
 
 func TestCLI_Commands(t *testing.T) {
-	cli := New("olb", "1.0.0")
+	cli := New("olb", "0.1.0")
 	cmd1 := &MockCommand{name: "start", description: "Start"}
 	cmd2 := &MockCommand{name: "stop", description: "Stop"}
 
@@ -1096,7 +1096,7 @@ func TestFormatWithGlobals_Table(t *testing.T) {
 func TestCLI_Run_GlobalFlagParseError(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	cli := NewWithWriters("olb", "1.0.0", &out, &errOut)
+	cli := NewWithWriters("olb", "0.1.0", &out, &errOut)
 
 	// --format with invalid value triggers error
 	err := cli.Run([]string{"--format=xml"})
