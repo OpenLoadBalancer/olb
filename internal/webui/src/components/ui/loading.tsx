@@ -15,9 +15,10 @@ export function Loading({ className, size = "md", text }: LoadingProps) {
   }
 
   return (
-    <div className={cn("flex flex-col items-center justify-center gap-2", className)}>
-      <Loader2 className={cn("animate-spin text-primary", sizeClasses[size])} />
+    <div role="status" className={cn("flex flex-col items-center justify-center gap-2", className)}>
+      <Loader2 className={cn("animate-spin text-primary", sizeClasses[size])} aria-hidden="true" />
       {text && <p className="text-sm text-muted-foreground">{text}</p>}
+      <span className="sr-only">Loading...</span>
     </div>
   )
 }
@@ -29,7 +30,7 @@ interface LoadingOverlayProps {
 
 export function LoadingOverlay({ className, text = "Loading..." }: LoadingOverlayProps) {
   return (
-    <div className={cn("absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-50", className)}>
+    <div role="status" className={cn("absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-50", className)}>
       <Loading text={text} />
     </div>
   )
@@ -41,7 +42,7 @@ interface LoadingCardProps {
 
 export function LoadingCard({ className }: LoadingCardProps) {
   return (
-    <div className={cn("p-6 rounded-lg border bg-card", className)}>
+    <div aria-hidden="true" className={cn("p-6 rounded-lg border bg-card", className)}>
       <div className="space-y-3">
         <div className="h-4 w-1/3 bg-muted rounded animate-pulse" />
         <div className="h-8 w-2/3 bg-muted rounded animate-pulse" />
@@ -58,7 +59,7 @@ interface LoadingTableProps {
 
 export function LoadingTable({ rows = 5, className }: LoadingTableProps) {
   return (
-    <div className={cn("space-y-2", className)}>
+    <div aria-hidden="true" className={cn("space-y-2", className)}>
       {Array.from({ length: rows }).map((_, i) => (
         <div key={i} className="flex gap-4 p-3 border rounded-lg">
           <div className="h-4 w-1/4 bg-muted rounded animate-pulse" />

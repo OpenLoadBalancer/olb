@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -22,7 +23,7 @@ function SimpleLineChart({ data, color = "#3b82f6" }: { data: number[]; color?: 
   }).join(' ')
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-16 overflow-visible">
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-16 overflow-visible" role="img" aria-label="Line chart showing metric trend over time">
       <polyline
         fill="none"
         stroke={color}
@@ -79,6 +80,7 @@ function extractMetric(metrics: Record<string, any>, name: string): number {
 const MAX_HISTORY = 30
 
 export function MetricsPage() {
+  useDocumentTitle("Metrics")
   const { data: metrics, isLoading } = useMetrics()
   const { data: pools } = usePools()
 

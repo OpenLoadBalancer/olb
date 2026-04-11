@@ -1,0 +1,2 @@
+import{M as e}from"./vendor-radix-DIXfqRpK.js";import{c as t}from"./card-qtqdPJ11.js";var n=e();function r({className:e}){return(0,n.jsx)(`div`,{"aria-hidden":`true`,className:t(`p-6 rounded-lg border bg-card`,e),children:(0,n.jsxs)(`div`,{className:`space-y-3`,children:[(0,n.jsx)(`div`,{className:`h-4 w-1/3 bg-muted rounded animate-pulse`}),(0,n.jsx)(`div`,{className:`h-8 w-2/3 bg-muted rounded animate-pulse`}),(0,n.jsx)(`div`,{className:`h-4 w-full bg-muted rounded animate-pulse`})]})})}export{r as t};
+//# sourceMappingURL=loading-DCWUwRhu.js.map

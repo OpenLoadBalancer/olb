@@ -1,4 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -9,6 +10,7 @@ import { useConfig } from "@/hooks/use-query"
 import { api } from "@/lib/api"
 
 export function SettingsPage() {
+  useDocumentTitle("Settings")
   const { data: config } = useConfig()
   const c = config as any
 

@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -44,6 +45,7 @@ const protocolColors: Record<string, string> = {
 const httpMethods = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
 
 export function ListenersPage() {
+  useDocumentTitle("Listeners")
   const { data: config, isLoading: configLoading, error: configError } = useConfig()
   const { data: pools } = usePools()
   const poolNames = (pools ?? []).map(p => p.name)
@@ -226,8 +228,13 @@ export function ListenersPage() {
           {listeners.map((listener) => (
             <Card
               key={listener.id}
+              role="button"
+              tabIndex={0}
+              aria-label={`Select listener ${listener.name}`}
+              aria-pressed={selectedListener?.id === listener.id}
               className={`cursor-pointer transition-colors hover:bg-accent ${selectedListener?.id === listener.id ? 'border-primary' : ''}`}
               onClick={() => setSelectedListener(listener)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedListener(listener) } }}
             >
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
@@ -276,7 +283,7 @@ export function ListenersPage() {
                     <Edit className="mr-2 h-4 w-4" />
                     Edit
                   </Button>
-                  <Button
+						<Button
                     variant="destructive"
                     size="sm"
                     onClick={() => handleDeleteListener(selectedListener.id)}
@@ -414,13 +421,13 @@ export function ListenersPage() {
                           {route.strip_prefix && (
                             <Badge variant="outline" className="text-xs">Strip Prefix</Badge>
                           )}
-                          <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0">
+                          <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" aria-label="Edit route">
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button
+									<Button
                             variant="ghost"
                             size="icon"
-                            className="h-9 w-9 shrink-0 text-destructive"
+                            className="h-9 w-9 shrink-0 text-destructive" aria-label="Delete route"
                             onClick={() => handleDeleteRoute(route.id)}
                           >
                             <Trash2 className="h-4 w-4" />

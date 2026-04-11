@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -30,6 +31,7 @@ import { useClusterStatus, useClusterMembers } from "@/hooks/use-query"
 import { LoadingCard } from "@/components/ui/loading"
 
 export function ClusterPage() {
+  useDocumentTitle("Cluster")
   const { data: clusterStatus, isLoading: statusLoading, error: statusError, refetch: refetchStatus } = useClusterStatus()
   const { data: members, isLoading: membersLoading, refetch: refetchMembers } = useClusterMembers()
 
@@ -223,7 +225,7 @@ export function ClusterPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <Button
-                          variant="ghost"
+                          variant="ghost" aria-label="Remove node"
                           size="icon"
                           className="text-destructive"
                           onClick={() => {

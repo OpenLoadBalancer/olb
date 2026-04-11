@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -12,6 +13,7 @@ import { cn } from "@/lib/utils"
 import type { APIEventItem } from "@/types"
 
 export function DashboardPage() {
+  useDocumentTitle("Dashboard")
   const { data: health, isLoading: healthLoading, error: healthError, refetch: refetchHealth } = useHealth()
   const { data: systemInfo, isLoading: infoLoading, error: infoError } = useSystemInfo()
   const { data: pools } = usePools()

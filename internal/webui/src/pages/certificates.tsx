@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -21,6 +22,7 @@ import { useCertificates } from "@/hooks/use-query"
 import { LoadingCard } from "@/components/ui/loading"
 
 export function CertificatesPage() {
+  useDocumentTitle("Certificates")
   const { data: certs, isLoading, error, refetch } = useCertificates()
 
   // Add Certificate Dialog State
@@ -81,14 +83,14 @@ export function CertificatesPage() {
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="flex gap-2">
-                <Button
+						<Button
                   variant={certSource === 'acme' ? 'default' : 'outline'}
                   className="flex-1"
                   onClick={() => setCertSource('acme')}
                 >
                   Let's Encrypt
                 </Button>
-                <Button
+						<Button
                   variant={certSource === 'manual' ? 'default' : 'outline'}
                   className="flex-1"
                   onClick={() => setCertSource('manual')}
@@ -165,7 +167,7 @@ export function CertificatesPage() {
               <Button variant="outline" onClick={() => setCertDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button
+					<Button
                 onClick={handleAddCertificate}
                 disabled={certSource === 'acme' ? !newCert.domain || !newCert.email : !newCert.domain || !newCert.certContent || !newCert.keyContent}
               >
@@ -243,8 +245,8 @@ export function CertificatesPage() {
                     <Badge className={getExpiryBg(days)}>
                       {days} days
                     </Badge>
-                    <Button
-                      variant="ghost"
+                    
+                      <Button variant="ghost" aria-label="Renew certificate"
                       size="icon"
                       onClick={() => handleRenewCert(cert.names)}
                     >

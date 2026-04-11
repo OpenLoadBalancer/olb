@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -59,6 +60,7 @@ const categoryColors: Record<string, string> = {
 }
 
 export function MiddlewarePage() {
+  useDocumentTitle("Middleware")
   const { data: middlewareStatus, isLoading } = useMiddlewareStatus()
   const { data: config } = useConfig()
   const [selectedCategory, setSelectedCategory] = useState<string>("all")

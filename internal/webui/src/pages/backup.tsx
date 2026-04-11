@@ -1,4 +1,5 @@
 import { useState, useRef } from "react"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -19,6 +20,7 @@ import { useConfig } from "@/hooks/use-query"
 import { api } from "@/lib/api"
 
 export function BackupRestorePage() {
+  useDocumentTitle("Backup   const { data: config, refetch } = useConfig() Restore")
   const { data: config, refetch } = useConfig()
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [importPreview, setImportPreview] = useState<any>(null)

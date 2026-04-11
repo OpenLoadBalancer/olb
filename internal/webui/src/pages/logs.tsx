@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,6 +42,7 @@ function eventToLog(event: APIEventItem): { id: string; timestamp: string; level
 }
 
 export function LogsPage() {
+  useDocumentTitle("Logs")
   const { data: events, refetch } = useEvents()
   const [search, setSearch] = useState("")
   const [levelFilter, setLevelFilter] = useState<string>("all")
@@ -148,7 +150,7 @@ export function LogsPage() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search events..."
+                placeholder="Search events..." aria-label="Search events"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-10"

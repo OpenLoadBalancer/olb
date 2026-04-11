@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -60,6 +61,7 @@ const algorithmLabels: Record<string, string> = {
 }
 
 export function PoolsPage() {
+  useDocumentTitle("Pools")
   const { data: pools, isLoading, error, refetch } = usePools()
   const [search, setSearch] = useState("")
   const [selectedPoolName, setSelectedPoolName] = useState<string | null>(null)
@@ -199,7 +201,7 @@ export function PoolsPage() {
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
                 <Label htmlFor="name">Pool Name</Label>
-                <Input
+                <Input 
                   id="name"
                   placeholder="e.g., api-pool"
                   value={newPool.name}
@@ -252,7 +254,7 @@ export function PoolsPage() {
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="hc-path">Health Check Path</Label>
-                    <Input
+                    <Input 
                       id="hc-path"
                       placeholder="/health"
                       value={newPool.healthCheckPath}
@@ -294,8 +296,8 @@ export function PoolsPage() {
       <div className="flex gap-4">
         <div className="relative flex-1 sm:max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search pools..."
+          <Input 
+            placeholder="Search pools..." aria-label="Search pools"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-10"
@@ -308,8 +310,13 @@ export function PoolsPage() {
           {filteredPools.map((pool) => (
             <Card
               key={pool.name}
+              role="button"
+              tabIndex={0}
+              aria-label={`Select pool ${pool.name}`}
+              aria-pressed={selectedPool?.name === pool.name}
               className={`cursor-pointer transition-colors hover:bg-accent ${selectedPool?.name === pool.name ? 'border-primary' : ''}`}
               onClick={() => setSelectedPoolName(pool.name)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedPoolName(pool.name) } }}
             >
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
@@ -371,7 +378,7 @@ export function PoolsPage() {
                       <div className="grid gap-4 py-4">
                         <div className="grid gap-2">
                           <Label htmlFor="address">Backend Address</Label>
-                          <Input
+                          <Input 
                             id="address"
                             placeholder="e.g., 10.0.1.10:8080"
                             value={newBackend.address}
@@ -380,7 +387,7 @@ export function PoolsPage() {
                         </div>
                         <div className="grid gap-2">
                           <Label htmlFor="weight">Weight</Label>
-                          <Input
+                          <Input 
                             id="weight"
                             type="number"
                             min={1}
@@ -430,7 +437,7 @@ export function PoolsPage() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-9 w-9 shrink-0 text-destructive"
+                              className="h-9 w-9 shrink-0 text-destructive" aria-label="Delete backend"
                               onClick={() => handleDeleteBackend(backend.id)}
                             >
                               <Trash2 className="h-4 w-4" />

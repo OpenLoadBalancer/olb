@@ -52,6 +52,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       )}
 
       <aside
+        id="sidebar-nav"
         ref={sidebarRef}
         role="navigation"
         aria-label="Main navigation"
