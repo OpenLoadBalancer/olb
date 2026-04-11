@@ -2,8 +2,8 @@
 package router
 
 import (
-	"net/http"
 	"net"
+	"net/http"
 	"strings"
 	"sync"
 

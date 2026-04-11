@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os/exec"
 	"sync"
 	"time"
 
@@ -40,7 +41,7 @@ func (s Status) String() string {
 
 // Check represents a health check for a single backend.
 type Check struct {
-	// Type is the health check type ("http", "tcp").
+	// Type is the health check type ("http", "tcp", "grpc", "exec").
 	Type string
 
 	// Interval is the time between health checks.
@@ -61,6 +62,13 @@ type Check struct {
 
 	// Headers are additional HTTP headers to send (for HTTP type).
 	Headers map[string]string
+
+	// Command is the command to execute for exec health checks.
+	// The command is run with the backend address as an argument.
+	Command string
+
+	// Args are additional arguments for the exec health check command.
+	Args []string
 
 	// HealthyThreshold is the number of consecutive successes required
 	// to transition from unhealthy to healthy.
@@ -268,6 +276,8 @@ func (c *Checker) performCheck(state *checkState) {
 		result = c.checkTCP(state.backend, config)
 	case "grpc":
 		result = c.checkGRPC(state.backend, config)
+	case "exec":
+		result = c.checkExec(state.backend, config)
 	default:
 		result = Result{
 			Healthy: false,
@@ -415,6 +425,45 @@ func (c *Checker) checkGRPC(b *backend.Backend, config *Check) Result {
 		Healthy: false,
 		Error:   fmt.Errorf("grpc health check HTTP status: %d", resp.StatusCode),
 	}
+}
+
+// checkExec performs an exec-based health check by running an external command.
+// The backend address is appended to the command arguments.
+// A successful health check is indicated by a zero exit code.
+func (c *Checker) checkExec(b *backend.Backend, config *Check) Result {
+	if config.Command == "" {
+		return Result{Healthy: false, Error: fmt.Errorf("exec health check: no command specified")}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), config.Timeout)
+	defer cancel()
+
+	args := append(config.Args, b.Address)
+	cmd := exec.CommandContext(ctx, config.Command, args...)
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return Result{Healthy: false, Error: fmt.Errorf("exec health check timed out after %s", config.Timeout)}
+		}
+		errMsg := stderr.String()
+		if errMsg != "" {
+			return Result{Healthy: false, Error: fmt.Errorf("exec health check failed: %s: %s", err, truncateString(errMsg, 200))}
+		}
+		return Result{Healthy: false, Error: fmt.Errorf("exec health check failed: %w", err)}
+	}
+
+	return Result{Healthy: true}
+}
+
+// truncateString truncates a string to maxLen characters, appending "..." if truncated.
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
 
 // checkTCP performs a TCP health check.

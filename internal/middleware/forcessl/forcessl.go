@@ -2,9 +2,9 @@
 package forcessl
 
 import (
+	"net"
 	"net/http"
 	"strconv"
-	"net"
 	"strings"
 )
 

@@ -17,6 +17,7 @@ import (
 	"github.com/openloadbalancer/olb/internal/health"
 	"github.com/openloadbalancer/olb/internal/metrics"
 	"github.com/openloadbalancer/olb/internal/middleware/csrf"
+	"github.com/openloadbalancer/olb/internal/middleware/secureheaders"
 	"github.com/openloadbalancer/olb/internal/router"
 )
 
@@ -310,6 +311,9 @@ func (s *Server) setupRoutes() {
 
 	// Apply CORS for admin API (restricted to allowed origins)
 	handler = adminCORS(s.allowedOrigins)(handler)
+
+	// Apply security headers (HSTS, X-Content-Type-Options, etc.)
+	handler = secureheaders.New(secureheaders.RecommendedConfig()).Wrap(handler)
 
 	s.server = &http.Server{
 		Addr:         s.addr,

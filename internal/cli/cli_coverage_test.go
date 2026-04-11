@@ -221,7 +221,7 @@ func TestCov_TUI_Run_DoubleStart(t *testing.T) {
 // printed correctly in table format.
 func TestCov_StatusCommand_Float64Backends(t *testing.T) {
 	info := map[string]any{
-		"backends": float64(5),
+		"backends":  float64(5),
 		"listeners": float64(3),
 	}
 

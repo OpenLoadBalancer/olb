@@ -194,7 +194,7 @@ func TestCov_ManagerDrain_TimerTimeout(t *testing.T) {
 		MaxConnections: 100,
 		MaxPerSource:   100,
 		MaxPerBackend:  100,
-		DrainTimeout:  50 * time.Millisecond, // very short drain timeout
+		DrainTimeout:   50 * time.Millisecond, // very short drain timeout
 	})
 
 	// Create a tracked connection to prevent immediate drain

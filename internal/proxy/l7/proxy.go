@@ -52,7 +52,7 @@ type HTTPProxy struct {
 	poolManager     *backend.PoolManager
 	connPoolManager *conn.PoolManager
 	healthChecker   *health.Checker
-	passiveChecker *health.PassiveChecker
+	passiveChecker  *health.PassiveChecker
 	middlewareChain *middleware.Chain
 
 	// Protocol-specific handlers
@@ -148,7 +148,7 @@ func NewHTTPProxy(config *Config) *HTTPProxy {
 		poolManager:         config.PoolManager,
 		connPoolManager:     config.ConnPoolManager,
 		healthChecker:       config.HealthChecker,
-		passiveChecker:     config.PassiveChecker,
+		passiveChecker:      config.PassiveChecker,
 		middlewareChain:     config.MiddlewareChain,
 		wsHandler:           NewWebSocketHandler(nil),
 		grpcHandler:         NewGRPCHandler(nil),
