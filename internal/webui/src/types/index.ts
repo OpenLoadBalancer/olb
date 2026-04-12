@@ -103,7 +103,8 @@ export interface APICertificateInfo {
 export interface APIWAFStatus {
   enabled: boolean
   mode?: string
-  [key: string]: any
+  rules?: Record<string, unknown>
+  detections?: Record<string, number>
 }
 
 export interface APIClusterStatus {

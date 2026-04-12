@@ -9,17 +9,36 @@ import { toast } from "sonner"
 import { useConfig } from "@/hooks/use-query"
 import { api } from "@/lib/api"
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Config = Record<string, any>
+
+interface ListenerConfig {
+  name: string
+  address: string
+  protocol?: string
+  routes?: Array<{ path: string }>
+}
+
+interface PoolConfig {
+  name: string
+  algorithm: string
+  backends?: Array<Record<string, unknown>>
+  health_check?: { type: string; path: string; interval: string }
+}
+
 export function SettingsPage() {
   useDocumentTitle("Settings")
   const { data: config } = useConfig()
-  const c = config as any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const c = (config?.data ?? config) as Record<string, any> | undefined
 
   const handleReload = async () => {
     try {
       await api.reload()
       toast.success("Configuration reloaded from disk")
-    } catch (err: any) {
-      toast.error(err.message || "Failed to reload configuration")
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to reload configuration"
+      toast.error(message)
     }
   }
 
@@ -131,7 +150,7 @@ export function SettingsPage() {
               <CardDescription>Configured listener endpoints</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {c?.listeners?.map((l: any, i: number) => (
+              {((c?.listeners ?? []) as ListenerConfig[]).map((l, i) => (
                 <div key={i} className="p-3 rounded-lg border space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="font-medium">{l.name}</span>
@@ -140,9 +159,9 @@ export function SettingsPage() {
                       <Badge variant="secondary">{l.address}</Badge>
                     </div>
                   </div>
-                  {l.routes?.length > 0 && (
+                  {l.routes && l.routes.length > 0 && (
                     <div className="text-xs text-muted-foreground">
-                      {l.routes.length} route(s): {l.routes.map((r: any) => r.path).join(', ')}
+                      {l.routes.length} route(s): {l.routes.map((r) => r.path).join(', ')}
                     </div>
                   )}
                 </div>
@@ -158,7 +177,7 @@ export function SettingsPage() {
               <CardDescription>Backend pool configuration</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {c?.pools?.map((p: any, i: number) => (
+              {((c?.pools ?? []) as PoolConfig[]).map((p, i) => (
                 <div key={i} className="p-3 rounded-lg border space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="font-medium">{p.name}</span>
@@ -250,7 +269,7 @@ export function SettingsPage() {
   )
 }
 
-function ConfigRow({ label, value }: { label: string; value: any }) {
+function ConfigRow({ label, value }: { label: string; value: string | number | boolean }) {
   return (
     <div className="flex items-center justify-between py-1">
       <span className="text-sm text-muted-foreground">{label}</span>

@@ -124,8 +124,9 @@ export function PoolsPage() {
       setNewBackend({ address: "", weight: 1 })
       toast.success(`Backend "${newBackend.address}" added successfully`)
       refetch()
-    } catch (err: any) {
-      toast.error(err.message || "Failed to add backend")
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to add backend"
+      toast.error(message)
     }
   }
 
@@ -135,8 +136,9 @@ export function PoolsPage() {
       await api.removeBackend(selectedPool.name, backendId)
       toast.success("Backend removed successfully")
       refetch()
-    } catch (err: any) {
-      toast.error(err.message || "Failed to remove backend")
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to remove backend"
+      toast.error(message)
     }
   }
 

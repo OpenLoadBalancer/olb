@@ -19,6 +19,8 @@ export function WAFPage() {
   useDocumentTitle("WAF")
   const { data: wafStatus, isLoading, error, refetch } = useWAFStatus()
   const { data: config } = useConfig()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const wafConfig = ((config as any)?.data ?? config)?.waf as Record<string, any> | undefined
 
   if (isLoading) {
     return (
@@ -54,7 +56,7 @@ export function WAFPage() {
   }
 
   // Extract WAF layers from status
-  const layers = (wafStatus.layers || {}) as Record<string, boolean>
+  const layers = wafStatus.layers ?? {}
   const layerList: WAFLayer[] = [
     { id: 'ip_acl', name: 'IP ACL', icon: Ban, active: !!layers.ip_acl },
     { id: 'rate_limit', name: 'Rate Limiting', icon: Shield, active: !!layers.rate_limit },
@@ -67,13 +69,10 @@ export function WAFPage() {
   const activeLayers = layerList.filter(l => l.active).length
 
   // Extract stats from WAF analytics if available
-  const stats = wafStatus.stats as Record<string, any> | undefined
+  const stats = wafStatus.stats
   const totalBlocked = stats?.total_blocked ?? stats?.blocked ?? 0
   const totalChallenges = stats?.total_challenges ?? stats?.challenges ?? 0
   const totalRequests = stats?.total_requests ?? 0
-
-  // Get WAF config for detailed view
-  const wafConfig = (config as any)?.waf as Record<string, any> | undefined
 
   // Extract rate limit rules from config
   const rateLimitRules = wafConfig?.rate_limit?.rules as Array<Record<string, any>> ?? []

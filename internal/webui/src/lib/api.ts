@@ -1,4 +1,12 @@
-const API_BASE = (import.meta as any).env?.VITE_API_URL || ''
+interface ImportMetaEnv {
+  VITE_API_URL?: string
+}
+
+interface ViteImportMeta {
+  readonly env: ImportMetaEnv
+}
+
+const API_BASE = (import.meta as unknown as ViteImportMeta).env?.VITE_API_URL || ''
 
 export class APIError extends Error {
   status: number
@@ -112,7 +120,22 @@ export interface CertificateInfo {
 export interface WAFStatus {
   enabled: boolean
   mode?: string
-  [key: string]: any
+  layers?: Record<string, boolean>
+  stats?: {
+    total_blocked?: number
+    blocked?: number
+    total_challenges?: number
+    challenges?: number
+    total_requests?: number
+  }
+  rules?: Record<string, unknown>
+  detections?: Record<string, number>
+  ip_acl?: { enabled: boolean; rules: string[] }
+  rate_limit?: { enabled: boolean; requests_per_second: number; rules?: Array<Record<string, unknown>> }
+  sanitizer?: { enabled: boolean }
+  detection?: { enabled: boolean }
+  bot_detection?: { enabled: boolean }
+  response?: { security_headers?: { enabled: boolean } }
 }
 
 export interface ClusterStatus {
@@ -133,7 +156,16 @@ export interface ClusterMember {
 }
 
 export interface MetricsData {
-  [key: string]: any
+  requests_total?: number
+  errors_total?: number
+  active_connections?: number
+  bytes_in?: number
+  bytes_out?: number
+  avg_latency_ms?: number
+  p99_latency_ms?: number
+  pools?: Record<string, { requests: number; errors: number }>
+  backends?: Record<string, { requests: number; errors: number; latency: number }>
+  [key: string]: unknown
 }
 
 export interface BackendHealth {
@@ -215,7 +247,7 @@ export const api = {
   getMetrics: () => fetchAPI<APIResponse<MetricsData>>('/metrics'),
 
   // Config
-  getConfig: () => fetchAPI<APIResponse<any>>('/config'),
+  getConfig: () => fetchAPI<APIResponse<Record<string, unknown>>>('/config'),
 
   // Certificates
   getCertificates: () => fetchAPI<APIResponse<CertificateInfo[]>>('/certificates'),
@@ -227,12 +259,12 @@ export const api = {
   getClusterStatus: () => fetchAPI<APIResponse<ClusterStatus>>('/cluster/status'),
   getClusterMembers: () => fetchAPI<APIResponse<ClusterMember[]>>('/cluster/members'),
   joinCluster: (seedAddrs: string[]) =>
-    fetchAPI<APIResponse<any>>('/cluster/join', {
+    fetchAPI<APIResponse<{ message: string }>>('/cluster/join', {
       method: 'POST',
       body: JSON.stringify({ seed_addrs: seedAddrs }),
     }),
   leaveCluster: () =>
-    fetchAPI<APIResponse<any>>('/cluster/leave', { method: 'POST' }),
+    fetchAPI<APIResponse<{ message: string }>>('/cluster/leave', { method: 'POST' }),
 
   // Middleware status
   getMiddlewareStatus: () => fetchAPI<APIResponse<MiddlewareStatusItem[]>>('/middleware/status'),

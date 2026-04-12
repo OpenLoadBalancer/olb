@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { api, APIError } from '@/lib/api'
+import { api, APIError, MetricsData, BackendHealth } from '@/lib/api'
 import { toast } from 'sonner'
 import type {
   APIPoolInfo,
@@ -222,7 +222,7 @@ export function useClusterMembers(options?: UseQueryOptions<APIClusterMember[]>)
 }
 
 // Config query hook
-export function useConfig(options?: UseQueryOptions<any>) {
+export function useConfig(options?: UseQueryOptions<Record<string, unknown>>) {
   return useQuery(() => api.getConfig(), {
     refetchInterval: 60000,
     ...options
@@ -230,7 +230,7 @@ export function useConfig(options?: UseQueryOptions<any>) {
 }
 
 // Metrics query hook
-export function useMetrics(options?: UseQueryOptions<any>) {
+export function useMetrics(options?: UseQueryOptions<MetricsData>) {
   return useQuery(() => api.getMetrics(), {
     refetchInterval: 15000,
     ...options
@@ -238,7 +238,7 @@ export function useMetrics(options?: UseQueryOptions<any>) {
 }
 
 // Health status (per-backend) query hook
-export function useBackendHealth(options?: UseQueryOptions<any>) {
+export function useBackendHealth(options?: UseQueryOptions<BackendHealth[]>) {
   return useQuery(() => api.getHealthStatus(), {
     refetchInterval: 10000,
     ...options

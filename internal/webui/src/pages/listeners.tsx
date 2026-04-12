@@ -46,12 +46,15 @@ const httpMethods = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
 
 export function ListenersPage() {
   useDocumentTitle("Listeners")
-  const { data: config, isLoading: configLoading, error: configError } = useConfig()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: configRaw, isLoading: configLoading, error: configError } = useConfig() as { data: Record<string, any> | undefined; isLoading: boolean; error: Error | null }
+  // Handle both API response shape and test mock shape
+  const config = (configRaw?.data ?? configRaw) as Record<string, any> | undefined
   const { data: pools } = usePools()
   const poolNames = (pools ?? []).map(p => p.name)
 
   // Derive listeners from config
-  const listeners: Listener[] = (config?.listeners ?? []).map((l: any, i: number) => ({
+  const listeners: Listener[] = (config?.listeners ?? []).map((l: { name: string; address: string; protocol?: string; tls?: { enabled?: boolean }; routes?: Array<{ path: string }> }, i: number) => ({
     id: String(i),
     name: l.name,
     address: l.address,

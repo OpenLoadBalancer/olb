@@ -78,8 +78,9 @@ export function BackupRestorePage() {
       setImportDialogOpen(false)
       setImportPreview(null)
       if (fileInputRef.current) fileInputRef.current.value = ""
-    } catch (err: any) {
-      toast.error(err.message || "Import failed")
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Import failed"
+      toast.error(message)
     } finally {
       setImporting(false)
     }
@@ -90,12 +91,14 @@ export function BackupRestorePage() {
       await api.reload()
       toast.success("Configuration reloaded from disk")
       refetch()
-    } catch (err: any) {
-      toast.error(err.message || "Failed to reload configuration")
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to reload configuration"
+      toast.error(message)
     }
   }
 
-  const c = config as any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const c = (config?.data ?? config) as Record<string, any> | undefined
   const configSections = [
     { label: "Listeners", count: c?.listeners?.length ?? 0 },
     { label: "Pools", count: c?.pools?.length ?? 0 },
