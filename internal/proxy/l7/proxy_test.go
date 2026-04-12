@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -3448,6 +3449,102 @@ func TestGetClientIP_UntrustedPeerIgnoresXFF(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCachedHandler_ConcurrentRebuildAndServe(t *testing.T) {
+	// This test exercises the atomic.Value-based cachedHandler to ensure
+	// concurrent ServeHTTP and RebuildHandler calls do not cause a data race.
+	// Run with: go test -race -run TestCachedHandler_ConcurrentRebuildAndServe
+	proxy, poolManager, routerInstance := setupTestProxy(t)
+
+	backendServer := createTestBackend(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+	defer backendServer.Close()
+
+	backendAddr := backendServer.Listener.Addr().String()
+	pool := backend.NewPool("race-pool", "round_robin")
+	pool.SetBalancer(balancer.NewRoundRobin())
+	b := backend.NewBackend("race-backend", backendAddr)
+	b.SetState(backend.StateUp)
+	pool.AddBackend(b)
+	poolManager.AddPool(pool)
+
+	route := &router.Route{Name: "race-route", Path: "/race", BackendPool: "race-pool"}
+	routerInstance.AddRoute(route)
+
+	const goroutines = 50
+	var wg sync.WaitGroup
+	wg.Add(goroutines * 2) // half serve, half rebuild
+
+	// Half the goroutines serve requests
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+			req := httptest.NewRequest(http.MethodGet, "/race", nil)
+			rr := httptest.NewRecorder()
+			proxy.ServeHTTP(rr, req)
+		}()
+	}
+
+	// Half the goroutines rebuild the handler
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+			proxy.RebuildHandler()
+		}()
+	}
+
+	wg.Wait()
+}
+
+func TestRebuildHandler_UpdatesCachedHandler(t *testing.T) {
+	proxy, _, _ := setupTestProxy(t)
+
+	// Verify initial cached handler is populated
+	h := proxy.cachedHandler.Load()
+	if h == nil {
+		t.Fatal("expected cachedHandler to be initialized after NewHTTPProxy")
+	}
+
+	// Rebuild should replace the handler
+	proxy.RebuildHandler()
+	h2 := proxy.cachedHandler.Load()
+	if h2 == nil {
+		t.Fatal("expected cachedHandler to be non-nil after RebuildHandler")
+	}
+}
+
+func TestSetErrorHandler_ConcurrentAccess(t *testing.T) {
+	proxy, _, _ := setupTestProxy(t)
+
+	const goroutines = 50
+	var wg sync.WaitGroup
+	wg.Add(goroutines * 2)
+
+	// Concurrent reads via getErrorHandler
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+			handler := proxy.getErrorHandler()
+			if handler == nil {
+				t.Error("expected non-nil error handler")
+			}
+		}()
+	}
+
+	// Concurrent writes via SetErrorHandler
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+			proxy.SetErrorHandler(func(w http.ResponseWriter, r *http.Request, err error) {
+				w.WriteHeader(http.StatusTeapot)
+			})
+		}()
+	}
+
+	wg.Wait()
 }
 
 func TestIsPrivateOrLoopback(t *testing.T) {

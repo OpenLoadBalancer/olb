@@ -25,6 +25,13 @@ import (
 	"github.com/openloadbalancer/olb/pkg/utils"
 )
 
+// requestState bundles per-request state into a single context value to avoid
+// multiple context.WithValue allocations per request.
+type requestState struct {
+	reqCtx     *middleware.RequestContext
+	routeMatch *router.RouteMatch
+}
+
 // Hop-by-hop headers that should be stripped from requests and responses.
 var hopByHopHeaders = []string{
 	"Connection",
@@ -42,6 +49,16 @@ var hopByHopSet = func() map[string]bool {
 	m := make(map[string]bool, len(hopByHopHeaders))
 	for _, h := range hopByHopHeaders {
 		m[strings.ToLower(h)] = true
+	}
+	return m
+}()
+
+// hopByHopCanonicalSet provides lookup using http.CanonicalHeaderKey format
+// to avoid strings.ToLower allocation on each response header.
+var hopByHopCanonicalSet = func() map[string]bool {
+	m := make(map[string]bool, len(hopByHopHeaders))
+	for _, h := range hopByHopHeaders {
+		m[http.CanonicalHeaderKey(h)] = true
 	}
 	return m
 }()
@@ -76,7 +93,8 @@ type HTTPProxy struct {
 	errorHandler atomic.Value // stores func(http.ResponseWriter, *http.Request, error)
 
 	// Cached middleware chain handler (rebuilt when middleware changes)
-	cachedHandler http.Handler
+	// Protected by atomic.Value for concurrent access during ServeHTTP + RebuildHandler
+	cachedHandler atomic.Value // stores http.Handler
 
 	// HTTP client for proxying (with custom transport for connection pooling)
 	client *http.Client
@@ -232,6 +250,8 @@ type contextKey int
 
 const (
 	backendIDKey contextKey = iota
+	requestStateKey
+	// Legacy keys kept for any external consumers reading from context.
 	reqCtxKey
 	routeMatchKey
 )
@@ -240,18 +260,16 @@ const (
 // Must be called whenever the middleware chain changes.
 func (p *HTTPProxy) buildCachedHandler() {
 	if p.middlewareChain == nil {
-		p.cachedHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			proxyCtx := r.Context().Value(reqCtxKey).(*middleware.RequestContext)
-			rm := r.Context().Value(routeMatchKey).(*router.RouteMatch)
-			p.proxyHandler(w, r, proxyCtx, rm)
-		})
+		p.cachedHandler.Store(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rs := r.Context().Value(requestStateKey).(*requestState)
+			p.proxyHandler(w, r, rs.reqCtx, rs.routeMatch)
+		}))
 		return
 	}
-	p.cachedHandler = p.middlewareChain.Then(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		proxyCtx := r.Context().Value(reqCtxKey).(*middleware.RequestContext)
-		rm := r.Context().Value(routeMatchKey).(*router.RouteMatch)
-		p.proxyHandler(w, r, proxyCtx, rm)
-	}))
+	p.cachedHandler.Store(p.middlewareChain.Then(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rs := r.Context().Value(requestStateKey).(*requestState)
+		p.proxyHandler(w, r, rs.reqCtx, rs.routeMatch)
+	})))
 }
 
 // RebuildHandler rebuilds the cached middleware chain handler.
@@ -276,13 +294,15 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Set route in context
 	reqCtx.Route = routeMatch.Route
 
-	// Store per-request state in context for the cached handler
-	ctx := context.WithValue(r.Context(), reqCtxKey, reqCtx)
-	ctx = context.WithValue(ctx, routeMatchKey, routeMatch)
+	// Store per-request state in a single context value to reduce allocations
+	ctx := context.WithValue(r.Context(), requestStateKey, &requestState{
+		reqCtx:     reqCtx,
+		routeMatch: routeMatch,
+	})
 	r = r.WithContext(ctx)
 
 	// Use cached handler (built once, not per-request)
-	p.cachedHandler.ServeHTTP(w, r)
+	p.cachedHandler.Load().(http.Handler).ServeHTTP(w, r)
 }
 
 // proxyHandler handles the actual proxying.
@@ -347,17 +367,26 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request, reqCtx 
 
 	// Standard HTTP proxy with retry logic
 	var lastErr error
-	var attemptedBackends []string
+	// Use a fixed-size stack array for attempted backend IDs to avoid
+	// heap allocation in the common case (retries are rare).
+	var attemptedBuf [8]string
+	attemptedBackends := attemptedBuf[:0]
 
 	for attempt := 0; attempt < p.maxRetries; attempt++ {
 		// Get healthy backends
 		healthyBackends := pool.GetHealthyBackends()
 
-		// Filter out already attempted backends
-		availableBackends := make([]*backend.Backend, 0, len(healthyBackends))
-		for _, b := range healthyBackends {
-			if !contains(attemptedBackends, b.ID) {
-				availableBackends = append(availableBackends, b)
+		// On first attempt, all healthy backends are available � skip filtering.
+		// On retries, filter out already-attempted backends.
+		var availableBackends []*backend.Backend
+		if attempt == 0 {
+			availableBackends = healthyBackends
+		} else {
+			availableBackends = make([]*backend.Backend, 0, len(healthyBackends))
+			for _, b := range healthyBackends {
+				if !contains(attemptedBackends, b.ID) {
+					availableBackends = append(availableBackends, b)
+				}
 			}
 		}
 
@@ -564,10 +593,13 @@ func isPrivateOrLoopback(ip string) bool {
 }
 
 // copyHeaders copies headers from source to destination, excluding hop-by-hop headers.
+// Uses canonical lookup for normal http.Header keys (no allocation) and falls back
+// to lowercase lookup for raw map keys that bypass http.Header normalization.
 func copyHeaders(dst, src http.Header) {
 	for key, values := range src {
-		// Skip hop-by-hop headers
-		if isHopByHopHeader(key) {
+		// Skip hop-by-hop headers — try canonical form first (no allocation),
+		// then fall back to lowercase for literal map keys.
+		if hopByHopCanonicalSet[key] || hopByHopSet[strings.ToLower(key)] {
 			continue
 		}
 		for _, value := range values {

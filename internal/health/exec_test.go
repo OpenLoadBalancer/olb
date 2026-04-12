@@ -7,6 +7,76 @@ import (
 	"github.com/openloadbalancer/olb/internal/backend"
 )
 
+func TestResolveExecTemplate(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		address string
+		host    string
+		port    string
+		want    string
+	}{
+		{
+			name:    "no templates",
+			input:   "curl",
+			address: "10.0.0.1:8080",
+			host:    "10.0.0.1",
+			port:    "8080",
+			want:    "curl",
+		},
+		{
+			name:    "address template",
+			input:   "ping -c 1 {{.Address}}",
+			address: "10.0.0.1:8080",
+			host:    "10.0.0.1",
+			port:    "8080",
+			want:    "ping -c 1 10.0.0.1:8080",
+		},
+		{
+			name:    "host template",
+			input:   "curl http://{{.Host}}:{{.Port}}/health",
+			address: "10.0.0.1:8080",
+			host:    "10.0.0.1",
+			port:    "8080",
+			want:    "curl http://10.0.0.1:8080/health",
+		},
+		{
+			name:    "port template",
+			input:   "nc -z {{.Host}} {{.Port}}",
+			address: "db.example.com:5432",
+			host:    "db.example.com",
+			port:    "5432",
+			want:    "nc -z db.example.com 5432",
+		},
+		{
+			name:    "mixed templates",
+			input:   "{{.Host}}:{{.Port}}={{.Address}}",
+			address: "192.168.1.1:9090",
+			host:    "192.168.1.1",
+			port:    "9090",
+			want:    "192.168.1.1:9090=192.168.1.1:9090",
+		},
+		{
+			name:    "empty string",
+			input:   "",
+			address: "10.0.0.1:8080",
+			host:    "10.0.0.1",
+			port:    "8080",
+			want:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveExecTemplate(tt.input, tt.address, tt.host, tt.port)
+			if got != tt.want {
+				t.Errorf("resolveExecTemplate(%q, %q, %q, %q) = %q, want %q",
+					tt.input, tt.address, tt.host, tt.port, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestCheckExec_Success(t *testing.T) {
 	c := NewChecker()
 	defer c.Stop()

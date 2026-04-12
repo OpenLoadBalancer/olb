@@ -85,6 +85,9 @@ export function useQuery<T>(
             await sleep(RETRY_DELAYS[attempt] ?? 4000)
             continue
           }
+
+          // Non-transient error or out of retries: stop retrying
+          break
         }
       }
 
@@ -251,7 +254,7 @@ export function useToastMutation<T, V = void>(
     errorMessage?: string | ((error: Error) => string)
   } & UseMutationOptions<T, V> = {}
 ): MutationResult<T, V> {
-  const { loadingMessage, successMessage, errorMessage, ...rest } = options
+  const { loadingMessage: _loadingMessage, successMessage, errorMessage, ...rest } = options
 
   return useMutation(mutationFn, {
     ...rest,

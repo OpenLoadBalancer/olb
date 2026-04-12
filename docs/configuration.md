@@ -315,7 +315,7 @@ See [algorithms.md](algorithms.md) for details on each algorithm.
 
 ```yaml
     health_check:
-      type: http                   # "http" or "tcp"
+      type: http                   # "http", "https", "tcp", "grpc", or "exec"
       path: /health                # HTTP health check path
       interval: 10s                # Check interval
       timeout: 5s                  # Check timeout
@@ -332,6 +332,34 @@ TCP health check (connection-only):
       interval: 10s
       timeout: 5s
 ```
+
+gRPC health check (uses grpc.health.v1.Health/Check protocol):
+
+```yaml
+    health_check:
+      type: grpc
+      interval: 10s
+      timeout: 5s
+```
+
+Exec health check (runs an external command; exit code 0 = healthy):
+
+```yaml
+    health_check:
+      type: exec
+      command: /usr/local/bin/check-backend
+      args: ["{{.Host}}", "{{.Port}}"]
+      interval: 10s
+      timeout: 5s
+```
+
+Template variables available in `command` and `args`:
+
+| Variable | Description |
+|----------|-------------|
+| `{{.Address}}` | Full backend address (host:port) |
+| `{{.Host}}` | Host portion of the address |
+| `{{.Port}}` | Port portion of the address |
 
 ### Connection Pool Settings
 

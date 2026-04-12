@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -439,8 +440,14 @@ func (c *Checker) checkExec(b *backend.Backend, config *Check) Result {
 	ctx, cancel := context.WithTimeout(context.Background(), config.Timeout)
 	defer cancel()
 
-	args := append(config.Args, b.Address)
-	cmd := exec.CommandContext(ctx, config.Command, args...)
+	host, port, _ := net.SplitHostPort(b.Address)
+	args := make([]string, len(config.Args))
+	for i, arg := range config.Args {
+		args[i] = resolveExecTemplate(arg, b.Address, host, port)
+	}
+	resolvedCmd := resolveExecTemplate(config.Command, b.Address, host, port)
+
+	cmd := exec.CommandContext(ctx, resolvedCmd, args...)
 
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -457,6 +464,19 @@ func (c *Checker) checkExec(b *backend.Backend, config *Check) Result {
 	}
 
 	return Result{Healthy: true}
+}
+
+// resolveExecTemplate replaces {{.Address}}, {{.Host}}, and {{.Port}} placeholders
+// in an exec health check template string. If no templates are present, the
+// original string is returned unchanged.
+func resolveExecTemplate(s, address, host, port string) string {
+	if !strings.Contains(s, "{{") {
+		return s
+	}
+	s = strings.ReplaceAll(s, "{{.Address}}", address)
+	s = strings.ReplaceAll(s, "{{.Host}}", host)
+	s = strings.ReplaceAll(s, "{{.Port}}", port)
+	return s
 }
 
 // truncateString truncates a string to maxLen characters, appending "..." if truncated.

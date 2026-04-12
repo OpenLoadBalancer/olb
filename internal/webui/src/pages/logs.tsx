@@ -157,7 +157,7 @@ export function LogsPage() {
               />
             </div>
             <Select value={levelFilter} onValueChange={setLevelFilter}>
-              <SelectTrigger>
+              <SelectTrigger aria-label="Event level filter">
                 <SelectValue placeholder="Event Level" />
               </SelectTrigger>
               <SelectContent>
@@ -169,7 +169,7 @@ export function LogsPage() {
             </Select>
             <div className="flex items-center justify-between px-4 py-2 border rounded-md">
               <span className="text-sm">Auto-scroll</span>
-              <Switch checked={autoScroll} onCheckedChange={setAutoScroll} />
+              <Switch checked={autoScroll} onCheckedChange={setAutoScroll} aria-label="Auto-scroll" />
             </div>
           </div>
         </CardContent>
@@ -196,6 +196,7 @@ export function LogsPage() {
                 </div>
               ) : (
                 <table className="w-full">
+                  <caption className="sr-only">Event log with time, level, source, and message columns</caption>
                   <thead className="bg-muted sticky top-0">
                     <tr>
                       <th className="text-left px-4 py-2 w-32">Time</th>

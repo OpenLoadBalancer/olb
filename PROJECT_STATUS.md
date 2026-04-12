@@ -1,6 +1,6 @@
 # OpenLoadBalancer Project Status
 
-**Last Updated:** 2025-04-04
+**Last Updated:** 2026-04-12
 
 ## Overview
 
@@ -12,13 +12,13 @@ OpenLoadBalancer is a **production-ready**, high-performance, zero-dependency L4
 
 | Metric | Value | Status |
 |--------|-------|--------|
-| Test Coverage | 87.7% | ✅ Above 85% threshold |
-| Test Packages | 55/55 passing | ✅ 100% pass rate |
-| Go Version | 1.25+ | ✅ Current |
+| Test Coverage | 95.3% | ✅ Above 85% threshold |
+| Test Packages | 71/71 passing | ✅ 100% pass rate |
+| Go Version | 1.26+ | ✅ Current |
 | Code Format | gofmt clean | ✅ Pass |
 | Static Analysis | go vet clean | ✅ Pass |
-| Binary Size | ~15MB | ✅ Under 20MB limit |
-| External Dependencies | 2 (x/crypto, x/net) | ✅ Minimal |
+| Binary Size | ~13MB | ✅ Under 20MB limit |
+| External Dependencies | 3 (x/crypto, x/net, x/text) | ✅ Minimal |
 
 ### Features (Complete)
 
@@ -32,11 +32,13 @@ OpenLoadBalancer is a **production-ready**, high-performance, zero-dependency L4
 - [x] SNI routing
 - [x] PROXY protocol v1/v2
 
-#### Load Balancing (14 algorithms)
+#### Load Balancing (16 algorithms)
 - [x] Round Robin
 - [x] Weighted Round Robin
 - [x] Least Connections
+- [x] Weighted Least Connections
 - [x] Least Response Time
+- [x] Weighted Least Response Time
 - [x] IP Hash
 - [x] Consistent Hash (Ketama)
 - [x] Maglev
@@ -44,6 +46,8 @@ OpenLoadBalancer is a **production-ready**, high-performance, zero-dependency L4
 - [x] Power of Two Choices
 - [x] Random
 - [x] Weighted Random
+- [x] Rendezvous Hash
+- [x] Peak EWMA
 - [x] Sticky Sessions
 
 #### Security (6-layer WAF)
@@ -125,12 +129,12 @@ OpenLoadBalancer is a **production-ready**, high-performance, zero-dependency L4
 
 | Type | Count |
 |------|-------|
-| Go Source Files | ~310 |
-| Test Files | 141 |
-| Test Functions | ~3,500 |
+| Go Source Files | 438 |
+| Test Files | 203 |
+| Test Functions | ~6,200 |
 | Documentation Files | 15+ |
 | Deployment Templates | 25+ |
-| Total Lines of Code | ~170K |
+| Total Lines of Code | ~243K |
 
 ### CI/CD Status
 
@@ -141,7 +145,7 @@ OpenLoadBalancer is a **production-ready**, high-performance, zero-dependency L4
 | Integration Tests | ✅ Pass |
 | E2E Tests | ✅ Pass |
 | Race Detector | ✅ Pass |
-| Coverage | ✅ 87.7% |
+| Coverage | ✅ 95.3% |
 | gofmt | ✅ Pass |
 | go vet | ✅ Pass |
 | Security Scan | ✅ Pass |

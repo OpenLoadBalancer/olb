@@ -38,6 +38,10 @@ type RateLimitMiddleware struct {
 	buckets     sync.Map // map[string]*tokenBucket
 	trustedNets []*net.IPNet
 	stopCh      chan struct{}
+	// Pre-computed header values to avoid per-request allocations.
+	limitStr      string
+	burstStr      string
+	burstSecondsF float64
 }
 
 // tokenBucket represents a single token bucket for rate limiting.
@@ -128,9 +132,12 @@ func NewRateLimitMiddleware(config RateLimitConfig) (*RateLimitMiddleware, error
 	}
 
 	m := &RateLimitMiddleware{
-		config:      config,
-		trustedNets: trustedNets,
-		stopCh:      make(chan struct{}),
+		config:        config,
+		trustedNets:   trustedNets,
+		stopCh:        make(chan struct{}),
+		limitStr:      strconv.FormatFloat(config.RequestsPerSecond, 'f', -1, 64),
+		burstStr:      strconv.Itoa(config.BurstSize),
+		burstSecondsF: float64(config.BurstSize) / config.RequestsPerSecond,
 	}
 
 	// Wire the default key function only when none was provided.
@@ -165,8 +172,8 @@ func (m *RateLimitMiddleware) Wrap(next http.Handler) http.Handler {
 		bucketIface, _ := m.buckets.Load(key)
 		bucket, _ := bucketIface.(*tokenBucket)
 
-		// Set rate limit headers
-		w.Header().Set("X-RateLimit-Limit", strconv.FormatFloat(m.config.RequestsPerSecond, 'f', -1, 64))
+		// Set rate limit headers (limitStr is pre-computed to avoid per-request allocation)
+		w.Header().Set("X-RateLimit-Limit", m.limitStr)
 
 		if bucket != nil {
 			bucket.mu.Lock()
@@ -186,10 +193,9 @@ func (m *RateLimitMiddleware) Wrap(next http.Handler) http.Handler {
 			w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(remaining))
 			w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(resetTime.Unix(), 10))
 		} else {
-			w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(m.config.BurstSize))
+			w.Header().Set("X-RateLimit-Remaining", m.burstStr)
 			// Reset time is when the bucket would be full from empty
-			secondsToFill := float64(m.config.BurstSize) / m.config.RequestsPerSecond
-			resetTime := time.Now().Add(time.Duration(secondsToFill*float64(time.Second)) + time.Second)
+			resetTime := time.Now().Add(time.Duration(m.burstSecondsF*float64(time.Second)) + time.Second)
 			w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(resetTime.Unix(), 10))
 		}
 

@@ -4,6 +4,7 @@ package middleware
 import (
 	"net/http"
 	"strings"
+	"sync"
 )
 
 // Security preset constants.
@@ -52,13 +53,19 @@ func (m *HeadersMiddleware) Wrap(next http.Handler) http.Handler {
 		// Modify request headers (Remove -> Set -> Add)
 		m.modifyRequestHeaders(r)
 
-		// Create a wrapped response writer to capture and modify response headers
-		wrapped := &headerResponseWriter{
-			ResponseWriter: w,
-			middleware:     m,
-		}
+		// Create a wrapped response writer from pool to capture and modify response headers
+		wrapped := headerResponseWriterPool.Get().(*headerResponseWriter)
+		wrapped.ResponseWriter = w
+		wrapped.middleware = m
+		wrapped.written = false
 
 		next.ServeHTTP(wrapped, r)
+
+		// Return to pool (clear middleware ref but keep ResponseWriter
+		// for any post-serve Unwrap() callers)
+		wrapped.middleware = nil
+		wrapped.written = false
+		headerResponseWriterPool.Put(wrapped)
 	})
 }
 
@@ -98,6 +105,13 @@ func (m *HeadersMiddleware) applySecurityPreset(w http.ResponseWriter) {
 		w.Header().Set("Content-Security-Policy", "default-src 'self'")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	}
+}
+
+// headerResponseWriterPool pools the small wrapper struct to reduce per-request allocations.
+var headerResponseWriterPool = sync.Pool{
+	New: func() any {
+		return &headerResponseWriter{}
+	},
 }
 
 // headerResponseWriter wraps http.ResponseWriter to modify response headers.

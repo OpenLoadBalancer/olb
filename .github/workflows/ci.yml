@@ -35,7 +35,14 @@ jobs:
       - name: Run go vet
         run: go vet ./...
 
-      - name: go staticcheck
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
+
+      - name: go staticcheck (fallback)
+        if: failure()
         run: |
           go install honnef.co/go/tools/cmd/staticcheck@latest 2>/dev/null || true
           which staticcheck && staticcheck ./... || echo "staticcheck not available, skipping"
@@ -65,6 +72,14 @@ jobs:
         working-directory: ./internal/webui
         run: npm ci
 
+      - name: Lint frontend
+        working-directory: ./internal/webui
+        run: npm run lint
+
+      - name: Run frontend tests
+        working-directory: ./internal/webui
+        run: npm test
+
       - name: Build frontend
         working-directory: ./internal/webui
         run: npm run build
@@ -79,13 +94,15 @@ jobs:
             internal/webui/favicon.svg
           retention-days: 1
 
-  # Job 3: Test (without race detector for fast feedback)
+  # Job 3: Test (multi-OS matrix for cross-platform correctness)
   test:
-    name: Test
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     needs: [build-frontend]
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
         go-version: ['1.26']
     steps:
       - name: Checkout
@@ -114,12 +131,16 @@ jobs:
         run: go mod download
 
       - name: Run tests
+        shell: bash
         run: go test -p 1 -v -count=1 -coverprofile=coverage.out -timeout=300s ./...
 
       - name: Generate coverage report
+        shell: bash
         run: go tool cover -func=coverage.out
 
       - name: Enforce coverage threshold
+        if: runner.os == 'Linux'
+        shell: bash
         run: |
           COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
           THRESHOLD=85
@@ -132,6 +153,8 @@ jobs:
           echo "Coverage check passed"
 
       - name: Check per-package coverage
+        if: runner.os == 'Linux'
+        shell: bash
         run: |
           THRESHOLD=85
           echo "Checking per-package coverage (threshold: ${THRESHOLD}%)..."
@@ -149,7 +172,7 @@ jobs:
           echo "Per-package coverage check complete"
 
       - name: Upload coverage to Codecov
-        if: matrix.go-version == env.GO_VERSION
+        if: runner.os == 'Linux' && matrix.go-version == env.GO_VERSION
         uses: codecov/codecov-action@v4
         with:
           file: ./coverage.out

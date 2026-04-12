@@ -5,6 +5,44 @@ All notable changes to OpenLoadBalancer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Frontend test suite: 50+ tests across 10 pages (dashboard, pools, backends, settings, cluster, metrics, WAF, middleware, certificates, logs, error)
+- Frontend testing infrastructure: Vitest + React Testing Library + jsdom with path aliases and mock utilities
+- `npm test` step in CI `build-frontend` job
+- Multi-OS CI matrix (Ubuntu, macOS, Windows) for Go tests
+- Concurrent test for `cachedHandler` atomic.Value safety in `internal/proxy/l7`
+- API integration tests: 36 tests covering all endpoints (system, pools, backends, routes, health, metrics, config, certificates, WAF, cluster, middleware, events) with error states (401, 404, 500, 502, 503, network failure)
+- Query hook tests: 24 tests for `useQuery`, `useMutation`, `useToastMutation` covering loading states, error handling, retry logic, transient error detection, and toast notifications
+- Accessibility audit: automated axe-core tests across all 9 pages, all passing with zero violations
+- E2E smoke tests: 4 Playwright tests covering page loading, navigation, skip-to-content link, responsive sidebar
+
+### Changed
+- Split `internal/admin/handlers.go` (981 LOC) into 5 focused files: `handler_helpers.go`, `handlers_system.go`, `handlers_pools.go`, `handlers_backends.go`, `handlers_readonly.go`
+- Split `internal/config/hcl/hcl.go` (1415 LOC) into `lexer.go`, `parser.go`, `decoder.go`
+- Fixed `.golangci.yml` Go version: `1.25` → `1.26` to match `go.mod`
+
+### Fixed
+- Race condition in `HTTPProxy.cachedHandler` — converted from bare `http.Handler` field to `atomic.Value` for safe concurrent `ServeHTTP` + `RebuildHandler` access
+- Bug in `useQuery` hook: non-transient errors (401, 404, 500) were incorrectly retried — added `break` to stop retry loop for non-transient errors
+- Logs page auto-scroll switch missing `aria-label` for screen readers
+- Logs page event level filter select missing `aria-label` for screen readers
+- Middleware page category filter buttons missing `aria-pressed` attribute
+- Logs page table missing `<caption>` for screen reader context
+- Middleware page category filter buttons missing `aria-pressed` attribute
+
+### Changed
+- Optimized per-request allocations in L7 proxy hot path: merged two `context.WithValue` into single struct, stack-allocated `attemptedBackends` array, skip backend filtering on first attempt, canonical hop-by-hop header lookup to avoid `strings.ToLower` per header
+- Optimized middleware per-request allocations: pre-computed `FormatFloat` and `strconv.Itoa` in rate limiter headers, pre-computed `strings.Join` for CORS static config slices, pooled `headerResponseWriter` struct in headers middleware
+- Exec health checks now support template variables (`{{.Address}}`, `{{.Host}}`, `{{.Port}}`) in both command and args
+- Exec health check `command` and `args` fields are now configurable from YAML/JSON/TOML/HCL configs
+- Engine wiring passes `Command` and `Args` fields through to health checker on both startup and hot-reload
+- Updated OpenAPI spec (`docs/api/openapi.yaml`): added SSE `/events/stream` endpoint, fixed Go version example
+- Updated `docs/configuration.md` to document `grpc` and `exec` health check types with template variable reference
+- Updated `docs/migration-guide.md` with expanded examples: NGINX (weighted backends, gzip, basic auth, HTTPS redirect, virtual hosts, timeouts), HAProxy (ACL routing, map files, connection limits, circuit breaker), Traefik (label translation, middleware chains, path prefix routing), Envoy (retries/timeouts, weighted cluster traffic splitting), and detailed migration checklist with algorithm mapping table
+- Fixed README link to API reference (now points to OpenAPI spec)
+
 ## [0.1.0] - 2026-04-11
 
 ### Added

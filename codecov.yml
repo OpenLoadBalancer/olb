@@ -1,0 +1,19 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 85%
+        threshold: 0.5%
+        if_ci_failed: error
+    patch:
+      default:
+        target: 85%
+        threshold: 0.5%
+
+comment:
+  layout: diff, flags, components, files
+  behavior: default
+  require_changes: true
+
+github_checks:
+  annotations: true

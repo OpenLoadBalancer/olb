@@ -539,8 +539,23 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
-  # ---------------------------------------------------------------------------
-  # Cluster
+  /api/v1/events/stream:
+    get:
+      tags: [Events]
+      summary: SSE event stream
+      description: Streams real-time events via Server-Sent Events (auto-reconnect recommended)
+      operationId: streamEvents
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: SSE event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE stream delivering EventItem objects as JSON
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   # ---------------------------------------------------------------------------
 
   /api/v1/cluster/status:
@@ -751,7 +766,7 @@ components:
           enum: [running, stopping, reloading]
         go_version:
           type: string
-          example: "go1.25.0"
+          example: "go1.26.0"
 
     SystemInfoResponse:
       allOf:

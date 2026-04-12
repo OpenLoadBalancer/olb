@@ -147,6 +147,7 @@ export function MiddlewarePage() {
             variant={selectedCategory === cat.id ? "default" : "outline"}
             size="sm"
             onClick={() => setSelectedCategory(cat.id)}
+            aria-pressed={selectedCategory === cat.id}
           >
             {cat.label}
           </Button>

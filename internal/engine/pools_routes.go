@@ -46,6 +46,8 @@ func (e *Engine) initializePools() error {
 				Path:               poolCfg.HealthCheck.Path,
 				Interval:           parseDuration(poolCfg.HealthCheck.Interval, 10*time.Second),
 				Timeout:            parseDuration(poolCfg.HealthCheck.Timeout, 5*time.Second),
+				Command:            poolCfg.HealthCheck.Command,
+				Args:               poolCfg.HealthCheck.Args,
 				HealthyThreshold:   2,
 				UnhealthyThreshold: 3,
 			}

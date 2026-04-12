@@ -26,6 +26,11 @@ type CORSMiddleware struct {
 	allowedOrigins  map[string]bool
 	allowedHeaders  map[string]bool
 	allowedMethods  map[string]bool
+	// Pre-computed joined strings to avoid per-request strings.Join allocations.
+	allowedMethodsStr  string
+	allowedHeadersStr  string
+	exposedHeadersStr  string
+	maxAgeStr          string
 }
 
 // NewCORSMiddleware creates a new CORS middleware.
@@ -63,6 +68,20 @@ func NewCORSMiddleware(config CORSConfig) *CORSMiddleware {
 	// Process allowed methods (uppercase)
 	for _, method := range config.AllowedMethods {
 		m.allowedMethods[strings.ToUpper(method)] = true
+	}
+
+	// Pre-compute joined strings for response headers (config is immutable after construction)
+	if len(config.AllowedMethods) > 0 {
+		m.allowedMethodsStr = strings.Join(config.AllowedMethods, ", ")
+	}
+	if len(config.AllowedHeaders) > 0 {
+		m.allowedHeadersStr = strings.Join(config.AllowedHeaders, ", ")
+	}
+	if len(config.ExposedHeaders) > 0 {
+		m.exposedHeadersStr = strings.Join(config.ExposedHeaders, ", ")
+	}
+	if config.MaxAge > 0 {
+		m.maxAgeStr = strconv.Itoa(int(config.MaxAge.Seconds()))
 	}
 
 	return m
@@ -128,7 +147,7 @@ func (m *CORSMiddleware) handlePreflight(w http.ResponseWriter, r *http.Request)
 
 	// Set allowed methods
 	if len(m.config.AllowedMethods) > 0 {
-		w.Header().Set("Access-Control-Allow-Methods", strings.Join(m.config.AllowedMethods, ", "))
+		w.Header().Set("Access-Control-Allow-Methods", m.allowedMethodsStr)
 	}
 
 	// Set allowed headers
@@ -148,12 +167,12 @@ func (m *CORSMiddleware) handlePreflight(w http.ResponseWriter, r *http.Request)
 			w.Header().Set("Access-Control-Allow-Headers", strings.Join(allowed, ", "))
 		}
 	} else if len(m.config.AllowedHeaders) > 0 {
-		w.Header().Set("Access-Control-Allow-Headers", strings.Join(m.config.AllowedHeaders, ", "))
+		w.Header().Set("Access-Control-Allow-Headers", m.allowedHeadersStr)
 	}
 
 	// Set max age
 	if m.config.MaxAge > 0 {
-		w.Header().Set("Access-Control-Max-Age", strconv.Itoa(int(m.config.MaxAge.Seconds())))
+		w.Header().Set("Access-Control-Max-Age", m.maxAgeStr)
 	}
 
 	// Return 204 No Content for preflight
@@ -188,7 +207,7 @@ func (m *CORSMiddleware) handleActual(w http.ResponseWriter, r *http.Request, ne
 
 	// Set exposed headers
 	if len(m.config.ExposedHeaders) > 0 {
-		w.Header().Set("Access-Control-Expose-Headers", strings.Join(m.config.ExposedHeaders, ", "))
+		w.Header().Set("Access-Control-Expose-Headers", m.exposedHeadersStr)
 	}
 
 	next.ServeHTTP(w, r)

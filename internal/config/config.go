@@ -701,10 +701,12 @@ type Backend struct {
 
 // HealthCheck represents health check configuration.
 type HealthCheck struct {
-	Type     string `yaml:"type" json:"type"`
-	Path     string `yaml:"path" json:"path"`
-	Interval string `yaml:"interval" json:"interval"`
-	Timeout  string `yaml:"timeout" json:"timeout"`
+	Type     string   `yaml:"type" json:"type"`
+	Path     string   `yaml:"path" json:"path"`
+	Interval string   `yaml:"interval" json:"interval"`
+	Timeout  string   `yaml:"timeout" json:"timeout"`
+	Command  string   `yaml:"command" json:"command"`
+	Args     []string `yaml:"args" json:"args"`
 }
 
 // TLSConfig represents TLS configuration.

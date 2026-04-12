@@ -56,6 +56,7 @@ func (e *Engine) validateConfig(cfg *config.Config) error {
 
 // applyConfig applies new configuration atomically.
 // This performs a hot-reload without dropping connections.
+// It saves the current config for potential rollback and starts a grace period.
 func (e *Engine) applyConfig(newCfg *config.Config) error {
 	e.logger.Info("Applying new configuration...")
 
@@ -65,6 +66,30 @@ func (e *Engine) applyConfig(newCfg *config.Config) error {
 	e.errorCount = 0
 	e.reloadTimestamp = time.Now()
 	e.rollbackMu.Unlock()
+
+	if err := e.applyConfigInternal(newCfg, false); err != nil {
+		return err
+	}
+
+	// Start rollback grace period (30s): if errors spike, auto-revert
+	e.startRollbackGracePeriod()
+
+	return nil
+}
+
+// rollbackConfig performs an emergency rollback to the previous config.
+// Unlike applyConfig, it does NOT start a new grace period (preventing rollback loops).
+func (e *Engine) rollbackConfig(prevCfg *config.Config) error {
+	e.logger.Warn("Rolling back to previous configuration...")
+	return e.applyConfigInternal(prevCfg, true)
+}
+
+// applyConfigInternal performs the actual config swap.
+// When noRollback is true, the "applied successfully" message indicates no rollback is active.
+func (e *Engine) applyConfigInternal(newCfg *config.Config, noRollback bool) error {
+	if noRollback {
+		e.logger.Info("Applying configuration (no rollback)...")
+	}
 
 	// 1. Create new router with new routes
 	newRouter := router.NewRouter()
@@ -122,6 +147,8 @@ func (e *Engine) applyConfig(newCfg *config.Config) error {
 				Path:               poolCfg.HealthCheck.Path,
 				Interval:           parseDuration(poolCfg.HealthCheck.Interval, 10*time.Second),
 				Timeout:            parseDuration(poolCfg.HealthCheck.Timeout, 5*time.Second),
+				Command:            poolCfg.HealthCheck.Command,
+				Args:               poolCfg.HealthCheck.Args,
 				HealthyThreshold:   2,
 				UnhealthyThreshold: 3,
 			}
@@ -142,7 +169,6 @@ func (e *Engine) applyConfig(newCfg *config.Config) error {
 	newMiddlewareChain := createMiddlewareChain(newCfg, e.logger, e.metrics)
 
 	// 6. Atomic swap - replace router and pools
-	// We need to update the proxy with new components
 	e.mu.Lock()
 	oldRouter := e.router
 	oldPoolManager := e.poolManager
@@ -156,9 +182,6 @@ func (e *Engine) applyConfig(newCfg *config.Config) error {
 	e.middlewareChain = newMiddlewareChain
 
 	// Update proxy components
-	// Note: The proxy references the router and pool manager directly,
-	// so we need to create a new proxy or update its references.
-	// For now, we'll create a new proxy configuration.
 	newProxyConfig := &l7.Config{
 		Router:          newRouter,
 		PoolManager:     newPoolManager,
@@ -206,168 +229,11 @@ func (e *Engine) applyConfig(newCfg *config.Config) error {
 		}
 	}
 
-	e.logger.Info("Configuration applied successfully",
-		logging.Int("pools", newPoolManager.PoolCount()),
-		logging.Int("routes", newRouter.RouteCount()),
-	)
-
-	// Suppress unused variable warnings (old components are kept for graceful transition)
-	_ = oldRouter
-	_ = oldPoolManager
-
-	// Start rollback grace period (30s): if errors spike, auto-revert
-	e.startRollbackGracePeriod()
-
-	return nil
-}
-
-// rollbackConfig performs an emergency rollback to the previous config.
-// Unlike applyConfig, it does NOT start a new grace period (preventing rollback loops).
-func (e *Engine) rollbackConfig(prevCfg *config.Config) error {
-	e.logger.Warn("Rolling back to previous configuration...")
-	return e.applyConfigNoRollback(prevCfg)
-}
-
-// applyConfigNoRollback applies config without starting a rollback grace period.
-// Used by rollback itself to prevent infinite rollback loops.
-func (e *Engine) applyConfigNoRollback(newCfg *config.Config) error {
-	e.logger.Info("Applying configuration (no rollback)...")
-
-	// 1. Create new router with new routes
-	newRouter := router.NewRouter()
-	for _, listenerCfg := range newCfg.Listeners {
-		for _, routeCfg := range listenerCfg.Routes {
-			route := &router.Route{
-				Name:        fmt.Sprintf("%s-%s", listenerCfg.Name, routeCfg.Path),
-				Host:        routeCfg.Host,
-				Path:        routeCfg.Path,
-				Methods:     routeCfg.Methods,
-				BackendPool: routeCfg.Pool,
-			}
-			if err := newRouter.AddRoute(route); err != nil {
-				return fmt.Errorf("failed to add route %s: %w", route.Name, err)
-			}
-		}
+	successMsg := "Configuration applied successfully"
+	if noRollback {
+		successMsg = "Configuration applied successfully (no rollback)"
 	}
-
-	// 2. Create new pool manager
-	newPoolManager := backend.NewPoolManager()
-
-	// 3. Create new health checker
-	newHealthChecker := health.NewChecker()
-
-	// 4. Initialize pools and register backends
-	for _, poolCfg := range newCfg.Pools {
-		pool := backend.NewPool(poolCfg.Name, poolCfg.Algorithm)
-
-		// Create balancer using the registry
-		bal := balancer.New(poolCfg.Algorithm)
-		if bal == nil {
-			bal = balancer.NewRoundRobin()
-		}
-		pool.SetBalancer(bal)
-
-		// Add backends
-		for i, backendCfg := range poolCfg.Backends {
-			id := backendCfg.ID
-			if id == "" {
-				id = fmt.Sprintf("%s-%d", backendCfg.Address, i)
-			}
-			b := backend.NewBackend(id, backendCfg.Address)
-			b.Weight = int32(backendCfg.Weight)
-			if backendCfg.Scheme != "" {
-				b.Scheme = backendCfg.Scheme
-			}
-			if err := pool.AddBackend(b); err != nil {
-				return fmt.Errorf("failed to add backend %s to pool %s: %w",
-					id, poolCfg.Name, err)
-			}
-
-			// Register with health checker
-			checkConfig := &health.Check{
-				Type:               poolCfg.HealthCheck.Type,
-				Path:               poolCfg.HealthCheck.Path,
-				Interval:           parseDuration(poolCfg.HealthCheck.Interval, 10*time.Second),
-				Timeout:            parseDuration(poolCfg.HealthCheck.Timeout, 5*time.Second),
-				HealthyThreshold:   2,
-				UnhealthyThreshold: 3,
-			}
-			if err := newHealthChecker.Register(b, checkConfig); err != nil {
-				e.logger.Warn("Failed to register backend with health checker",
-					logging.String("backend_id", b.ID),
-					logging.Error(err),
-				)
-			}
-		}
-
-		if err := newPoolManager.AddPool(pool); err != nil {
-			return fmt.Errorf("failed to add pool %s: %w", poolCfg.Name, err)
-		}
-	}
-
-	// 5. Rebuild middleware chain from new config
-	newMiddlewareChain := createMiddlewareChain(newCfg, e.logger, e.metrics)
-
-	// 6. Atomic swap - replace router and pools
-	e.mu.Lock()
-	oldRouter := e.router
-	oldPoolManager := e.poolManager
-	oldHealthChecker := e.healthChecker
-
-	e.router = newRouter
-	e.poolManager = newPoolManager
-	e.healthChecker = newHealthChecker
-	e.adminServer.SetHealthChecker(newHealthChecker)
-	e.config = newCfg
-	e.middlewareChain = newMiddlewareChain
-
-	// Update proxy components
-	newProxyConfig := &l7.Config{
-		Router:          newRouter,
-		PoolManager:     newPoolManager,
-		ConnPoolManager: e.connPoolMgr,
-		HealthChecker:   newHealthChecker,
-		MiddlewareChain: newMiddlewareChain,
-		ProxyTimeout:    60 * time.Second,
-		DialTimeout:     10 * time.Second,
-		MaxRetries:      3,
-		PassiveChecker:  e.passiveChecker,
-	}
-	newProxy := l7.NewHTTPProxy(newProxyConfig)
-
-	// Capture old proxy before swapping
-	oldProxy := e.proxy
-	e.proxy = newProxy
-	e.mu.Unlock()
-
-	// Close old proxy after drain window
-	if oldProxy != nil {
-		e.wg.Add(1)
-		go func(p *l7.HTTPProxy) {
-			defer e.wg.Done()
-			time.Sleep(5 * time.Second)
-			p.Close()
-		}(oldProxy)
-	}
-
-	// Stop old health checker after drain window
-	e.wg.Add(1)
-	go func(hc *health.Checker) {
-		defer e.wg.Done()
-		time.Sleep(10 * time.Second)
-		hc.Stop()
-	}(oldHealthChecker)
-
-	// 7. Reload TLS certificates if changed
-	if newCfg.TLS != nil && newCfg.TLS.CertFile != "" && newCfg.TLS.KeyFile != "" {
-		if err := e.tlsManager.ReloadCertificates([]olbTLS.CertConfig{
-			{CertFile: newCfg.TLS.CertFile, KeyFile: newCfg.TLS.KeyFile},
-		}); err != nil {
-			e.logger.Warn("Failed to reload TLS certificates", logging.Error(err))
-		}
-	}
-
-	e.logger.Info("Configuration applied successfully (no rollback)",
+	e.logger.Info(successMsg,
 		logging.Int("pools", newPoolManager.PoolCount()),
 		logging.Int("routes", newRouter.RouteCount()),
 	)

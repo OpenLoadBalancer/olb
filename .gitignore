@@ -97,3 +97,6 @@ data/
 node_modules/
 internal/webui-build-temp/
 cli_cover.html
+
+# Frontend build artifacts (built by CI or npm run build)
+internal/webui/assets/
