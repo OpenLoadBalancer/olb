@@ -1,6 +1,12 @@
 import * as React from "react"
-import { Moon, Sun } from "lucide-react"
+import { Monitor, Moon, Sun } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 
 type Theme = "dark" | "light" | "system"
@@ -47,13 +53,50 @@ export const useTheme = () => {
   return context
 }
 
+const themeIcons: Record<Exclude<Theme, "system">, React.ReactNode> = {
+  light: <Sun className="h-4 w-4" aria-hidden="true" />,
+  dark: <Moon className="h-4 w-4" aria-hidden="true" />,
+}
+
 export function ThemeToggle({ className }: { className?: string }) {
   const { theme, setTheme } = useTheme()
+  const activeTheme = theme === "system"
+    ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+    : theme
+
   return (
-    <Button variant="ghost" size="icon" className={cn("size-9", className)} onClick={() => setTheme(theme === "light" ? "dark" : "light")}>
-      <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" aria-hidden="true" />
-      <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" aria-hidden="true" />
-      <span className="sr-only">Toggle theme</span>
-    </Button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className={cn("size-9", className)} aria-label="Switch theme">
+          {themeIcons[activeTheme]}
+          <span className="sr-only">Switch theme</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => setTheme("light")}>
+          <Sun className="mr-2 h-4 w-4" aria-hidden="true" />
+          <span>Light</span>
+          {theme === "light" && <CheckIcon className="ml-auto h-4 w-4" />}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("dark")}>
+          <Moon className="mr-2 h-4 w-4" aria-hidden="true" />
+          <span>Dark</span>
+          {theme === "dark" && <CheckIcon className="ml-auto h-4 w-4" />}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("system")}>
+          <Monitor className="mr-2 h-4 w-4" aria-hidden="true" />
+          <span>System</span>
+          {theme === "system" && <CheckIcon className="ml-auto h-4 w-4" />}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function CheckIcon({ className }: { className: string }) {
+  return (
+    <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
   )
 }

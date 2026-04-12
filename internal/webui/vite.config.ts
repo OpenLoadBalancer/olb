@@ -13,7 +13,7 @@ export default defineConfig({
   build: {
     outDir: 'assets',
     emptyOutDir: true,
-    sourcemap: true,
+    sourcemap: process.env.NODE_ENV !== 'production',
     rollupOptions: {
       output: {
         manualChunks(id) {

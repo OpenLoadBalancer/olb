@@ -1,4 +1,4 @@
-.PHONY: all build test lint bench clean install build-all docker help
+.PHONY: all build test lint bench clean install build-all docker help webui-deps webui-test webui-lint webui-build
 
 # Project settings
 MODULE := github.com/openloadbalancer/olb
@@ -60,6 +60,26 @@ build-freebsd:
 test:
 	@echo "Running tests..."
 	go test -v -count=1 -p 4 -coverprofile=coverage.out -timeout=300s ./...
+
+## webui-deps: Install frontend dependencies
+webui-deps:
+	@echo "Installing WebUI dependencies..."
+	cd internal/webui && npm ci
+
+## webui-test: Run frontend tests
+webui-test: webui-deps
+	@echo "Running WebUI tests..."
+	cd internal/webui && npm test
+
+## webui-lint: Run frontend linting
+webui-lint: webui-deps
+	@echo "Linting WebUI..."
+	cd internal/webui && npm run lint
+
+## webui-build: Build frontend assets
+webui-build: webui-deps
+	@echo "Building WebUI..."
+	cd internal/webui && npm run build
 
 ## test-short: Run short tests only
 test-short:
@@ -215,11 +235,11 @@ version:
 	@echo "Commit: $(COMMIT)"
 	@echo "Date: $(DATE)"
 
-## check: Run all checks (fmt, vet, lint, test)
-check: fmt vet lint test
+## check: Run all checks (fmt, vet, lint, test + webui)
+check: fmt vet lint test webui-lint webui-test
 
-## ci: CI pipeline (build, test, lint)
-ci: build test lint
+## ci: CI pipeline (build, test, lint + webui)
+ci: build test lint webui-lint webui-test
 
 ## help: Show this help message
 help:

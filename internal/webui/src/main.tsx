@@ -2,6 +2,7 @@ import { StrictMode, lazy, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router'
 import { ThemeProvider } from '@/components/theme-provider'
+import { QueryProvider } from '@/lib/query-provider'
 import { Toaster } from '@/components/ui/sonner'
 import { Layout } from '@/components/layout'
 import { ErrorBoundary } from '@/pages/error'
@@ -23,37 +24,54 @@ const BackupRestorePage = lazy(() => import('@/pages/backup').then(m => ({ defau
 
 function PageLoader() {
 	return (
-		<div role="status" className="flex items-center justify-center h-64">
-			<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" aria-hidden="true" />
-		<span className="sr-only">Loading page...</span>
+		<div className="flex min-h-screen" role="status" aria-label="Loading page">
+			<div className="hidden lg:block w-64 border-r bg-muted/30 flex-shrink-0 p-4 space-y-3">
+				<div className="h-8 bg-muted rounded animate-pulse" />
+				<div className="h-6 bg-muted rounded animate-pulse w-3/4" />
+				<div className="h-6 bg-muted rounded animate-pulse w-5/6" />
+				<div className="h-6 bg-muted rounded animate-pulse w-2/3" />
+				<div className="h-6 bg-muted rounded animate-pulse w-4/5" />
+			</div>
+			<div className="flex-1 p-6 space-y-6">
+				<div className="h-8 bg-muted rounded animate-pulse w-1/3" />
+				<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+					{Array.from({ length: 4 }).map((_, i) => (
+						<div key={i} className="h-28 bg-muted rounded animate-pulse" />
+					))}
+				</div>
+				<div className="h-64 bg-muted rounded animate-pulse" />
+			</div>
+			<span className="sr-only">Loading page...</span>
 		</div>
 	)
 }
 
 createRoot(document.getElementById('root')!).render(
 	<StrictMode>
-		<ThemeProvider defaultTheme="system" storageKey="olb-theme">
-			<BrowserRouter>
-				<Layout>
-					<Suspense fallback={<PageLoader />}>
-						<Routes>
-							<Route path="/" element={<DashboardPage />} />
-							<Route path="/pools" element={<PoolsPage />} />
-							<Route path="/listeners" element={<ListenersPage />} />
-							<Route path="/middleware" element={<MiddlewarePage />} />
-							<Route path="/certificates" element={<CertificatesPage />} />
-							<Route path="/waf" element={<WAFPage />} />
-							<Route path="/metrics" element={<MetricsPage />} />
-							<Route path="/logs" element={<LogsPage />} />
-							<Route path="/cluster" element={<ClusterPage />} />
-							<Route path="/settings" element={<SettingsPage />} />
-							<Route path="/backup" element={<BackupRestorePage />} />
-							<Route path="*" element={<ErrorBoundary />} />
-						</Routes>
-					</Suspense>
-				</Layout>
-				<Toaster position="bottom-right" />
-			</BrowserRouter>
-		</ThemeProvider>
+		<QueryProvider>
+			<ThemeProvider defaultTheme="system" storageKey="olb-theme">
+				<BrowserRouter>
+					<Layout>
+						<Suspense fallback={<PageLoader />}>
+							<Routes>
+								<Route path="/" element={<DashboardPage />} />
+								<Route path="/pools" element={<PoolsPage />} />
+								<Route path="/listeners" element={<ListenersPage />} />
+								<Route path="/middleware" element={<MiddlewarePage />} />
+								<Route path="/certificates" element={<CertificatesPage />} />
+								<Route path="/waf" element={<WAFPage />} />
+								<Route path="/metrics" element={<MetricsPage />} />
+								<Route path="/logs" element={<LogsPage />} />
+								<Route path="/cluster" element={<ClusterPage />} />
+								<Route path="/settings" element={<SettingsPage />} />
+								<Route path="/backup" element={<BackupRestorePage />} />
+								<Route path="*" element={<ErrorBoundary />} />
+							</Routes>
+						</Suspense>
+					</Layout>
+					<Toaster position="bottom-right" />
+				</BrowserRouter>
+			</ThemeProvider>
+		</QueryProvider>
 	</StrictMode>,
 )

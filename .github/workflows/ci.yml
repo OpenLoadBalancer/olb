@@ -80,6 +80,14 @@ jobs:
         working-directory: ./internal/webui
         run: npm test
 
+      - name: Install Playwright browsers
+        working-directory: ./internal/webui
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        working-directory: ./internal/webui
+        run: npm run test:e2e
+
       - name: Build frontend
         working-directory: ./internal/webui
         run: npm run build

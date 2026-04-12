@@ -87,8 +87,9 @@ export function PoolsPage() {
   const selectedPool = pools?.find(p => p.name === selectedPoolName) ?? null
 
   // Auto-select first pool when data loads
-  if (pools && pools.length > 0 && !selectedPoolName && !selectedPool) {
-    setSelectedPoolName(pools[0].name)
+  const firstPool = pools?.[0]
+  if (pools && pools.length > 0 && !selectedPoolName && !selectedPool && firstPool) {
+    setSelectedPoolName(firstPool.name)
   }
 
   const filteredPools = (pools ?? []).filter(p =>

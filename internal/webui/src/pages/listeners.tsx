@@ -71,7 +71,7 @@ export function ListenersPage() {
 
   // Auto-select first listener when data loads
   if (listeners.length > 0 && !selectedListener) {
-    setSelectedListener(listeners[0])
+    setSelectedListener(listeners[0] ?? null)
   }
 
   // Create Listener Dialog State
