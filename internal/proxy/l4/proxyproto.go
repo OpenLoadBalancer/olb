@@ -208,8 +208,17 @@ func (p *PROXYProtocolParser) parseV1(data []byte) (*PROXYHeader, []byte, error)
 	// Parse addresses
 	srcIP := net.ParseIP(parts[2])
 	dstIP := net.ParseIP(parts[3])
-	srcPort, _ := strconv.Atoi(parts[4])
-	dstPort, _ := strconv.Atoi(parts[5])
+	srcPort, err := strconv.Atoi(parts[4])
+	if err != nil {
+		return nil, data, fmt.Errorf("invalid source port: %s", parts[4])
+	}
+	dstPort, err := strconv.Atoi(parts[5])
+	if err != nil {
+		return nil, data, fmt.Errorf("invalid destination port: %s", parts[5])
+	}
+	if srcPort < 0 || srcPort > 65535 || dstPort < 0 || dstPort > 65535 {
+		return nil, data, errors.New("port out of valid range 0-65535")
+	}
 
 	if srcIP == nil || dstIP == nil {
 		return nil, data, errors.New("invalid IP address")
@@ -388,7 +397,7 @@ func WriteV1(w *bufio.Writer, srcAddr, dstAddr net.Addr) error {
 func WriteV2(w *bufio.Writer, srcAddr, dstAddr net.Addr) error {
 	// Signature
 	sig := []byte{0x0D, 0x0A, 0x0D, 0x0A, 0x00, 0x0D, 0x0A, 0x51, 0x55, 0x49, 0x54, 0x0A}
-	w.Write(sig)
+	_, _ = w.Write(sig)
 
 	srcTCP, srcOK := srcAddr.(*net.TCPAddr)
 	dstTCP, dstOK := dstAddr.(*net.TCPAddr)
@@ -427,7 +436,7 @@ func WriteV2(w *bufio.Writer, srcAddr, dstAddr net.Addr) error {
 	w.WriteByte(verCmd)
 	w.WriteByte(famTrans)
 	binary.Write(w, binary.BigEndian, uint16(len(addrData)))
-	w.Write(addrData)
+	_, _ = w.Write(addrData)
 
 	return w.Flush()
 }

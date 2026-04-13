@@ -29,24 +29,27 @@ type CompressionConfig struct {
 	ContentTypes  []string // Content types to compress (default: common text types)
 	ExcludePaths  []string // Path prefixes to exclude
 	ExcludeAgents []string // User-Agent substrings to exclude
+	MaxBufferSize int    // Maximum response body to buffer before bypassing compression (default: 8MB)
 }
 
 // CompressionMiddleware implements gzip/deflate response compression.
 type CompressionMiddleware struct {
-	config       CompressionConfig
-	allowedTypes map[string]bool
+	config          CompressionConfig
+	allowedTypes    map[string]bool
+	lowercaseAgents []string // pre-computed lowercase agent strings
 }
 
 // compressWriter wraps http.ResponseWriter to buffer and optionally compress response.
 type compressWriter struct {
 	http.ResponseWriter
-	config      *CompressionConfig
-	encoding    string
-	buffer      *bytes.Buffer
-	writer      io.WriteCloser
-	minSize     int
-	wroteHeader bool
-	status      int
+	config       *CompressionConfig
+	allowedTypes map[string]bool // pre-computed content type lookup
+	encoding     string
+	buffer       *bytes.Buffer
+	writer       io.WriteCloser
+	minSize      int
+	wroteHeader  bool
+	status       int
 }
 
 // gzipWriterPool pools gzip.Writer instances for reuse.
@@ -83,6 +86,9 @@ func NewCompressionMiddleware(config CompressionConfig) (*CompressionMiddleware,
 	if config.Level == 0 {
 		config.Level = gzip.DefaultCompression // -1
 	}
+	if config.MaxBufferSize <= 0 {
+		config.MaxBufferSize = 8 * 1024 * 1024 // 8MB
+	}
 	if len(config.ContentTypes) == 0 {
 		config.ContentTypes = defaultCompressibleTypes
 	}
@@ -93,9 +99,16 @@ func NewCompressionMiddleware(config CompressionConfig) (*CompressionMiddleware,
 		allowedTypes[strings.ToLower(ct)] = true
 	}
 
+	// Pre-compute lowercase exclude agents for fast per-request lookup
+	lowercaseAgents := make([]string, len(config.ExcludeAgents))
+	for i, agent := range config.ExcludeAgents {
+		lowercaseAgents[i] = strings.ToLower(agent)
+	}
+
 	return &CompressionMiddleware{
-		config:       config,
-		allowedTypes: allowedTypes,
+		config:          config,
+		allowedTypes:    allowedTypes,
+		lowercaseAgents: lowercaseAgents,
 	}, nil
 }
 
@@ -112,6 +125,9 @@ func (m *CompressionMiddleware) Priority() int {
 // Wrap wraps the next handler with compression.
 func (m *CompressionMiddleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Always set Vary header so caches know the response may differ by Accept-Encoding
+		w.Header().Add("Vary", "Accept-Encoding")
+
 		// Check if compression should be applied
 		encoding := m.selectEncoding(r)
 		if encoding == "" {
@@ -129,6 +145,7 @@ func (m *CompressionMiddleware) Wrap(next http.Handler) http.Handler {
 		cw := &compressWriter{
 			ResponseWriter: w,
 			config:         &m.config,
+			allowedTypes:   m.allowedTypes,
 			encoding:       encoding,
 			buffer:         bufferPool.Get().(*bytes.Buffer),
 			minSize:        m.config.MinSize,
@@ -136,14 +153,13 @@ func (m *CompressionMiddleware) Wrap(next http.Handler) http.Handler {
 		}
 		cw.buffer.Reset()
 
-		// Set Vary header to indicate response varies by Accept-Encoding
-		w.Header().Add("Vary", "Accept-Encoding")
-
 		// Call next handler
 		next.ServeHTTP(cw, r)
 
 		// Close the compression writer to finalize
-		cw.Close()
+		if err := cw.Close(); err != nil {
+			cw.WriteHeader(http.StatusInternalServerError)
+		}
 	})
 }
 
@@ -159,8 +175,8 @@ func (m *CompressionMiddleware) shouldCompress(r *http.Request, _ http.ResponseW
 
 	// Check excluded user agents
 	userAgent := strings.ToLower(r.UserAgent())
-	for _, agent := range m.config.ExcludeAgents {
-		if strings.Contains(userAgent, strings.ToLower(agent)) {
+	for _, agent := range m.lowercaseAgents {
+		if strings.Contains(userAgent, agent) {
 			return false
 		}
 	}
@@ -237,6 +253,15 @@ func (cw *compressWriter) Write(p []byte) (int, error) {
 		return cw.writer.Write(p)
 	}
 
+	// Check max buffer size to prevent unbounded memory growth
+	if cw.buffer.Len()+len(p) > cw.config.MaxBufferSize {
+		// Exceeded max buffer size - flush uncompressed and pass through
+		if err := cw.flushUncompressed(); err != nil {
+			return 0, err
+		}
+		return cw.ResponseWriter.Write(p)
+	}
+
 	// Buffer the content
 	n, err := cw.buffer.Write(p)
 
@@ -308,12 +333,12 @@ func (cw *compressWriter) isContentTypeCompressible(contentType string) bool {
 	contentType = strings.ToLower(contentType)
 
 	// Check exact match
-	for _, ct := range cw.config.ContentTypes {
-		ct = strings.ToLower(ct)
-		if contentType == ct {
-			return true
-		}
-		// Check prefix matches (e.g., "text/" matches "text/html")
+	if cw.allowedTypes[contentType] {
+		return true
+	}
+
+	// Check prefix matches (e.g., "text/" matches "text/html")
+	for ct := range cw.allowedTypes {
 		if strings.HasSuffix(ct, "/") && strings.HasPrefix(contentType, ct) {
 			return true
 		}
@@ -411,7 +436,11 @@ func (w *flatePooledWriter) Write(p []byte) (int, error) {
 }
 
 func (w *flatePooledWriter) Close() error {
-	w.writer.Close()
+	if err := w.writer.Close(); err != nil {
+		w.writer.Reset(io.Discard)
+		flateWriterPool.Put(w.writer)
+		return err
+	}
 	w.writer.Reset(io.Discard)
 	flateWriterPool.Put(w.writer)
 	return nil
