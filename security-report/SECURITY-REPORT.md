@@ -24,6 +24,21 @@ Resolved 1 Critical, 6 High, 14 Medium findings.
 ### Round 2 — Deep-Dive Scans (commit `a20bf02`)
 Resolved 6 additional High-severity findings from deep-dive scans.
 
+### Round 3 — P1 Remediation (commit `df88781` + latest)
+Resolved P1 race conditions, integer overflow, division-by-zero, and unbounded I/O:
+
+| Finding | File | Fix | Status |
+|---------|------|-----|--------|
+| conn/pool.go mutex released during blocking dial | internal/conn/pool.go | Re-check closed state after re-acquiring lock | FIXED |
+| Passive health callback race with background goroutine | internal/health/passive.go | Read callbacks under pc.mu.RLock | FIXED |
+| ParseByteSize integer overflow on large units | pkg/utils/time.go | Check num*multiplier > MaxInt64 before conversion | FIXED |
+| parseCustomDuration overflow on weeks/days | pkg/utils/time.go | Overflow check before time.Duration conversion | FIXED |
+| TruncateDuration/RoundDuration division by zero | pkg/utils/time.go | Guard precision <= 0, return d unchanged | FIXED |
+| Rate limiter division by zero with RequestsPerSecond=0 | internal/middleware/rate_limiter.go | Reject zero/negative values in constructor | FIXED |
+| SSE unbounded io.Copy in fallback path | internal/proxy/l7/sse.go | io.LimitReader with 64MB cap | FIXED |
+| SSE unbounded io.Copy in copyRegularResponse | internal/proxy/l7/sse.go | io.LimitReader with 64MB cap | FIXED |
+| gRPC unbounded io.Copy in HandleGRPC | internal/proxy/l7/grpc.go | io.LimitReader with MaxMessageSize cap | FIXED |
+
 ## Critical Findings
 
 ### CRIT-1: MCP Server Fully Open When BearerToken Is Empty
@@ -132,11 +147,12 @@ Resolved 6 additional High-severity findings from deep-dive scans.
 ### P0 (Immediate) — All Fixed
 CRIT-1, HIGH-1 through HIGH-12
 
-### P1 (Next Sprint)
-- Race conditions in conn/pool.go, cluster/cluster.go, backend/manager.go
-- SSE/gRPC unbounded io.Copy
-- Bot detection rate → integer overflow fixes
+### P1 (Next Sprint) — In Progress
+- Race conditions in conn/pool.go (FIXED), cluster/cluster.go, backend/manager.go
+- SSE/gRPC unbounded io.Copy (FIXED)
+- Bot detection rate → integer overflow fixes (FIXED in pkg/utils/time.go)
 - Error type assertions (use errors.As)
+- Rate limiter division by zero (FIXED)
 
 ### P2 (Next Quarter)
 - MED-7: Add RBAC to admin API (Large effort)
