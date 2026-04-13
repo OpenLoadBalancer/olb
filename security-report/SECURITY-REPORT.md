@@ -2,48 +2,158 @@
 
 **Date:** 2026-04-13
 **Scope:** Full codebase audit (~380 Go files)
-**Methodology:** 4-phase pipeline (Recon -> Hunt -> Verify -> Report)
+**Methodology:** 4-phase pipeline (Recon -> Hunt -> Verify -> Report) + 6 deep-dive scans
 
 ## Executive Summary
 
 | Metric | Value |
 |--------|-------|
-| Total Findings | 42 |
+| Total Findings | 97 |
 | Critical | 1 |
-| High | 6 |
-| Medium | 22 |
-| Low | 13 |
+| High | 12 |
+| Medium | 35 |
+| Low | 49 |
 
-**Overall Risk Assessment:** MODERATE
+**Overall Risk Assessment:** MODERATE (after remediation of Critical and most High findings)
+
+## Fixes Applied
+
+### Round 1 — Initial Audit (commit `13562c0`)
+Resolved 1 Critical, 6 High, 14 Medium findings.
+
+### Round 2 — Deep-Dive Scans (commit `a20bf02`)
+Resolved 6 additional High-severity findings from deep-dive scans.
 
 ## Critical Findings
 
 ### CRIT-1: MCP Server Fully Open When BearerToken Is Empty
 - **File:** internal/mcp/mcp.go:1258-1271
 - **CVSS:** 9.8 (Critical)
-- Empty bearerToken bypasses all MCP authentication
+- **Status:** FIXED — Empty bearerToken now rejected
+- Empty bearerToken bypassed all MCP authentication
 
 ## High Findings
 
-| ID | Finding | File | CVSS |
-|----|---------|------|------|
-| HIGH-1 | CSP nonce hardcoded placeholder | internal/middleware/csp/csp.go:217 | 7.5 |
-| HIGH-2 | HMAC replay protection not implemented | internal/middleware/hmac/hmac.go:29 | 7.5 |
-| HIGH-3 | CSRF disabled by default | internal/middleware/csrf/csrf.go:32 | 8.0 |
-| HIGH-4 | MCP tools no authorization granularity | internal/mcp/mcp.go:554 | 7.5 |
-| HIGH-5 | SSE unbounded line buffering (DoS) | internal/proxy/l7/sse.go:190 | 7.5 |
-| HIGH-6 | H2C enabled by default | internal/proxy/l7/http2.go:74 | 7.4 |
+| ID | Finding | File | CVSS | Status |
+|----|---------|------|------|--------|
+| HIGH-1 | CSP nonce hardcoded placeholder | internal/middleware/csp/csp.go:217 | 7.5 | FIXED |
+| HIGH-2 | HMAC replay protection not implemented | internal/middleware/hmac/hmac.go:29 | 7.5 | FIXED |
+| HIGH-3 | CSRF disabled by default | internal/middleware/csrf/csrf.go:32 | 8.0 | FIXED |
+| HIGH-4 | MCP tools no authorization granularity | internal/mcp/mcp.go:554 | 7.5 | FIXED |
+| HIGH-5 | SSE unbounded line buffering (DoS) | internal/proxy/l7/sse.go:190 | 7.5 | FIXED |
+| HIGH-6 | H2C enabled by default | internal/proxy/l7/http2.go:74 | 7.4 | FIXED |
+| HIGH-7 | Shadow proxy req.Body race condition | internal/proxy/l7/shadow.go | 7.0 | FIXED |
+| HIGH-8 | gRPC parseGRPCFrame unbounded allocation | internal/proxy/l7/grpc.go | 7.5 | FIXED |
+| HIGH-9 | Bot detection unbounded IP tracker growth | internal/middleware/botdetection/ | 7.0 | FIXED |
+| HIGH-10 | CSRF init error silently swallowed | internal/admin/server.go | 7.0 | FIXED |
+| HIGH-11 | Circuit breaker goroutine leak on timeout | internal/admin/circuit_breaker.go | 6.5 | FIXED |
+| HIGH-12 | gosec@master unpinned in CI | .github/workflows/ci.yml | 7.0 | FIXED |
 
-## Medium Findings (22)
+## Deep-Dive Scan Results
 
-MED-1 through MED-22 � see verified-findings.md for details
+### Race Conditions (10 findings)
+1. **HIGH-7** Shadow proxy req.Body race — multiple goroutines read req.Body concurrently → FIXED
+2. conn/pool.go: mutex released during blocking dial
+3. cluster/cluster.go: callback function pointers unsynchronized
+4. backend/manager.go: Pool.Backends map iterated without pool.mu
+5. engine/lifecycle.go: listeners/udpProxies modified without lock
+6. health/passive.go: callbacks set after construction, read by background goroutine
+7. middleware/cache.go: int64-to-int truncation
+8. middleware/rate_limiter.go: sync.Map concurrent access patterns
+9. middleware/compression.go: write flush ordering
+10. config/watcher.go: untracked goroutine not in engine WaitGroup
 
-## Low Findings (13)
+### Resource Exhaustion (14 findings)
+1. **HIGH-8** gRPC parseGRPCFrame unbounded allocation → FIXED
+2. **HIGH-9** Bot detection IP tracker unbounded map growth → FIXED
+3. proxy/l7/sse.go: unbounded io.Copy in SSE streaming
+4. proxy/l7/grpc.go: unbounded io.Copy in HandleGRPC
+5. middleware/coalesce/coalesce.go: unbounded goroutine/map growth from per-request TTL cleanup
+6. middleware/rate_limiter.go: unbounded sync.Map growth
+7. middleware/cache/cache.go: O(n) eviction; background revalidation with context.Background()
+8. middleware/compression.go: unbounded compression buffer
+9. middleware/retry.go: full response body buffering on retry
+10. middleware/timeout.go: handler goroutine continues after timeout
+11. proxy/l7/sse.go: unbounded goroutine creation per SSE stream
+12. mcp/sse_transport.go: MaxClients defaults to 0 (unlimited)
+13. proxy/l7/websocket.go: missing write deadline
+14. proxy/l4/tcp.go: missing connection limits
 
-LOW-1 through LOW-13 � see verified-findings.md for details
+### Error Handling (27 findings)
+1. **HIGH-10** CSRF init error silently swallowed → FIXED
+2. cluster/cluster.go: Raft state machine Apply errors discarded
+3. engine/engine.go: silent cluster init failure
+4. engine/pools_routes.go: health check registration failure only warns
+5. engine/cluster_init.go: cluster transport failure degrades silently
+6. cluster/config_sm.go: silent recover in callback; Raft Apply errors discarded on follower
+7. proxy/l4/tcp.go: silent connection drops; error type assertions miss wrapped errors
+8. proxy/l4/udp.go: silent packet drops
+9. proxy/l4/proxyproto.go: ignored Atoi error for ports
+10. proxy/l7/http2.go: no dial timeout
+11. proxy/l7/websocket.go: WebSocket buffered data read errors ignored
+12. mcp/mcp.go: internal error details leaked to clients
+13. admin/server.go: Prometheus write error ignored
+14. Multiple files: silently swallowed errors in defer close, response writes
+15-27. Various: missing error checks in non-critical paths (logging, metrics, cleanup)
+
+### Integer Overflow / Unsafe (16 findings)
+1. pkg/utils/time.go: ParseByteSize overflow with large units
+2. pkg/utils/time.go: parseCustomDuration overflow
+3. pkg/utils/time.go: division by zero in TruncateDuration/RoundDuration
+4. middleware/rate_limiter.go: division by zero with RequestsPerSecond=0
+5. config/hcl/decoder.go: reflect type confusion without bounds checks
+6. config/toml/decode.go: reflect type confusion without bounds checks
+7. config/yaml/decoder.go: reflect type confusion without bounds checks
+8-16. Various: unchecked type assertions, integer truncation, missing bounds validation
+
+### Supply Chain / Build (10 findings)
+1. **HIGH-12** gosec@master unpinned in CI → FIXED (pinned to v2.22.3)
+2. nancy@latest unpinned in CI → FIXED (pinned to v1.0.106)
+3. Missing go mod verify in CI → FIXED
+4. Dockerfile base images not pinned by digest
+5. golangci-lint@latest unpinned
+6. staticcheck@latest unpinned
+7. benchstat@latest unpinned
+8. No dependency pinning verification in CI
+9. No SBOM generation in release pipeline
+10. No cosign/signature verification for Docker images
+
+### Goroutine Leaks (14 findings)
+1. **HIGH-11** Circuit breaker goroutine leak on timeout → FIXED
+2. proxy/l7/sse.go: per-line-read goroutines can block forever
+3. config/watcher.go: untracked goroutine not in engine WaitGroup
+4. middleware/coalesce/coalesce.go: unbounded goroutine creation
+5. middleware/cache/cache.go: background revalidation goroutine with context.Background()
+6. proxy/l7/sse.go: drain goroutine lifetime not bounded
+7-14. Various: fire-and-forget goroutines without context cancellation
 
 ## Remediation Priority
 
-P0 (Immediate): CRIT-1, HIGH-1, HIGH-2, HIGH-5
-P1 (Next Sprint): HIGH-3, HIGH-4, HIGH-6, MED-1, MED-4/5, MED-8
-P2 (Next Quarter): MED-7, MED-9, MED-11, MED-15, MED-2, MED-12
+### P0 (Immediate) — All Fixed
+CRIT-1, HIGH-1 through HIGH-12
+
+### P1 (Next Sprint)
+- Race conditions in conn/pool.go, cluster/cluster.go, backend/manager.go
+- SSE/gRPC unbounded io.Copy
+- Bot detection rate → integer overflow fixes
+- Error type assertions (use errors.As)
+
+### P2 (Next Quarter)
+- MED-7: Add RBAC to admin API (Large effort)
+- MED-9: Use []byte for secrets with zeroing (Medium effort)
+- MED-11: Full mTLS client cert revocation (Large effort)
+- Dockerfile image pinning by digest
+- SBOM generation in CI/CD
+
+## Scan Categories
+
+| Category | Tool | Findings |
+|----------|------|----------|
+| Injection (SQL, XSS, SSTI, etc.) | Pattern matching | 0 exploitable |
+| Authentication & Authorization | Code review | 6 (all fixed) |
+| Race Conditions | Concurrency analysis | 10 (1 fixed) |
+| Resource Exhaustion | DoS analysis | 14 (2 fixed) |
+| Error Handling | Anti-pattern scan | 27 (1 fixed) |
+| Integer Overflow | Bounds analysis | 16 (0 fixed) |
+| Supply Chain | CI/CD audit | 10 (3 fixed) |
+| Goroutine Leaks | Lifecycle analysis | 14 (1 fixed) |
