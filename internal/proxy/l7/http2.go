@@ -118,8 +118,8 @@ func NewHTTP2Handler(config *HTTP2Config) *HTTP2Handler {
 	h2Transport := &http2.Transport{
 		AllowHTTP: true, // Allow h2c to backends
 		DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
-			// For h2c, use plain TCP
-			return net.Dial(network, addr)
+			// For h2c, use plain TCP with dial timeout
+			return (&net.Dialer{Timeout: 10 * time.Second}).Dial(network, addr)
 		},
 	}
 
@@ -469,8 +469,8 @@ func NewHTTP2BackendTransport(config *HTTP2Config) *HTTP2BackendTransport {
 		transport: &http2.Transport{
 			AllowHTTP: true, // Allow h2c
 			DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
-				// For h2c, use plain TCP
-				return net.Dial(network, addr)
+				// For h2c, use plain TCP with dial timeout
+				return (&net.Dialer{Timeout: 10 * time.Second}).Dial(network, addr)
 			},
 		},
 	}
@@ -540,7 +540,7 @@ func HandleHTTP2Proxy(w http.ResponseWriter, r *http.Request, b *backend.Backend
 	transport := &http2.Transport{
 		AllowHTTP: true, // Allow h2c
 		DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
-			return net.Dial(network, addr)
+			return (&net.Dialer{Timeout: 10 * time.Second}).Dial(network, addr)
 		},
 	}
 

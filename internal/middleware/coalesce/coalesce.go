@@ -67,6 +67,7 @@ type Middleware struct {
 	config   Config
 	inflight map[string]*inflight
 	mu       sync.RWMutex
+	done     chan struct{} // signals cleanup goroutines to exit
 }
 
 // New creates a new request coalescing middleware.
@@ -78,9 +79,14 @@ func New(config Config) *Middleware {
 		config.TTL = 100 * time.Millisecond
 	}
 
+	// Cap inflight entries to prevent unbounded map growth
+	if config.MaxRequests <= 0 {
+		config.MaxRequests = 5000
+	}
 	return &Middleware{
 		config:   config,
 		inflight: make(map[string]*inflight),
+		done:     make(chan struct{}),
 	}
 }
 
@@ -184,7 +190,10 @@ func (m *Middleware) executeRequest(w http.ResponseWriter, r *http.Request, next
 
 	// Clean up after TTL
 	go func() {
-		time.Sleep(m.config.TTL)
+		select {
+		case <-time.After(m.config.TTL):
+		case <-m.done:
+		}
 		m.mu.Lock()
 		delete(m.inflight, key)
 		m.mu.Unlock()
@@ -222,7 +231,7 @@ func (m *Middleware) serveFromInflight(w http.ResponseWriter, r *http.Request, i
 	// Write status and body
 	w.WriteHeader(response.StatusCode)
 	if r.Method != "HEAD" {
-		w.Write(body)
+		_, _ = w.Write(body)
 	}
 }
 
@@ -240,7 +249,7 @@ func (m *Middleware) writeResponse(w http.ResponseWriter, rec *httptest.Response
 
 	// Write status and body
 	w.WriteHeader(rec.Code)
-	w.Write(rec.Body.Bytes())
+	_, _ = w.Write(rec.Body.Bytes())
 }
 
 // Stats returns coalescing statistics.
@@ -250,6 +259,15 @@ func (m *Middleware) Stats() map[string]interface{} {
 
 	return map[string]interface{}{
 		"inflight_requests": len(m.inflight),
+	}
+}
+
+// Stop cancels all pending cleanup goroutines.
+func (m *Middleware) Stop() {
+	select {
+	case <-m.done:
+	default:
+		close(m.done)
 	}
 }
 

@@ -29,6 +29,7 @@ type Watcher struct {
 	data    []byte
 	stopCh  chan struct{}
 	stopped bool
+	wg      sync.WaitGroup // tracks the watch goroutine for graceful shutdown
 }
 
 // NewWatcher creates a new file watcher.
@@ -57,10 +58,14 @@ func NewWatcher(path string, interval time.Duration, callback ChangeCallback, er
 
 // Start starts watching the file for changes.
 func (w *Watcher) Start(ctx context.Context) {
-	go w.watch(ctx)
+	w.wg.Add(1)
+	go func() {
+		defer w.wg.Done()
+		w.watch(ctx)
+	}()
 }
 
-// Stop stops watching the file.
+// Stop stops watching the file and waits for the watch goroutine to exit.
 func (w *Watcher) Stop() {
 	w.mu.Lock()
 	if w.stopped {
@@ -71,6 +76,7 @@ func (w *Watcher) Stop() {
 	w.mu.Unlock()
 
 	close(w.stopCh)
+	w.wg.Wait()
 }
 
 // GetData returns the current config data.

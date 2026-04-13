@@ -38,13 +38,13 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          version: v1.64.8
           args: --timeout=5m
 
       - name: go staticcheck (fallback)
         if: failure()
         run: |
-          go install honnef.co/go/tools/cmd/staticcheck@latest 2>/dev/null || true
+          go install honnef.co/go/tools/cmd/staticcheck@v0.6.1 2>/dev/null || true
           which staticcheck && staticcheck ./... || echo "staticcheck not available, skipping"
 
   # Job 2: Build Frontend (shared by test, test-race, build jobs)
@@ -343,7 +343,7 @@ jobs:
             ${{ runner.os }}-go-
 
       - name: Install benchstat
-        run: go install golang.org/x/perf/cmd/benchstat@latest
+        run: go install golang.org/x/perf/cmd/benchstat@v0.0.0-20250306133421-1eb4f625a7d6
 
       - name: Run baseline benchmarks (base branch)
         run: |

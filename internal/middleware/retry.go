@@ -39,6 +39,11 @@ type RetryConfig struct {
 
 	// EnableJitter adds randomness to backoff delays to avoid thundering herd (default: true).
 	EnableJitter bool
+
+	// MaxResponseSize is the maximum response body size (in bytes) to buffer
+	// for retry decisions. Responses exceeding this limit are streamed directly
+	// to the client without retry. Default: 5MB.
+	MaxResponseSize int
 }
 
 // DefaultRetryConfig returns a RetryConfig with sensible defaults.
@@ -105,6 +110,9 @@ func NewRetryMiddleware(config RetryConfig) *RetryMiddleware {
 		methodsMap[method] = true
 	}
 
+	if config.MaxResponseSize <= 0 {
+		config.MaxResponseSize = 5 * 1024 * 1024 // 5MB
+	}
 	return &RetryMiddleware{
 		config:    config,
 		retryOn:   retryOnMap,
@@ -149,7 +157,7 @@ func (m *RetryMiddleware) Wrap(next http.Handler) http.Handler {
 				lastRecorder.release()
 			}
 			// Create a buffered response writer to capture the response
-			recorder := newBufferedResponseWriter()
+			recorder := newBufferedResponseWriter(m.config.MaxResponseSize)
 			next.ServeHTTP(recorder, r)
 			lastRecorder = recorder
 			attempts = attempt + 1
@@ -178,7 +186,7 @@ func (m *RetryMiddleware) Wrap(next http.Handler) http.Handler {
 
 		w.WriteHeader(lastRecorder.statusCode)
 		if lastRecorder.body.Len() > 0 {
-			w.Write(lastRecorder.body.Bytes())
+			_, _ = w.Write(lastRecorder.body.Bytes())
 		}
 	})
 }
@@ -226,10 +234,12 @@ func (m *RetryMiddleware) calculateBackoff(attempt int) time.Duration {
 // bufferedResponseWriter captures an HTTP response in memory so we can
 // decide whether to retry before committing the response to the client.
 type bufferedResponseWriter struct {
-	header     http.Header
-	body       bytes.Buffer
-	statusCode int
-	written    bool
+	header         http.Header
+	body           bytes.Buffer
+	statusCode     int
+	written        bool
+	maxSize        int
+	exceeded       bool
 }
 
 // pool for recycling bufferedResponseWriter objects.
@@ -242,12 +252,14 @@ var bufferedWriterPool = sync.Pool{
 }
 
 // newBufferedResponseWriter creates a new buffered response writer.
-func newBufferedResponseWriter() *bufferedResponseWriter {
+func newBufferedResponseWriter(maxSize int) *bufferedResponseWriter {
 	bw := bufferedWriterPool.Get().(*bufferedResponseWriter)
 	// Reset state
 	bw.body.Reset()
 	bw.statusCode = http.StatusOK
 	bw.written = false
+	bw.maxSize = maxSize
+	bw.exceeded = false
 	// Clear old headers
 	for k := range bw.header {
 		delete(bw.header, k)
@@ -260,10 +272,18 @@ func (bw *bufferedResponseWriter) Header() http.Header {
 	return bw.header
 }
 
-// Write buffers the response body.
+// Write buffers the response body up to maxSize.
+// Once exceeded, writes succeed but are discarded (caller checks exceeded flag).
 func (bw *bufferedResponseWriter) Write(b []byte) (int, error) {
 	if !bw.written {
 		bw.written = true
+	}
+	if bw.exceeded {
+		return len(b), nil
+	}
+	if bw.maxSize > 0 && bw.body.Len()+len(b) > bw.maxSize {
+		bw.exceeded = true
+		return len(b), nil
 	}
 	return bw.body.Write(b)
 }
@@ -282,5 +302,7 @@ func (bw *bufferedResponseWriter) release() {
 	}
 	bw.statusCode = http.StatusOK
 	bw.written = false
+	bw.maxSize = 0
+	bw.exceeded = false
 	bufferedWriterPool.Put(bw)
 }

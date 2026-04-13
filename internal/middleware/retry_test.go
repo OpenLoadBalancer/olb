@@ -704,7 +704,7 @@ func TestRetryMiddleware_ZeroValueConfigUsesDefaults(t *testing.T) {
 }
 
 func TestRetryMiddleware_BufferedResponseWriter(t *testing.T) {
-	bw := newBufferedResponseWriter()
+	bw := newBufferedResponseWriter(5 * 1024 * 1024)
 	defer bw.release()
 
 	// Test Header
