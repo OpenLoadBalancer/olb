@@ -52,6 +52,10 @@ Resolved remaining P1 race conditions, goroutine leaks, and resource exhaustion:
 | TCP proxy MaxConnections defaults to 0 (unlimited) | internal/proxy/l4/tcp.go | Default to 10000 connections | FIXED |
 | TCP proxy error type assertion misses wrapped errors | internal/proxy/l4/tcp.go | Use errors.As instead of type assertion | FIXED |
 
+### Round 5 — P2 Quick Wins (latest commit)
+| Compression unbounded response buffer | internal/middleware/compression.go | MaxBufferSize (default 8MB) with passthrough | FIXED |
+| PROXY protocol ignored Atoi error for ports | internal/proxy/l4/proxyproto.go | Validate parse + range (0-65535) | FIXED |
+
 ## Critical Findings
 
 ### CRIT-1: MCP Server Fully Open When BearerToken Is Empty
