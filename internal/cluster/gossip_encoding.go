@@ -12,13 +12,24 @@ import (
 //
 // Payload varies by message type. All multi-byte integers are big-endian.
 
+// encodeUint16Length validates that length fits in a uint16.
+func encodeUint16Length(length int) error {
+	if length > 65535 {
+		return fmt.Errorf("gossip: field length %d exceeds uint16 max (65535)", length)
+	}
+	return nil
+}
+
 // encodeMessage creates a wire-format message from type and payload.
-func encodeMessage(msgType MessageType, payload []byte) []byte {
+func encodeMessage(msgType MessageType, payload []byte) ([]byte, error) {
+	if err := encodeUint16Length(len(payload)); err != nil {
+		return nil, fmt.Errorf("gossip: message payload too large: %w", err)
+	}
 	buf := make([]byte, 3+len(payload))
 	buf[0] = byte(msgType)
 	binary.BigEndian.PutUint16(buf[1:3], uint16(len(payload)))
 	copy(buf[3:], payload)
-	return buf
+	return buf, nil
 }
 
 // decodeMessage splits a wire-format message into type, payload, and remaining bytes.
@@ -37,7 +48,13 @@ func decodeMessage(data []byte) (MessageType, []byte, []byte, error) {
 }
 
 // PING payload: [seqNo: 4][senderIDLen: 2][senderID: var][targetIDLen: 2][targetID: var]
-func encodePing(seqNo uint32, senderID, targetID string) []byte {
+func encodePing(seqNo uint32, senderID, targetID string) ([]byte, error) {
+	if err := encodeUint16Length(len(senderID)); err != nil {
+		return nil, fmt.Errorf("gossip: ping senderID: %w", err)
+	}
+	if err := encodeUint16Length(len(targetID)); err != nil {
+		return nil, fmt.Errorf("gossip: ping targetID: %w", err)
+	}
 	payload := make([]byte, 4+2+len(senderID)+2+len(targetID))
 	binary.BigEndian.PutUint32(payload[0:4], seqNo)
 	binary.BigEndian.PutUint16(payload[4:6], uint16(len(senderID)))
@@ -69,7 +86,10 @@ func decodePing(payload []byte) (seqNo uint32, senderID, targetID string, err er
 }
 
 // ACK payload: [seqNo: 4][senderIDLen: 2][senderID: var]
-func encodeAck(seqNo uint32, senderID string) []byte {
+func encodeAck(seqNo uint32, senderID string) ([]byte, error) {
+	if err := encodeUint16Length(len(senderID)); err != nil {
+		return nil, fmt.Errorf("gossip: ack senderID: %w", err)
+	}
 	payload := make([]byte, 4+2+len(senderID))
 	binary.BigEndian.PutUint32(payload[0:4], seqNo)
 	binary.BigEndian.PutUint16(payload[4:6], uint16(len(senderID)))
@@ -92,7 +112,13 @@ func decodeAck(payload []byte) (seqNo uint32, senderID string, err error) {
 }
 
 // PING_REQ payload: [seqNo: 4][senderIDLen: 2][senderID: var][targetIDLen: 2][targetID: var]
-func encodePingReq(seqNo uint32, senderID, targetID string) []byte {
+func encodePingReq(seqNo uint32, senderID, targetID string) ([]byte, error) {
+	if err := encodeUint16Length(len(senderID)); err != nil {
+		return nil, fmt.Errorf("gossip: ping_req senderID: %w", err)
+	}
+	if err := encodeUint16Length(len(targetID)); err != nil {
+		return nil, fmt.Errorf("gossip: ping_req targetID: %w", err)
+	}
 	payload := make([]byte, 4+2+len(senderID)+2+len(targetID))
 	binary.BigEndian.PutUint32(payload[0:4], seqNo)
 	binary.BigEndian.PutUint16(payload[4:6], uint16(len(senderID)))
@@ -110,7 +136,24 @@ func decodePingReq(payload []byte) (seqNo uint32, senderID, targetID string, err
 
 // encodeNodePayload encodes a node's identity into a byte slice.
 // Format: [incarnation: 4][nodeIDLen: 2][nodeID: var][addrLen: 2][addr: var][port: 2][metaCount: 2][{keyLen: 2, key, valLen: 2, val}...]
-func encodeNodePayload(incarnation uint32, nodeID, address string, port int, metadata map[string]string) []byte {
+func encodeNodePayload(incarnation uint32, nodeID, address string, port int, metadata map[string]string) ([]byte, error) {
+	if err := encodeUint16Length(len(nodeID)); err != nil {
+		return nil, fmt.Errorf("gossip: node payload nodeID: %w", err)
+	}
+	if err := encodeUint16Length(len(address)); err != nil {
+		return nil, fmt.Errorf("gossip: node payload address: %w", err)
+	}
+	if err := encodeUint16Length(len(metadata)); err != nil {
+		return nil, fmt.Errorf("gossip: node payload metadata count %d exceeds uint16 max", len(metadata))
+	}
+	for k, v := range metadata {
+		if err := encodeUint16Length(len(k)); err != nil {
+			return nil, fmt.Errorf("gossip: node payload metadata key %q: %w", k, err)
+		}
+		if err := encodeUint16Length(len(v)); err != nil {
+			return nil, fmt.Errorf("gossip: node payload metadata value for key %q: %w", k, err)
+		}
+	}
 	size := 4 + 2 + len(nodeID) + 2 + len(address) + 2 + 2
 	for k, v := range metadata {
 		size += 2 + len(k) + 2 + len(v)
@@ -135,7 +178,7 @@ func encodeNodePayload(incarnation uint32, nodeID, address string, port int, met
 		copy(payload[off+2:off+2+len(v)], v)
 		off += 2 + len(v)
 	}
-	return payload
+	return payload, nil
 }
 
 // decodeNodePayload decodes a node identity payload.
@@ -188,7 +231,10 @@ func decodeNodePayload(payload []byte) (incarnation uint32, nodeID, address stri
 }
 
 // encodeSuspect encodes a SUSPECT message.
-func encodeSuspect(incarnation uint32, nodeID string) []byte {
+func encodeSuspect(incarnation uint32, nodeID string) ([]byte, error) {
+	if err := encodeUint16Length(len(nodeID)); err != nil {
+		return nil, fmt.Errorf("gossip: suspect nodeID: %w", err)
+	}
 	payload := make([]byte, 4+2+len(nodeID))
 	binary.BigEndian.PutUint32(payload[0:4], incarnation)
 	binary.BigEndian.PutUint16(payload[4:6], uint16(len(nodeID)))
@@ -211,8 +257,12 @@ func decodeSuspect(payload []byte) (incarnation uint32, nodeID string, err error
 }
 
 // encodeAlive encodes an ALIVE message with full node info.
-func encodeAlive(incarnation uint32, nodeID, address string, port int, metadata map[string]string) []byte {
-	return encodeMessage(MsgAlive, encodeNodePayload(incarnation, nodeID, address, port, metadata))
+func encodeAlive(incarnation uint32, nodeID, address string, port int, metadata map[string]string) ([]byte, error) {
+	nodePayload, err := encodeNodePayload(incarnation, nodeID, address, port, metadata)
+	if err != nil {
+		return nil, err
+	}
+	return encodeMessage(MsgAlive, nodePayload)
 }
 
 // decodeAlive parses an ALIVE payload.
@@ -221,7 +271,10 @@ func decodeAlive(payload []byte) (incarnation uint32, nodeID, address string, po
 }
 
 // encodeDead encodes a DEAD message.
-func encodeDead(incarnation uint32, nodeID string) []byte {
+func encodeDead(incarnation uint32, nodeID string) ([]byte, error) {
+	if err := encodeUint16Length(len(nodeID)); err != nil {
+		return nil, fmt.Errorf("gossip: dead nodeID: %w", err)
+	}
 	payload := make([]byte, 4+2+len(nodeID))
 	binary.BigEndian.PutUint32(payload[0:4], incarnation)
 	binary.BigEndian.PutUint16(payload[4:6], uint16(len(nodeID)))
@@ -235,7 +288,7 @@ func decodeDead(payload []byte) (incarnation uint32, nodeID string, err error) {
 }
 
 // encodeJoinMessage encodes a JOIN message for the local node.
-func (g *Gossip) encodeJoinMessage() []byte {
+func (g *Gossip) encodeJoinMessage() ([]byte, error) {
 	g.localMu.RLock()
 	inc := g.localNode.Incarnation
 	id := g.localNode.ID
@@ -243,25 +296,39 @@ func (g *Gossip) encodeJoinMessage() []byte {
 	port := g.localNode.Port
 	meta := copyMetadata(g.localNode.Metadata)
 	g.localMu.RUnlock()
-	return encodeMessage(MsgJoin, encodeNodePayload(inc, id, addr, port, meta))
+	nodePayload, err := encodeNodePayload(inc, id, addr, port, meta)
+	if err != nil {
+		return nil, err
+	}
+	return encodeMessage(MsgJoin, nodePayload)
 }
 
 // encodeLeaveMessage encodes a LEAVE message for a node.
-func (g *Gossip) encodeLeaveMessage(node *GossipNode) []byte {
-	return encodeMessage(MsgLeave, encodeNodePayload(
+func (g *Gossip) encodeLeaveMessage(node *GossipNode) ([]byte, error) {
+	nodePayload, err := encodeNodePayload(
 		node.Incarnation,
 		node.ID,
 		node.Address,
 		node.Port,
 		copyMetadata(node.Metadata),
-	))
+	)
+	if err != nil {
+		return nil, err
+	}
+	return encodeMessage(MsgLeave, nodePayload)
 }
 
 // encodeCompound wraps multiple messages into a single compound message.
-func encodeCompound(messages [][]byte) []byte {
+func encodeCompound(messages [][]byte) ([]byte, error) {
+	if err := encodeUint16Length(len(messages)); err != nil {
+		return nil, fmt.Errorf("gossip: compound message count: %w", err)
+	}
 	// Compound payload: [count: 2][{msgLen: 2, msg}...]
 	total := 2
 	for _, m := range messages {
+		if err := encodeUint16Length(len(m)); err != nil {
+			return nil, fmt.Errorf("gossip: compound sub-message: %w", err)
+		}
 		total += 2 + len(m)
 	}
 	payload := make([]byte, total)

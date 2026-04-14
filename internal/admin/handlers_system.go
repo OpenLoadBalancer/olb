@@ -2,11 +2,19 @@ package admin
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/openloadbalancer/olb/internal/health"
 	"github.com/openloadbalancer/olb/pkg/version"
+)
+
+var (
+	lastReloadMu      sync.Mutex
+	lastReloadTime    time.Time
+	minReloadInterval = 30 * time.Second
 )
 
 // getVersion handles GET /api/v1/version
@@ -126,6 +134,17 @@ func (s *Server) reloadConfig(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "NOT_AVAILABLE", "reload callback not configured")
 		return
 	}
+
+	// Enforce reload cooldown to prevent reload storms
+	lastReloadMu.Lock()
+	if time.Since(lastReloadTime) < minReloadInterval {
+		lastReloadMu.Unlock()
+		writeError(w, http.StatusTooManyRequests, "RELOAD_COOLDOWN",
+			fmt.Sprintf("reload cooldown: please wait %v between reloads", minReloadInterval))
+		return
+	}
+	lastReloadTime = time.Now()
+	lastReloadMu.Unlock()
 
 	err := s.circuitBreaker.Execute(r.Context(), func(ctx context.Context) error {
 		return s.onReload()

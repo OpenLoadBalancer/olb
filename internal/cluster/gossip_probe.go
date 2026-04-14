@@ -45,7 +45,10 @@ func (g *Gossip) probe() {
 
 	ackCh := make(chan struct{}, len(indirectTargets))
 	for _, peer := range indirectTargets {
-		pingReq := encodePingReq(seqNo, g.localNode.ID, target.ID)
+		pingReq, _ := encodePingReq(seqNo, g.localNode.ID, target.ID)
+		if pingReq == nil {
+			continue
+		}
 		if err := g.sendUDP(peer.Addr(), pingReq); err != nil {
 			continue
 		}
@@ -97,7 +100,10 @@ func (g *Gossip) probeNode(target *GossipNode, seqNo uint32) bool {
 	g.ackHandlersMu.Unlock()
 
 	// Build PING with piggybacked broadcasts.
-	ping := encodePing(seqNo, g.localNode.ID, target.ID)
+	ping, _ := encodePing(seqNo, g.localNode.ID, target.ID)
+	if ping == nil {
+		return false
+	}
 	broadcasts := g.getBroadcasts(g.config.MaxMessageSize - len(ping))
 	msg := ping
 	for _, b := range broadcasts {
@@ -131,8 +137,10 @@ func (g *Gossip) suspectNode(node *GossipNode) {
 	g.membersMu.Unlock()
 
 	// Broadcast suspicion.
-	suspect := encodeSuspect(m.Incarnation, m.ID)
-	g.queueBroadcast(suspect)
+	suspect, _ := encodeSuspect(m.Incarnation, m.ID)
+	if suspect != nil {
+		g.queueBroadcast(suspect)
+	}
 	g.emitEvent(EventUpdate, m)
 }
 
@@ -166,8 +174,10 @@ func (g *Gossip) startSuspicion(nodeID string) {
 			m.State = StateDead
 			g.membersMu.Unlock()
 
-			dead := encodeDead(m.Incarnation, m.ID)
-			g.queueBroadcast(dead)
+			dead, _ := encodeDead(m.Incarnation, m.ID)
+			if dead != nil {
+				g.queueBroadcast(dead)
+			}
 			g.emitEvent(EventLeave, m)
 		} else {
 			g.membersMu.Unlock()

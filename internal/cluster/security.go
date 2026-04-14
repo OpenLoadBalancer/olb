@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"bufio"
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/tls"
@@ -211,6 +212,9 @@ type NodeAuthMiddleware struct {
 
 	mu             sync.RWMutex
 	allowedNodeIDs map[string]struct{}
+
+	// Replay protection
+	usedTokens map[string]time.Time // "nodeID:timestamp" -> expiry
 }
 
 // NewNodeAuthMiddleware creates a new authentication middleware for cluster connections.
@@ -228,6 +232,7 @@ func NewNodeAuthMiddleware(inner net.Listener, secret []byte, allowedNodeIDs []s
 		inner:          inner,
 		secret:         secret,
 		allowedNodeIDs: allowed,
+		usedTokens:     make(map[string]time.Time),
 	}
 }
 
@@ -240,17 +245,16 @@ func (m *NodeAuthMiddleware) Accept() (net.Conn, error) {
 			return nil, err
 		}
 
-		// Read auth line (max 512 bytes)
-		buf := make([]byte, 512)
+		// Read auth line until newline
+		reader := bufio.NewReader(conn)
 		conn.SetReadDeadline(deadlineFromNow(5))
-		n, err := conn.Read(buf)
+		line, err := reader.ReadString('\n')
 		if err != nil {
 			_ = conn.Close() // best-effort cleanup
 			continue
 		}
 		conn.SetReadDeadline(zeroTime)
-
-		line := strings.TrimSpace(string(buf[:n]))
+		line = strings.TrimSpace(line)
 		parts := strings.SplitN(line, " ", 3)
 		if len(parts) != 3 || parts[0] != "AUTH" {
 			conn.Write([]byte("ERR invalid auth format\n"))
@@ -279,6 +283,28 @@ func (m *NodeAuthMiddleware) Accept() (net.Conn, error) {
 			_ = conn.Close() // best-effort cleanup
 			continue
 		}
+
+		// Check for replay
+		tokenParts := strings.SplitN(token, ":", 2)
+		replayKey := nodeID + ":" + tokenParts[0]
+		m.mu.Lock()
+		if _, used := m.usedTokens[replayKey]; used {
+			m.mu.Unlock()
+			conn.Write([]byte("ERR token already used\n"))
+			_ = conn.Close()
+			continue
+		}
+		m.usedTokens[replayKey] = time.Now().Add(5 * time.Minute)
+		// Clean up old entries periodically
+		if len(m.usedTokens) > 10000 {
+			now := time.Now()
+			for k, expiry := range m.usedTokens {
+				if now.After(expiry) {
+					delete(m.usedTokens, k)
+				}
+			}
+		}
+		m.mu.Unlock()
 
 		// Authentication successful
 		conn.Write([]byte("OK\n"))

@@ -913,6 +913,11 @@ func TestGetMetricsPrometheus(t *testing.T) {
 }
 
 func TestReloadConfig(t *testing.T) {
+	// Reset reload cooldown so previous tests don't interfere
+	lastReloadMu.Lock()
+	lastReloadTime = time.Time{}
+	lastReloadMu.Unlock()
+
 	reloadCalled := false
 
 	config := &Config{
@@ -1205,6 +1210,11 @@ func TestGetSystemHealth_WithNilComponents(t *testing.T) {
 }
 
 func TestReloadConfig_Failure(t *testing.T) {
+	// Reset reload cooldown so previous tests don't interfere
+	lastReloadMu.Lock()
+	lastReloadTime = time.Time{}
+	lastReloadMu.Unlock()
+
 	config := &Config{
 		Address: "127.0.0.1:0",
 		OnReload: func() error {

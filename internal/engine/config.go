@@ -211,7 +211,10 @@ func (e *Engine) applyConfigInternal(newCfg *config.Config, noRollback bool) err
 		e.wg.Add(1)
 		go func(p *l7.HTTPProxy) {
 			defer e.wg.Done()
-			time.Sleep(5 * time.Second)
+			select {
+			case <-time.After(5 * time.Second):
+			case <-e.stopCh:
+			}
 			p.Close()
 		}(oldProxy)
 	}
@@ -220,7 +223,10 @@ func (e *Engine) applyConfigInternal(newCfg *config.Config, noRollback bool) err
 	e.wg.Add(1)
 	go func(hc *health.Checker) {
 		defer e.wg.Done()
-		time.Sleep(10 * time.Second)
+		select {
+		case <-time.After(10 * time.Second):
+		case <-e.stopCh:
+		}
 		hc.Stop()
 	}(oldHealthChecker)
 

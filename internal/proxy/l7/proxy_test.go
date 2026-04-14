@@ -3403,10 +3403,10 @@ func TestShadowManager_ForceHeader(t *testing.T) {
 		t.Error("expected ShouldShadowRequest=false with 0% and no header")
 	}
 
-	// With force header, should return true
+	// Force header is no longer a bypass — percentage-based check still applies
 	req.Header.Set("X-OLB-Shadow-Force", "true")
-	if !sm.ShouldShadowRequest(req) {
-		t.Error("expected ShouldShadowRequest=true with force header")
+	if sm.ShouldShadowRequest(req) {
+		t.Error("expected ShouldShadowRequest=false with 0% even with force header (bypass removed)")
 	}
 }
 

@@ -77,6 +77,11 @@ func NewSSETransport(server *Server, config SSETransportConfig) *SSETransport {
 	if config.MaxClients <= 0 {
 		config.MaxClients = 100
 	}
+
+	if config.BearerToken == "" {
+		log.Printf("WARNING: MCP SSE transport at %s has no bearer token configured — endpoints are unauthenticated", config.Addr)
+	}
+
 	return &SSETransport{
 		server:  server,
 		config:  config,

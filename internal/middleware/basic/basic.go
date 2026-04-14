@@ -3,6 +3,7 @@ package basic
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
@@ -57,8 +58,9 @@ func New(config Config) (*Middleware, error) {
 	for user, pass := range config.Users {
 		switch config.Hash {
 		case "sha256":
-			h := sha256.Sum256([]byte(pass))
-			m.hashes[user] = h[:]
+			mac := hmac.New(sha256.New, []byte(user))
+			mac.Write([]byte(pass))
+			m.hashes[user] = mac.Sum(nil)
 		case "plain":
 			if !config.AllowPlaintext {
 				return nil, fmt.Errorf("plaintext passwords rejected: use sha256 or bcrypt, or set allow_plaintext: true")
@@ -177,8 +179,9 @@ func (m *Middleware) validateCredentials(username, password string) bool {
 
 	switch m.config.Hash {
 	case "sha256":
-		h := sha256.Sum256([]byte(password))
-		return subtle.ConstantTimeCompare(h[:], expectedHash) == 1
+		mac := hmac.New(sha256.New, []byte(username))
+		mac.Write([]byte(password))
+		return subtle.ConstantTimeCompare(mac.Sum(nil), expectedHash) == 1
 	case "plain":
 		return subtle.ConstantTimeCompare([]byte(password), expectedHash) == 1
 	case "bcrypt":

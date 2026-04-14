@@ -64,7 +64,10 @@ func (g *Gossip) handlePing(payload []byte, from string) {
 	g.markNodeAlive(senderID, from)
 
 	// Build response: ACK + piggybacked broadcasts.
-	ack := encodeAck(seqNo, g.localNode.ID)
+	ack, _ := encodeAck(seqNo, g.localNode.ID)
+	if ack == nil {
+		return
+	}
 	broadcasts := g.getBroadcasts(g.config.MaxMessageSize - len(ack))
 	response := ack
 	for _, b := range broadcasts {
@@ -130,7 +133,10 @@ func (g *Gossip) handlePingReq(payload []byte, from string) {
 
 	// Probe the target directly.
 	probeSeq := g.nextSeqNo()
-	ping := encodePing(probeSeq, g.localNode.ID, targetID)
+	ping, _ := encodePing(probeSeq, g.localNode.ID, targetID)
+	if ping == nil {
+		return
+	}
 
 	ackCh := make(chan struct{}, 1)
 	timer := time.AfterFunc(g.config.ProbeTimeout, func() {
@@ -157,8 +163,10 @@ func (g *Gossip) handlePingReq(payload []byte, from string) {
 		select {
 		case <-ackCh:
 			// Target responded; relay ACK to requester.
-			ack := encodeAck(seqNo, targetID)
-			g.sendUDP(from, ack)
+			ack, _ := encodeAck(seqNo, targetID)
+			if ack != nil {
+				g.sendUDP(from, ack)
+			}
 		case <-time.After(g.config.ProbeTimeout):
 			// No response; do nothing. The requester will handle suspicion.
 		case <-g.stopCh:
@@ -178,10 +186,12 @@ func (g *Gossip) handleSuspect(payload []byte) {
 		g.localMu.Lock()
 		if incarnation >= g.localNode.Incarnation {
 			g.localNode.Incarnation = incarnation + 1
-			alive := encodeAlive(g.localNode.Incarnation, g.localNode.ID,
+			alive, _ := encodeAlive(g.localNode.Incarnation, g.localNode.ID,
 				g.localNode.Address, g.localNode.Port, copyMetadata(g.localNode.Metadata))
 			g.localMu.Unlock()
-			g.queueBroadcast(alive)
+			if alive != nil {
+				g.queueBroadcast(alive)
+			}
 		} else {
 			g.localMu.Unlock()
 		}
@@ -266,10 +276,12 @@ func (g *Gossip) handleDead(payload []byte) {
 	if nodeID == g.localNode.ID {
 		g.localMu.Lock()
 		g.localNode.Incarnation = incarnation + 1
-		alive := encodeAlive(g.localNode.Incarnation, g.localNode.ID,
+		alive, _ := encodeAlive(g.localNode.Incarnation, g.localNode.ID,
 			g.localNode.Address, g.localNode.Port, copyMetadata(g.localNode.Metadata))
 		g.localMu.Unlock()
-		g.queueBroadcast(alive)
+		if alive != nil {
+			g.queueBroadcast(alive)
+		}
 		return
 	}
 
@@ -338,8 +350,10 @@ func (g *Gossip) handleJoin(payload []byte, from string) {
 	g.sendMemberList(from)
 
 	// Broadcast the join to existing members.
-	alive := encodeAlive(incarnation, nodeID, address, port, metadata)
-	g.queueBroadcast(alive)
+	alive, _ := encodeAlive(incarnation, nodeID, address, port, metadata)
+	if alive != nil {
+		g.queueBroadcast(alive)
+	}
 }
 
 // handleLeaveMsg processes a LEAVE message.
@@ -383,23 +397,29 @@ func (g *Gossip) sendMemberList(addr string) {
 
 	// Include ourselves.
 	g.localMu.RLock()
-	messages = append(messages, encodeAlive(
+	if alive, err := encodeAlive(
 		g.localNode.Incarnation, g.localNode.ID,
 		g.localNode.Address, g.localNode.Port, copyMetadata(g.localNode.Metadata),
-	))
+	); err == nil {
+		messages = append(messages, alive)
+	}
 	g.localMu.RUnlock()
 
 	for _, m := range g.members {
 		if m.State == StateAlive || m.State == StateSuspect {
-			messages = append(messages, encodeAlive(
+			if alive, err := encodeAlive(
 				m.Incarnation, m.ID, m.Address, m.Port, m.Metadata,
-			))
+			); err == nil {
+				messages = append(messages, alive)
+			}
 		}
 	}
 	g.membersMu.RUnlock()
 
 	if len(messages) > 0 {
-		compound := encodeCompound(messages)
-		_ = g.sendTCP(addr, compound)
+		compound, _ := encodeCompound(messages)
+		if compound != nil {
+			_ = g.sendTCP(addr, compound)
+		}
 	}
 }

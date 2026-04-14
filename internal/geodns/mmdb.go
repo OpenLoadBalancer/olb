@@ -89,13 +89,19 @@ func newMMDBReader(path string) (*mmdbReader, error) {
 		return nil, fmt.Errorf("geodns: unsupported record size %d", meta.recordSize)
 	}
 
-	treeSize := (uint32(meta.recordSize) * 2 / 8) * meta.nodeCount
-	meta.treeSize = treeSize
+	treeSize := (uint64(meta.recordSize) * 2 / 8) * uint64(meta.nodeCount)
+	if treeSize > uint64(len(data)) {
+		return nil, fmt.Errorf("geodns: tree size %d exceeds file size %d", treeSize, len(data))
+	}
+	if treeSize > math.MaxUint32 {
+		return nil, fmt.Errorf("geodns: tree size %d overflows uint32", treeSize)
+	}
+	meta.treeSize = uint32(treeSize)
 
 	return &mmdbReader{
 		data:     data,
 		meta:     meta,
-		dataBase: treeSize + 16, // 16-byte separator between tree and data
+		dataBase: uint32(treeSize) + 16, // 16-byte separator between tree and data
 	}, nil
 }
 
@@ -237,6 +243,9 @@ func (r *mmdbReader) readNode(nodeNum uint32, bit int) uint32 {
 	switch r.meta.recordSize {
 	case 24:
 		offset := nodeNum * 6
+		if offset+6 > uint32(len(r.data)) {
+			return 0
+		}
 		if bit == 0 {
 			return uint32(r.data[offset])<<16 | uint32(r.data[offset+1])<<8 | uint32(r.data[offset+2])
 		}
@@ -244,6 +253,9 @@ func (r *mmdbReader) readNode(nodeNum uint32, bit int) uint32 {
 
 	case 28:
 		offset := nodeNum * 7
+		if offset+7 > uint32(len(r.data)) {
+			return 0
+		}
 		middle := r.data[offset+3]
 		if bit == 0 {
 			return uint32(r.data[offset])<<16 |
@@ -258,6 +270,9 @@ func (r *mmdbReader) readNode(nodeNum uint32, bit int) uint32 {
 
 	case 32:
 		offset := nodeNum * 8
+		if offset+8 > uint32(len(r.data)) {
+			return 0
+		}
 		if bit == 0 {
 			return binary.BigEndian.Uint32(r.data[offset:])
 		}

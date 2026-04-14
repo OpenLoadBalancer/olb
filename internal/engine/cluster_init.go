@@ -68,10 +68,31 @@ func (e *Engine) initCluster(clusterCfg *config.ClusterConfig, logger *logging.L
 			logging.Error(err),
 		)
 	} else {
-		raftCluster.SetTransport(transport)
-		if err := transport.Start(); err != nil {
-			logger.Warn("Failed to start cluster transport", logging.Error(err))
+		// Wrap transport listener with authentication if node_auth is configured
+		if clusterCfg.NodeAuth != nil && clusterCfg.NodeAuth.SharedSecret != "" {
+			if err := transport.Start(); err != nil {
+				logger.Warn("Failed to start cluster transport", logging.Error(err))
+			} else {
+				authListener := cluster.NewNodeAuthMiddleware(
+					transport.Listener(),
+					[]byte(clusterCfg.NodeAuth.SharedSecret),
+					clusterCfg.NodeAuth.AllowedNodeIDs,
+				)
+				transport.SetListener(authListener)
+				logger.Info("Cluster transport authentication enabled",
+					logging.Int("allowed_nodes", len(clusterCfg.NodeAuth.AllowedNodeIDs)),
+				)
+			}
 		} else {
+			if err := transport.Start(); err != nil {
+				logger.Warn("Failed to start cluster transport", logging.Error(err))
+			} else {
+				logger.Warn("Cluster transport has no node_auth configured - connections are unauthenticated")
+			}
+		}
+
+		raftCluster.SetTransport(transport)
+		if transport.Listener() != nil {
 			logger.Info("Cluster TCP transport started", logging.String("bind_addr", bindAddr))
 		}
 	}

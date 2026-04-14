@@ -187,7 +187,7 @@ func TestMessageTypeString(t *testing.T) {
 // ---- Binary serialization tests ----
 
 func TestEncodeDecode_Ping(t *testing.T) {
-	original := encodePing(42, "sender-node", "target-node")
+	original, _ := encodePing(42, "sender-node", "target-node")
 
 	msgType, payload, remaining, err := decodeMessage(original)
 	if err != nil {
@@ -216,7 +216,7 @@ func TestEncodeDecode_Ping(t *testing.T) {
 }
 
 func TestEncodeDecode_Ack(t *testing.T) {
-	original := encodeAck(99, "responder")
+	original, _ := encodeAck(99, "responder")
 
 	msgType, payload, _, err := decodeMessage(original)
 	if err != nil {
@@ -239,7 +239,7 @@ func TestEncodeDecode_Ack(t *testing.T) {
 }
 
 func TestEncodeDecode_PingReq(t *testing.T) {
-	original := encodePingReq(7, "requester", "suspected-node")
+	original, _ := encodePingReq(7, "requester", "suspected-node")
 
 	msgType, payload, _, err := decodeMessage(original)
 	if err != nil {
@@ -265,7 +265,7 @@ func TestEncodeDecode_PingReq(t *testing.T) {
 }
 
 func TestEncodeDecode_Suspect(t *testing.T) {
-	original := encodeSuspect(10, "suspect-node")
+	original, _ := encodeSuspect(10, "suspect-node")
 
 	msgType, payload, _, err := decodeMessage(original)
 	if err != nil {
@@ -289,7 +289,7 @@ func TestEncodeDecode_Suspect(t *testing.T) {
 
 func TestEncodeDecode_Alive(t *testing.T) {
 	meta := map[string]string{"role": "web", "version": "1.0"}
-	original := encodeAlive(3, "alive-node", "10.0.0.1", 8080, meta)
+	original, _ := encodeAlive(3, "alive-node", "10.0.0.1", 8080, meta)
 
 	msgType, payload, _, err := decodeMessage(original)
 	if err != nil {
@@ -321,7 +321,7 @@ func TestEncodeDecode_Alive(t *testing.T) {
 }
 
 func TestEncodeDecode_Dead(t *testing.T) {
-	original := encodeDead(15, "dead-node")
+	original, _ := encodeDead(15, "dead-node")
 
 	msgType, payload, _, err := decodeMessage(original)
 	if err != nil {
@@ -344,7 +344,7 @@ func TestEncodeDecode_Dead(t *testing.T) {
 }
 
 func TestEncodeDecode_NodePayload_EmptyMetadata(t *testing.T) {
-	payload := encodeNodePayload(1, "node-1", "127.0.0.1", 9000, nil)
+	payload, _ := encodeNodePayload(1, "node-1", "127.0.0.1", 9000, nil)
 	inc, nodeID, addr, port, meta, err := decodeNodePayload(payload)
 	if err != nil {
 		t.Fatalf("decodeNodePayload() error = %v", err)
@@ -358,13 +358,12 @@ func TestEncodeDecode_NodePayload_EmptyMetadata(t *testing.T) {
 }
 
 func TestEncodeDecode_Compound(t *testing.T) {
-	msgs := [][]byte{
-		encodeSuspect(1, "node-a"),
-		encodeAlive(2, "node-b", "10.0.0.2", 7946, nil),
-		encodeDead(3, "node-c"),
-	}
+	m1, _ := encodeSuspect(1, "node-a")
+	m2, _ := encodeAlive(2, "node-b", "10.0.0.2", 7946, nil)
+	m3, _ := encodeDead(3, "node-c")
+	msgs := [][]byte{m1, m2, m3}
 
-	compound := encodeCompound(msgs)
+	compound, _ := encodeCompound(msgs)
 
 	msgType, payload, _, err := decodeMessage(compound)
 	if err != nil {
@@ -409,8 +408,8 @@ func TestDecodeMessage_Truncated(t *testing.T) {
 }
 
 func TestDecodeMessage_WithRemaining(t *testing.T) {
-	ping := encodePing(1, "a", "b")
-	ack := encodeAck(2, "c")
+	ping, _ := encodePing(1, "a", "b")
+	ack, _ := encodeAck(2, "c")
 	combined := append(ping, ack...)
 
 	mt, _, remaining, err := decodeMessage(combined)
@@ -444,8 +443,8 @@ func TestBroadcastQueue_AddAndGet(t *testing.T) {
 		t.Fatalf("NewGossip() error = %v", err)
 	}
 
-	msg1 := encodeSuspect(1, "node-a")
-	msg2 := encodeAlive(2, "node-b", "10.0.0.2", 7946, nil)
+	msg1, _ := encodeSuspect(1, "node-a")
+	msg2, _ := encodeAlive(2, "node-b", "10.0.0.2", 7946, nil)
 
 	g.queueBroadcast(msg1)
 	g.queueBroadcast(msg2)
@@ -467,7 +466,8 @@ func TestBroadcastQueue_SizeLimit(t *testing.T) {
 
 	// Add a large number of broadcasts.
 	for i := 0; i < 100; i++ {
-		g.queueBroadcast(encodeSuspect(uint32(i), fmt.Sprintf("node-%d", i)))
+		msg, _ := encodeSuspect(uint32(i), fmt.Sprintf("node-%d", i))
+		g.queueBroadcast(msg)
 	}
 
 	// Get with a small limit.
@@ -495,7 +495,7 @@ func TestBroadcastQueue_Retransmit(t *testing.T) {
 		t.Fatalf("NewGossip() error = %v", err)
 	}
 
-	msg := encodeSuspect(1, "node-a")
+	msg, _ := encodeSuspect(1, "node-a")
 	g.queueBroadcast(msg)
 
 	// First get should return the broadcast.
@@ -526,7 +526,7 @@ func TestBroadcastQueue_Priority(t *testing.T) {
 	// Add old broadcast.
 	g.broadcastsMu.Lock()
 	g.broadcasts = append(g.broadcasts, &broadcast{
-		msg:        encodeSuspect(1, "old-node"),
+		msg:        func() []byte { m, _ := encodeSuspect(1, "old-node"); return m }(),
 		retransmit: 10,
 		created:    time.Now().Add(-10 * time.Second),
 	})
@@ -535,7 +535,7 @@ func TestBroadcastQueue_Priority(t *testing.T) {
 	// Add new broadcast.
 	g.broadcastsMu.Lock()
 	g.broadcasts = append(g.broadcasts, &broadcast{
-		msg:        encodeSuspect(2, "new-node"),
+		msg:        func() []byte { m, _ := encodeSuspect(2, "new-node"); return m }(),
 		retransmit: 10,
 		created:    time.Now(),
 	})
@@ -580,7 +580,7 @@ func TestIncarnationPrecedence_AliveOverridesSuspect(t *testing.T) {
 	g.membersMu.Unlock()
 
 	// Send ALIVE with higher incarnation.
-	alivePayload := encodeNodePayload(6, "remote", "10.0.0.2", 7946, nil)
+	alivePayload, _ := encodeNodePayload(6, "remote", "10.0.0.2", 7946, nil)
 	g.handleAlive(alivePayload)
 
 	g.membersMu.RLock()
@@ -618,7 +618,7 @@ func TestIncarnationPrecedence_SameIncarnationNoOverride(t *testing.T) {
 	g.membersMu.Unlock()
 
 	// ALIVE with same incarnation should NOT override SUSPECT.
-	alivePayload := encodeNodePayload(5, "remote", "10.0.0.2", 7946, nil)
+	alivePayload, _ := encodeNodePayload(5, "remote", "10.0.0.2", 7946, nil)
 	g.handleAlive(alivePayload)
 
 	g.membersMu.RLock()
@@ -775,7 +775,7 @@ func TestEventCallbacks(t *testing.T) {
 	})
 
 	// Simulate a JOIN via ALIVE message (new node).
-	alivePayload := encodeNodePayload(1, "new-node", "10.0.0.2", 7946, nil)
+	alivePayload, _ := encodeNodePayload(1, "new-node", "10.0.0.2", 7946, nil)
 	g.handleAlive(alivePayload)
 
 	mu.Lock()
@@ -800,7 +800,7 @@ func TestHandleJoin(t *testing.T) {
 		t.Fatalf("NewGossip() error = %v", err)
 	}
 
-	joinPayload := encodeNodePayload(1, "joiner", "10.0.0.5", 7946, map[string]string{"env": "prod"})
+	joinPayload, _ := encodeNodePayload(1, "joiner", "10.0.0.5", 7946, map[string]string{"env": "prod"})
 	g.handleJoin(joinPayload, "10.0.0.5:7946")
 
 	g.membersMu.RLock()
@@ -838,7 +838,7 @@ func TestHandleLeave(t *testing.T) {
 	}
 	g.membersMu.Unlock()
 
-	leavePayload := encodeNodePayload(1, "leaver", "10.0.0.6", 7946, nil)
+	leavePayload, _ := encodeNodePayload(1, "leaver", "10.0.0.6", 7946, nil)
 	g.handleLeaveMsg(leavePayload)
 
 	g.membersMu.RLock()
@@ -1347,7 +1347,7 @@ func TestIndirectProbe(t *testing.T) {
 
 	// Send a PING_REQ from g1 to g2, asking it to probe g3.
 	seqNo := g1.nextSeqNo()
-	pingReq := encodePingReq(seqNo, "prober", "target")
+	pingReq, _ := encodePingReq(seqNo, "prober", "target")
 
 	ackCh := make(chan struct{}, 1)
 	g1.ackHandlersMu.Lock()
@@ -1491,7 +1491,7 @@ func TestSendMessage_UDP(t *testing.T) {
 
 	// Send a small message (should go via UDP since it's under MaxMessageSize)
 	targetAddr := fmt.Sprintf("127.0.0.1:%d", cfg2.BindPort)
-	msg := encodePing(1, g1.localNode.ID, "receiver")
+	msg, _ := encodePing(1, g1.localNode.ID, "receiver")
 
 	err = g1.sendMessage(targetAddr, msg)
 	if err != nil {
@@ -1576,11 +1576,11 @@ func TestHandleCompound_Message(t *testing.T) {
 	})
 
 	// Create multiple alive messages and bundle them as a compound message
-	alive1 := encodeAlive(1, "node-a", "10.0.0.1", 7946, nil)
-	alive2 := encodeAlive(1, "node-b", "10.0.0.2", 7946, nil)
+	alive1, _ := encodeAlive(1, "node-a", "10.0.0.1", 7946, nil)
+	alive2, _ := encodeAlive(1, "node-b", "10.0.0.2", 7946, nil)
 
 	// Encode compound (this wraps the sub-messages with MsgCompound type byte)
-	compoundMsg := encodeCompound([][]byte{alive1, alive2})
+	compoundMsg, _ := encodeCompound([][]byte{alive1, alive2})
 
 	// Decode the outer message to get the compound payload
 	_, payload, _, err := decodeMessage(compoundMsg)
@@ -1660,7 +1660,7 @@ func TestHandleJoin_NewNode(t *testing.T) {
 	fromAddr := fmt.Sprintf("127.0.0.1:%d", cfg.BindPort)
 
 	// Construct a JOIN message payload
-	payload := encodeNodePayload(1, "new-joiner", "10.0.0.5", 7946, map[string]string{"role": "worker"})
+	payload, _ := encodeNodePayload(1, "new-joiner", "10.0.0.5", 7946, map[string]string{"role": "worker"})
 
 	// Deliver the join message
 	g.handleJoin(payload, fromAddr)
@@ -1726,7 +1726,7 @@ func TestHandleJoin_SelfIgnored(t *testing.T) {
 	defer g.Stop()
 
 	// Construct a JOIN message with our own node ID
-	payload := encodeNodePayload(1, "self-node", "10.0.0.1", 7946, nil)
+	payload, _ := encodeNodePayload(1, "self-node", "10.0.0.1", 7946, nil)
 
 	// This should be ignored (no self-join)
 	g.handleJoin(payload, "10.0.0.1:7946")
@@ -1771,7 +1771,7 @@ func TestHandleJoin_ExistingNode_HigherIncarnation(t *testing.T) {
 	fromAddr := fmt.Sprintf("127.0.0.1:%d", cfg.BindPort)
 
 	// Send JOIN with higher incarnation
-	payload := encodeNodePayload(5, "existing-node", "10.0.0.2", 8000, map[string]string{"updated": "true"})
+	payload, _ := encodeNodePayload(5, "existing-node", "10.0.0.2", 8000, map[string]string{"updated": "true"})
 	g.handleJoin(payload, fromAddr)
 
 	// Node should be updated -- check immediately
@@ -1824,7 +1824,7 @@ func TestHandleJoin_ExistingNode_SameIncarnation(t *testing.T) {
 	fromAddr := fmt.Sprintf("127.0.0.1:%d", cfg.BindPort)
 
 	// Send JOIN with same incarnation -- should NOT update
-	payload := encodeNodePayload(3, "same-inc-node", "10.0.0.99", 9999, nil)
+	payload, _ := encodeNodePayload(3, "same-inc-node", "10.0.0.99", 9999, nil)
 	g.handleJoin(payload, fromAddr)
 
 	g.membersMu.RLock()
@@ -1869,7 +1869,7 @@ func TestHandleJoin_DeadNode_Rejoin(t *testing.T) {
 	fromAddr := fmt.Sprintf("127.0.0.1:%d", cfg.BindPort)
 
 	// A join from a dead node with same incarnation should revive it
-	payload := encodeNodePayload(1, "dead-node", "10.0.0.1", 7946, nil)
+	payload, _ := encodeNodePayload(1, "dead-node", "10.0.0.1", 7946, nil)
 	g.handleJoin(payload, fromAddr)
 
 	// Check state immediately after handleJoin returns
@@ -2076,9 +2076,9 @@ func TestHandleMessage_PiggybackedMessages(t *testing.T) {
 	defer g.Stop()
 
 	// Build a PING followed by two piggybacked ALIVE messages.
-	ping := encodePing(999, "remote-sender", g.localNode.ID)
-	alive1 := encodeAlive(1, "piggy-node-a", "10.0.0.10", 7946, nil)
-	alive2 := encodeAlive(1, "piggy-node-b", "10.0.0.11", 7946, nil)
+	ping, _ := encodePing(999, "remote-sender", g.localNode.ID)
+	alive1, _ := encodeAlive(1, "piggy-node-a", "10.0.0.10", 7946, nil)
+	alive2, _ := encodeAlive(1, "piggy-node-b", "10.0.0.11", 7946, nil)
 	combined := append(ping, alive1...)
 	combined = append(combined, alive2...)
 
@@ -2164,7 +2164,7 @@ func TestHandlePingReq_TargetNotFound(t *testing.T) {
 	defer g.Stop()
 
 	// PING_REQ for a target that does not exist in our members.
-	payload := encodePingReq(42, "requester", "nonexistent-target")
+	payload, _ := encodePingReq(42, "requester", "nonexistent-target")
 	_, inner, _, _ := decodeMessage(payload)
 	g.handlePingReq(inner, "10.0.0.1:7946")
 
@@ -2248,7 +2248,7 @@ func TestHandlePingReq_SuccessfulRelay(t *testing.T) {
 	g1.ackHandlersMu.Unlock()
 
 	// Send a PING_REQ from g1 to g2, asking g2 to probe g3.
-	pingReq := encodePingReq(seqNo, "requester", "target")
+	pingReq, _ := encodePingReq(seqNo, "requester", "target")
 	if err := g1.sendUDP(fmt.Sprintf("127.0.0.1:%d", port2), pingReq); err != nil {
 		t.Fatalf("sendUDP() error = %v", err)
 	}
@@ -2501,7 +2501,7 @@ func TestHandleAck_UnknownSeqNo(t *testing.T) {
 	g.membersMu.Unlock()
 
 	// Send an ACK with a seqNo that has no registered handler.
-	ack := encodeAck(99999, "sender-node")
+	ack, _ := encodeAck(99999, "sender-node")
 	_, payload, _, _ := decodeMessage(ack)
 	g.handleAck(payload)
 
@@ -2553,7 +2553,7 @@ func TestHandleAck_SuspectToAlive(t *testing.T) {
 	g.ackHandlersMu.Unlock()
 
 	// Send ACK from suspect-node with this seqNo.
-	ack := encodeAck(seqNo, "suspect-node")
+	ack, _ := encodeAck(seqNo, "suspect-node")
 	_, payload, _, _ := decodeMessage(ack)
 	g.handleAck(payload)
 
@@ -2600,7 +2600,7 @@ func TestHandleAck_SenderNotInMembers(t *testing.T) {
 	g.ackHandlersMu.Unlock()
 
 	// ACK from a sender that is not in our members list.
-	ack := encodeAck(seqNo, "unknown-sender")
+	ack, _ := encodeAck(seqNo, "unknown-sender")
 	_, payload, _, _ := decodeMessage(ack)
 	g.handleAck(payload)
 
@@ -2640,8 +2640,9 @@ func TestHandleMessage_PiggybackedLeave(t *testing.T) {
 	g.membersMu.Unlock()
 
 	// Build a PING followed by a piggybacked LEAVE.
-	ping := encodePing(100, "remote", g.localNode.ID)
-	leave := encodeMessage(MsgLeave, encodeNodePayload(1, "leaver", "10.0.0.1", 7946, nil))
+	ping, _ := encodePing(100, "remote", g.localNode.ID)
+	leaveNP, _ := encodeNodePayload(1, "leaver", "10.0.0.1", 7946, nil)
+	leave, _ := encodeMessage(MsgLeave, leaveNP)
 	combined := append(ping, leave...)
 
 	g.handleMessage(combined, "10.0.0.1:7946")
@@ -2678,12 +2679,12 @@ func TestHandleMessage_PiggybackedSuspect(t *testing.T) {
 	g.membersMu.Unlock()
 
 	// Build a PING followed by a piggybacked SUSPECT.
-	ping := encodePing(101, "remote", g.localNode.ID)
+	ping, _ := encodePing(101, "remote", g.localNode.ID)
 	suspectPayload := make([]byte, 4+2+len("suspectable"))
 	binary.BigEndian.PutUint32(suspectPayload[0:4], 1) // incarnation
 	binary.BigEndian.PutUint16(suspectPayload[4:6], uint16(len("suspectable")))
 	copy(suspectPayload[6:], "suspectable")
-	suspect := encodeMessage(MsgSuspect, suspectPayload)
+	suspect, _ := encodeMessage(MsgSuspect, suspectPayload)
 	combined := append(ping, suspect...)
 
 	g.handleMessage(combined, "10.0.0.1:7946")
@@ -2720,8 +2721,8 @@ func TestHandleMessage_PiggybackedDead(t *testing.T) {
 	g.membersMu.Unlock()
 
 	// Build a PING followed by a piggybacked DEAD.
-	ping := encodePing(102, "remote", g.localNode.ID)
-	dead := encodeDead(1, "deady")
+	ping, _ := encodePing(102, "remote", g.localNode.ID)
+	dead, _ := encodeDead(1, "deady")
 	combined := append(ping, dead...)
 
 	g.handleMessage(combined, "10.0.0.1:7946")
@@ -2903,7 +2904,7 @@ func TestHandleTCPConn_TruncatedMessage(t *testing.T) {
 func TestHandleLeaveMsg_IgnoresSelf(t *testing.T) {
 	g := newTestGossipNodeExtra(t, "node-self-leave")
 	defer g.Stop()
-	payload := encodeNodePayload(g.localNode.Incarnation, g.localNode.ID, g.localNode.Address, g.localNode.Port, nil)
+	payload, _ := encodeNodePayload(g.localNode.Incarnation, g.localNode.ID, g.localNode.Address, g.localNode.Port, nil)
 	g.handleLeaveMsg(payload)
 	g.membersMu.RLock()
 	m, ok := g.members[g.localNode.ID]
@@ -2933,7 +2934,7 @@ func TestHandlePing_InvalidPayload(t *testing.T) {
 func TestHandleAck_NoPendingHandler(t *testing.T) {
 	g := newTestGossipNodeExtra(t, "node-ack-no-handler")
 	defer g.Stop()
-	ack := encodeAck(uint32(99999), "other-node")
+	ack, _ := encodeAck(uint32(99999), "other-node")
 	g.handleAck(ack)
 }
 
@@ -2953,8 +2954,8 @@ func TestHandleMessage_PiggybackedAlive_Extra(t *testing.T) {
 	g.members["other-node"] = &GossipNode{ID: "other-node", Address: "127.0.0.1", Port: 7946, State: StateSuspect, Incarnation: 1, LastSeen: time.Now()}
 	g.membersMu.Unlock()
 
-	ping := encodePing(1, g.localNode.ID, g.localNode.ID)
-	alive := encodeAlive(2, "other-node", "127.0.0.1", 7946, nil)
+	ping, _ := encodePing(1, g.localNode.ID, g.localNode.ID)
+	alive, _ := encodeAlive(2, "other-node", "127.0.0.1", 7946, nil)
 	combined := append([]byte{}, ping...)
 	combined = append(combined, alive...)
 
@@ -2980,8 +2981,8 @@ func TestHandleMessage_PiggybackedDead_Extra(t *testing.T) {
 	g.members["dead-node"] = &GossipNode{ID: "dead-node", Address: "127.0.0.1", Port: 7946, State: StateAlive, Incarnation: 1, LastSeen: time.Now()}
 	g.membersMu.Unlock()
 
-	ping := encodePing(1, g.localNode.ID, g.localNode.ID)
-	dead := encodeDead(2, "dead-node")
+	ping, _ := encodePing(1, g.localNode.ID, g.localNode.ID)
+	dead, _ := encodeDead(2, "dead-node")
 	combined := append([]byte{}, ping...)
 	combined = append(combined, dead...)
 
@@ -3003,9 +3004,9 @@ func TestHandleMessage_PiggybackedJoin_Extra(t *testing.T) {
 	g := newTestGossipNodeExtra(t, "node-piggy-join-ex")
 	defer g.Stop()
 
-	ping := encodePing(1, g.localNode.ID, g.localNode.ID)
-	joinPayload := encodeNodePayload(1, "new-node", "127.0.0.1", 7946, nil)
-	join := encodeMessage(MsgJoin, joinPayload)
+	ping, _ := encodePing(1, g.localNode.ID, g.localNode.ID)
+	joinPayload, _ := encodeNodePayload(1, "new-node", "127.0.0.1", 7946, nil)
+	join, _ := encodeMessage(MsgJoin, joinPayload)
 	combined := append([]byte{}, ping...)
 	combined = append(combined, join...)
 
@@ -3194,7 +3195,7 @@ func TestHandleAlive_LowerIncarnation_NoOverride(t *testing.T) {
 	}
 	g.membersMu.Unlock()
 
-	alivePayload := encodeNodePayload(5, "remote", "10.0.0.2", 7946, nil)
+	alivePayload, _ := encodeNodePayload(5, "remote", "10.0.0.2", 7946, nil)
 	g.handleAlive(alivePayload)
 
 	g.membersMu.RLock()
@@ -3209,7 +3210,7 @@ func TestHandleAlive_SelfIgnored(t *testing.T) {
 	g := newTestGossipNodeExtra(t, "local-node")
 	defer g.Stop()
 
-	alivePayload := encodeNodePayload(99, "local-node", "127.0.0.1", 7946, nil)
+	alivePayload, _ := encodeNodePayload(99, "local-node", "127.0.0.1", 7946, nil)
 	g.handleAlive(alivePayload)
 }
 
@@ -3328,7 +3329,7 @@ func TestHandleLeaveMsg_NonExistentNode(t *testing.T) {
 	g := newTestGossipNodeExtra(t, "local")
 	defer g.Stop()
 
-	payload := encodeNodePayload(1, "ghost", "10.0.0.99", 7946, nil)
+	payload, _ := encodeNodePayload(1, "ghost", "10.0.0.99", 7946, nil)
 	g.handleLeaveMsg(payload)
 
 	g.membersMu.RLock()
@@ -3350,7 +3351,7 @@ func TestHandleLeaveMsg_AlreadyLeft(t *testing.T) {
 	}
 	g.membersMu.Unlock()
 
-	payload := encodeNodePayload(1, "leaver", "10.0.0.5", 7946, nil)
+	payload, _ := encodeNodePayload(1, "leaver", "10.0.0.5", 7946, nil)
 	g.handleLeaveMsg(payload)
 
 	g.membersMu.RLock()
@@ -3426,7 +3427,7 @@ func TestHandleAlive_SuspectToAlive_CancelSuspicion(t *testing.T) {
 	g.suspicionTimers["remote"] = time.AfterFunc(30*time.Second, func() {})
 	g.suspicionTimersMu.Unlock()
 
-	alivePayload := encodeNodePayload(5, "remote", "10.0.0.2", 7946, nil)
+	alivePayload, _ := encodeNodePayload(5, "remote", "10.0.0.2", 7946, nil)
 	g.handleAlive(alivePayload)
 
 	g.membersMu.RLock()
@@ -3527,7 +3528,7 @@ func TestHandleTCPConn_ValidMessage(t *testing.T) {
 	defer conn.Close()
 
 	// Build the inner data: a valid ALIVE message (already in wire format)
-	aliveData := encodeAlive(1, "tcp-join-node", "10.0.0.99", 7946, nil)
+	aliveData, _ := encodeAlive(1, "tcp-join-node", "10.0.0.99", 7946, nil)
 
 	// Write length prefix + data
 	header := make([]byte, 4)
@@ -3697,7 +3698,7 @@ func TestSuspicionTimer_FiresNodeNotSuspect(t *testing.T) {
 		if ok && m.State == StateSuspect {
 			m.State = StateDead
 			g.membersMu.Unlock()
-			dead := encodeDead(m.Incarnation, m.ID)
+			dead, _ := encodeDead(m.Incarnation, m.ID)
 			g.queueBroadcast(dead)
 			g.emitEvent(EventLeave, m)
 		} else {
@@ -3747,7 +3748,7 @@ func TestHandleMessage_DeadInFirstSwitch(t *testing.T) {
 	g.membersMu.Unlock()
 
 	// Create a standalone DEAD message (not piggybacked)
-	dead := encodeDead(1, "dead-target")
+	dead, _ := encodeDead(1, "dead-target")
 	g.handleMessage(dead, "127.0.0.1:12345")
 
 	g.membersMu.RLock()
@@ -3773,7 +3774,7 @@ func TestHandleMessage_SuspectInFirstSwitch(t *testing.T) {
 	binary.BigEndian.PutUint32(suspectPayload[0:4], 1)
 	binary.BigEndian.PutUint16(suspectPayload[4:6], uint16(len("suspect-target")))
 	copy(suspectPayload[6:], "suspect-target")
-	suspect := encodeMessage(MsgSuspect, suspectPayload)
+	suspect, _ := encodeMessage(MsgSuspect, suspectPayload)
 	g.handleMessage(suspect, "127.0.0.1:12345")
 
 	g.membersMu.RLock()
@@ -3788,7 +3789,7 @@ func TestHandleMessage_AliveInFirstSwitch(t *testing.T) {
 	g := newTestGossipNodeExtra(t, "first-alive")
 	defer g.Stop()
 
-	alive := encodeAlive(1, "new-alive-node", "10.0.0.5", 7946, nil)
+	alive, _ := encodeAlive(1, "new-alive-node", "10.0.0.5", 7946, nil)
 	g.handleMessage(alive, "127.0.0.1:12345")
 
 	g.membersMu.RLock()
@@ -3803,8 +3804,8 @@ func TestHandleMessage_JoinInFirstSwitch(t *testing.T) {
 	g := newTestGossipNodeExtra(t, "first-join")
 	defer g.Stop()
 
-	joinPayload := encodeNodePayload(1, "join-node", "10.0.0.99", 7946, map[string]string{"role": "worker"})
-	join := encodeMessage(MsgJoin, joinPayload)
+	joinPayload, _ := encodeNodePayload(1, "join-node", "10.0.0.99", 7946, map[string]string{"role": "worker"})
+	join, _ := encodeMessage(MsgJoin, joinPayload)
 	g.handleMessage(join, "127.0.0.1:12345")
 
 	g.membersMu.RLock()
@@ -3891,7 +3892,7 @@ func TestGossip_SendMessage_UDP(t *testing.T) {
 	defer g2.Stop()
 
 	// Small message should go via UDP
-	smallMsg := encodePing(1, "sender-msg", "receiver-msg")
+	smallMsg, _ := encodePing(1, "sender-msg", "receiver-msg")
 	err := g1.sendMessage(fmt.Sprintf("127.0.0.1:%d", port2), smallMsg)
 	if err != nil {
 		t.Errorf("sendMessage(UDP) error = %v", err)
@@ -3916,7 +3917,7 @@ func TestHandlePingReq_SendUDPError(t *testing.T) {
 	g.udpConn.Close()
 	g.udpConn = nil
 
-	payload := encodePingReq(42, "requester", "target")
+	payload, _ := encodePingReq(42, "requester", "target")
 	_, inner, _, _ := decodeMessage(payload)
 	g.handlePingReq(inner, "127.0.0.1:12345")
 
@@ -3930,7 +3931,7 @@ func TestHandleMessage_PiggybackBreak(t *testing.T) {
 	defer g.Stop()
 
 	// Build a valid PING followed by a truncated (invalid) remaining message
-	ping := encodePing(1, g.localNode.ID, g.localNode.ID)
+	ping, _ := encodePing(1, g.localNode.ID, g.localNode.ID)
 
 	// Craft remaining bytes that will fail on decode (too short)
 	remaining := []byte{0x01, 0x00} // type=1, but truncated length

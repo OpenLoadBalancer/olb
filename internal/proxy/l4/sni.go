@@ -425,6 +425,10 @@ func validateSNIHostname(host string) error {
 		if c < 0x20 || c == 0x7f {
 			return fmt.Errorf("invalid SNI hostname: control character at position %d", i)
 		}
+		// Only allow alphanumeric, hyphen, dot
+		if !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9') && c != '-' && c != '.' {
+			return fmt.Errorf("invalid SNI hostname: invalid character %q at position %d", c, i)
+		}
 	}
 	return nil
 }

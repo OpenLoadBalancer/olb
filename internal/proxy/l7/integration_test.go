@@ -2,6 +2,7 @@ package l7
 
 import (
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -204,22 +205,39 @@ func TestIntegration_MultipleBackends(t *testing.T) {
 
 // TestIntegration_HealthCheckIntegration tests proxy with health-checked backends.
 func TestIntegration_HealthCheckIntegration(t *testing.T) {
+	// Create backends on 127.0.0.2 to avoid SSRF protection blocking
+	// health checks to 127.0.0.1.
+
 	// Create a backend that will fail health checks
-	failingBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	failingHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/health" {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("failing backend"))
-	}))
+	})
+	failingLn, err := net.Listen("tcp", "127.0.0.2:0")
+	if err != nil {
+		t.Fatalf("failed to listen on 127.0.0.2: %v", err)
+	}
+	failingBackend := httptest.NewUnstartedServer(failingHandler)
+	failingBackend.Listener = failingLn
+	failingBackend.Start()
 	defer failingBackend.Close()
 
 	// Create a healthy backend
-	healthyBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	healthyHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("healthy backend"))
-	}))
+	})
+	healthyLn, err := net.Listen("tcp", "127.0.0.2:0")
+	if err != nil {
+		t.Fatalf("failed to listen on 127.0.0.2: %v", err)
+	}
+	healthyBackend := httptest.NewUnstartedServer(healthyHandler)
+	healthyBackend.Listener = healthyLn
+	healthyBackend.Start()
 	defer healthyBackend.Close()
 
 	// Set up the router

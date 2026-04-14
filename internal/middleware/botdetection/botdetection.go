@@ -4,6 +4,8 @@ package botdetection
 import (
 	"context"
 	"net/http"
+	"net/url"
+	"path"
 	"regexp"
 	"strings"
 	"sync"
@@ -345,7 +347,11 @@ func (m *Middleware) block(w http.ResponseWriter, r *http.Request, info BotInfo)
 // challenge redirects to challenge page.
 func (m *Middleware) challenge(w http.ResponseWriter, r *http.Request) {
 	if m.config.ChallengePath != "" {
-		http.Redirect(w, r, m.config.ChallengePath+"?return="+r.URL.Path, http.StatusFound)
+		returnPath := path.Clean(r.URL.Path)
+		if !strings.HasPrefix(returnPath, "/") {
+			returnPath = "/"
+		}
+		http.Redirect(w, r, m.config.ChallengePath+"?return="+url.QueryEscape(returnPath), http.StatusFound)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)

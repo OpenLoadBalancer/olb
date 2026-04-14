@@ -134,7 +134,11 @@ func (g *Gossip) Join(existing []string) error {
 		}
 
 		// Send a JOIN message via TCP for reliability.
-		msg := g.encodeJoinMessage()
+		msg, encErr := g.encodeJoinMessage()
+		if encErr != nil {
+			lastErr = encErr
+			continue
+		}
 		if err := g.sendTCP(fmt.Sprintf("%s:%d", host, port), msg); err != nil {
 			lastErr = err
 			continue
@@ -155,8 +159,10 @@ func (g *Gossip) Leave() error {
 	g.localMu.Unlock()
 
 	// Broadcast LEAVE to all known members.
-	msg := g.encodeLeaveMessage(g.localNode)
-	g.queueBroadcast(msg)
+	msg, _ := g.encodeLeaveMessage(g.localNode)
+	if msg != nil {
+		g.queueBroadcast(msg)
+	}
 
 	// Send directly to all members for faster propagation.
 	g.membersMu.RLock()

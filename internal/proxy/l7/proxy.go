@@ -688,7 +688,7 @@ func copyHeaders(dst, src http.Header) {
 			continue
 		}
 		for _, value := range values {
-			dst.Add(key, value)
+			dst.Add(key, security.SanitizeHeaderValue(value))
 		}
 	}
 }

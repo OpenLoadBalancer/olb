@@ -759,6 +759,19 @@ type ClusterConfig struct {
 	DataDir       string   `yaml:"data_dir" json:"data_dir"`
 	ElectionTick  string   `yaml:"election_tick" json:"election_tick"`
 	HeartbeatTick string   `yaml:"heartbeat_tick" json:"heartbeat_tick"`
+
+	// NodeAuth configures inter-node authentication for the Raft transport.
+	// When set, the TCP transport is wrapped with NodeAuthMiddleware
+	// requiring HMAC token authentication on every incoming connection.
+	NodeAuth *ClusterNodeAuthConfig `yaml:"node_auth" json:"node_auth"`
+}
+
+// ClusterNodeAuthConfig configures authentication for cluster inter-node communication.
+type ClusterNodeAuthConfig struct {
+	// SharedSecret is the HMAC shared secret for token-based node authentication.
+	// Can be set via the OLB_CLUSTER_AUTH_SECRET environment variable.
+	SharedSecret   string   `yaml:"shared_secret" json:"-"`
+	AllowedNodeIDs []string `yaml:"allowed_node_ids" json:"allowed_node_ids"`
 }
 
 // GeoDNSConfig represents Geo-DNS routing configuration.

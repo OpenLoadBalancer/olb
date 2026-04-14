@@ -52,6 +52,10 @@ func DefaultConfig() Config {
 	}
 }
 
+// maxInflightEntries limits the total number of coalesced request entries
+// in the inflight map to prevent unbounded memory growth under load.
+const maxInflightEntries = 10000
+
 // inflight represents an in-flight request being coalesced.
 type inflight struct {
 	mu       sync.Mutex
@@ -127,6 +131,11 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 		// Atomically join existing inflight request or create a new one.
 		inflight, created := m.getOrCreateInflight(key)
 		if !created {
+			if inflight == nil {
+				// Inflight map at capacity — pass through without coalescing
+				next.ServeHTTP(w, r)
+				return
+			}
 			m.serveFromInflight(w, r, inflight)
 			return
 		}
@@ -161,7 +170,11 @@ func (m *Middleware) getOrCreateInflight(key string) (*inflight, bool) {
 		}
 	}
 
-	// Create new inflight entry
+	// Create new inflight entry, unless the map is at capacity
+	if len(m.inflight) >= maxInflightEntries {
+		return nil, false
+	}
+
 	inflight := &inflight{
 		done:    make(chan struct{}),
 		waiters: 0,

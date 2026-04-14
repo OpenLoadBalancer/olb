@@ -633,8 +633,15 @@ func TestConsulProvider_BuildURL(t *testing.T) {
 	if !hasSubstr(u, "consul.example.com:8500") {
 		t.Errorf("URL should contain host: %s", u)
 	}
-	if !hasSubstr(u, "token=my-token") {
-		t.Errorf("URL should contain token: %s", u)
+	// Token should NOT appear in the URL; it is sent via X-Consul-Token header
+	if hasSubstr(u, "token=") {
+		t.Errorf("URL should NOT contain token (sent via header): %s", u)
+	}
+	// Verify token is available via setAuthHeader
+	req := httptest.NewRequest(http.MethodGet, u, nil)
+	provider.setAuthHeader(req)
+	if got := req.Header.Get("X-Consul-Token"); got != "my-token" {
+		t.Errorf("X-Consul-Token header = %q, want %q", got, "my-token")
 	}
 }
 

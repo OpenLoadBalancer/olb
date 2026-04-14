@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/openloadbalancer/olb/internal/backend"
+	"github.com/openloadbalancer/olb/internal/security"
 )
 
 // grpcFrameHeaderPool reuses 5-byte header buffers across parseGRPCFrame calls.
@@ -155,7 +156,7 @@ func (gh *GRPCHandler) HandleGRPC(w http.ResponseWriter, r *http.Request, b *bac
 	if trailers := resp.Trailer; len(trailers) > 0 {
 		for key, values := range trailers {
 			for _, value := range values {
-				w.Header().Add(http.TrailerPrefix+key, value)
+				w.Header().Add(http.TrailerPrefix+key, security.SanitizeHeaderValue(value))
 			}
 		}
 	}
@@ -218,7 +219,7 @@ func copyGRPCHeaders(dst, src http.Header) {
 			continue
 		}
 		for _, value := range values {
-			dst.Add(key, value)
+			dst.Add(key, security.SanitizeHeaderValue(value))
 		}
 	}
 }
@@ -419,7 +420,7 @@ func (gwh *GRPCWebHandler) HandleGRPCWeb(w http.ResponseWriter, r *http.Request,
 			continue
 		}
 		for _, value := range values {
-			w.Header().Add(key, value)
+			w.Header().Add(key, security.SanitizeHeaderValue(value))
 		}
 	}
 	// Remove Content-Length since we modified the body

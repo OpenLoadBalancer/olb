@@ -3,8 +3,10 @@ package apikey
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -61,10 +63,9 @@ func New(config Config) (*Middleware, error) {
 	for keyID, key := range config.Keys {
 		switch config.Hash {
 		case "sha256":
-			// For API keys, we hash the entire key for lookup
-			// and store the key_id for metadata retrieval
-			h := sha256.Sum256([]byte(key))
-			m.hashes[keyID] = h[:]
+			mac := hmac.New(sha256.New, []byte(keyID))
+			mac.Write([]byte(key))
+			m.hashes[keyID] = mac.Sum(nil)
 		case "plain":
 			m.hashes[keyID] = []byte(key)
 		default:
@@ -159,9 +160,10 @@ func (m *Middleware) validateKey(apiKey string) (string, bool) {
 
 	switch m.config.Hash {
 	case "sha256":
-		h := sha256.Sum256([]byte(apiKey))
 		for keyID, expectedHash := range m.hashes {
-			if subtle.ConstantTimeCompare(h[:], expectedHash) == 1 {
+			mac := hmac.New(sha256.New, []byte(keyID))
+			mac.Write([]byte(apiKey))
+			if subtle.ConstantTimeCompare(mac.Sum(nil), expectedHash) == 1 {
 				return keyID, true
 			}
 		}
@@ -181,7 +183,12 @@ func (m *Middleware) validateKey(apiKey string) (string, bool) {
 
 // unauthorized writes unauthorized response.
 func (m *Middleware) unauthorized(w http.ResponseWriter, message string) {
-	http.Error(w, `{"error":"unauthorized","message":"`+message+`"}`, http.StatusUnauthorized)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	json.NewEncoder(w).Encode(map[string]string{
+		"error":   "unauthorized",
+		"message": message,
+	})
 }
 
 // contextKey is the key for API key info in context.

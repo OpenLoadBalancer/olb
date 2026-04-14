@@ -306,7 +306,9 @@ func (sh *SSEHandler) readLineWithTimeout(ctx context.Context, reader *bufio.Rea
 			go func() {
 				select {
 				case <-ch:
-				case <-ctx.Done():
+					// Drained successfully
+				case <-time.After(10 * time.Second):
+					// Give up after 10s — reader goroutine may be stuck
 				}
 			}()
 			return nil, &timeoutError{}

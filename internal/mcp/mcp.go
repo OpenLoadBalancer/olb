@@ -536,12 +536,35 @@ func (s *Server) handleInitialize(_ json.RawMessage) (any, *ResponseError) {
 }
 
 // sanitizeMCPError maps internal errors to safe messages for MCP clients.
+// Validation/parameter errors are passed through since they are user-facing by design.
+// Internal infrastructure errors are mapped to generic messages to prevent info leakage.
 func sanitizeMCPError(err error) string {
-	msg := err.Error()
-	if len(msg) > 150 {
-		msg = msg[:150]
+	if err == nil {
+		return "internal error"
 	}
-	return msg
+	msg := err.Error()
+	// Pass through user-facing validation errors (parameter names are safe to expose)
+	if strings.Contains(msg, "parameter is required") ||
+		strings.Contains(msg, "not configured") ||
+		strings.Contains(msg, "analytics not available") ||
+		strings.Contains(msg, "conflict") {
+		return msg
+	}
+	// Map common internal errors to generic messages
+	if strings.Contains(msg, "not found") {
+		return "resource not found"
+	}
+	if strings.Contains(msg, "unauthorized") || strings.Contains(msg, "forbidden") {
+		return "access denied"
+	}
+	if strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline") {
+		return "operation timed out"
+	}
+	if strings.Contains(msg, "unavailable") || strings.Contains(msg, "connection refused") {
+		return "service unavailable"
+	}
+	// Generic fallback — do not leak internal details
+	return "internal error"
 }
 
 // handleToolsList handles the "tools/list" method.

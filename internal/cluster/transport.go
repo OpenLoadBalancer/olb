@@ -26,6 +26,9 @@ const (
 	msgInstallSnapResp  byte = 6
 )
 
+const maxPayload = 16 << 20        // 16 MiB general RPC limit
+const maxSnapshotPayload = 4 << 20 // 4 MiB InstallSnapshot limit
+
 // TCPTransport implements Raft RPC over TCP with a connection pool.
 type TCPTransport struct {
 	bindAddr string
@@ -132,6 +135,19 @@ func (t *TCPTransport) Addr() string {
 	return t.bindAddr
 }
 
+// Listener returns the underlying net.Listener.
+// This allows wrapping the listener with middleware (e.g., authentication).
+func (t *TCPTransport) Listener() net.Listener {
+	return t.listener
+}
+
+// SetListener replaces the transport's listener with a wrapped version.
+// Must be called before Start(). The caller is responsible for ensuring
+// the wrapped listener is properly closed via the transport's Stop() method.
+func (t *TCPTransport) SetListener(ln net.Listener) {
+	t.listener = ln
+}
+
 // acceptLoop accepts incoming connections until stopped.
 func (t *TCPTransport) acceptLoop() {
 	for {
@@ -201,6 +217,10 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 			respType = msgAppendEntriesRes
 
 		case msgInstallSnapshot:
+			if len(payload) > maxSnapshotPayload {
+				writeFrame(conn, msgInstallSnapResp, []byte(fmt.Sprintf("snapshot payload too large: %d bytes (max %d)", len(payload), maxSnapshotPayload)))
+				return
+			}
 			var req InstallSnapshotRequest
 			if err := json.Unmarshal(payload, &req); err != nil {
 				return
@@ -393,10 +413,13 @@ func readFrame(r io.Reader) (byte, []byte, error) {
 		return msgType, nil, nil
 	}
 
-	// Guard against large payloads (16 MiB).
-	const maxPayload = 16 << 20
+	// Guard against large payloads.
 	if length > maxPayload {
 		return 0, nil, fmt.Errorf("payload too large: %d bytes", length)
+	}
+	// Enforce lower limit for InstallSnapshot messages.
+	if msgType == msgInstallSnapshot && length > maxSnapshotPayload {
+		return 0, nil, fmt.Errorf("snapshot payload too large: %d bytes (max %d)", length, maxSnapshotPayload)
 	}
 
 	payload := make([]byte, length)

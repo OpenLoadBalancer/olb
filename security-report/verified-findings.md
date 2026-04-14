@@ -1,81 +1,101 @@
-# Verified Findings — OpenLoadBalancer Security Audit (2026-04-14)
+# Verified Findings — OpenLoadBalancer Full Rescan (2026-04-14)
 
-All 31 findings were verified against actual source code. Confidence levels assigned based on code inspection.
+All 29 new findings verified against actual source code. Previous 31 findings (all remediated) documented separately.
 
 ## Verification Method
 
-Each finding was cross-referenced with:
-1. Source code reads of the affected files
+Each finding cross-referenced with:
+1. Source code reads of affected files
 2. Analysis of surrounding context (callers, data flow)
 3. Assessment of exploitability in realistic deployment scenarios
-
-## Verified Critical (1)
-
-### CRITICAL-01: HMAC Timestamp Not in Signature
-- **Verified:** Read `internal/middleware/hmac/hmac.go` lines 110-216
-- **Confidence:** 100% — the `computeSignature` function (lines 175-216) builds message from method, path, query, body. No reference to `m.config.TimestampHeader` anywhere in the function.
-- **Impact:** Replay protection is completely bypassable by updating the timestamp header to a current value.
-
-## Verified High (1)
-
-### HIGH-01: HMAC Body Truncation Silent
-- **Verified:** Read `internal/middleware/hmac/hmac.go` lines 192-199
-- **Confidence:** 100% — `io.LimitReader(r.Body, maxBodySize)` capped at 10MB. `io.ReadAll` returns the truncated content without error when the limit is hit.
-- **Impact:** Downstream handlers receive truncated body; HMAC only covers first 10MB.
-
-## Verified Medium (9)
-
-### MED-01: Hardcoded Credentials
-- **Verified:** Read `configs/olb.hcl` line 44 and `configs/olb.toml` line 41
-- **Confidence:** 100% — bcrypt hash present with comment revealing password "admin123"
-
-### MED-02: Empty Secret Not Validated
-- **Verified:** Read `internal/middleware/hmac/hmac.go` lines 55-74
-- **Confidence:** 100% — `New()` checks `!config.Enabled` but never validates `config.Secret != ""`
-
-### MED-03: ZeroSecrets Ineffective
-- **Verified:** Read `internal/middleware/hmac/hmac.go` lines 265-269
-- **Confidence:** 100% — Go strings are immutable; assigning `""` creates a new empty string, old memory persists
-
-### MED-04: gRPC TLS Skip Verify
-- **Verified:** Read `internal/health/health.go` line 146
-- **Confidence:** 100% — `InsecureSkipVerify: true` hardcoded in shared gRPC health check client
-
-### MED-05: Sticky Session Unbounded
-- **Verified:** Read `internal/balancer/sticky.go` line 75
-- **Confidence:** 95% — map has no size limit; `CleanupSessions()` exists but is not auto-invoked
-
-### MED-06: SSE Goroutine Spawning
-- **Verified:** Read `internal/proxy/l7/sse.go` lines 199, 253-258
-- **Confidence:** 100% — goroutine spawned per SSE line read; second goroutine for timeout
-
-### MED-07: Error Message Disclosure
-- **Verified:** Read `internal/proxy/l7/proxy.go` line 728
-- **Confidence:** 90% — default case exposes `olbErr.Message`; depends on what backends return
-
-### MED-08: MaxBuckets Not Enforced
-- **Verified:** Read `internal/middleware/rate_limiter.go` lines 237-256
-- **Confidence:** 100% — `LoadOrStore` called without checking current bucket count against `MaxBuckets`
-
-### MED-09: XFF Trust Heuristic
-- **Verified:** Read `internal/proxy/l7/proxy.go` lines 580-609
-- **Confidence:** 90% — design limitation, not a bug; depends on deployment topology
-
-## Verified Low (14)
-
-All 14 low-severity findings confirmed by source code inspection. See SECURITY-REPORT.md for details.
-
-## False Positive Analysis
-
-No false positives identified. All findings correspond to real code patterns observed in the codebase.
-
-## Findings from Previous Audit (2026-04-13) — Status Check
-
-The previous audit identified 97 findings (75 fixed). Key remaining items cross-referenced:
-- gRPC TLS skip verify: Still present → MED-04 (this audit)
-- Sticky session bounds: Still present → MED-05 (this audit)
-- HMAC middleware findings: NEW in this audit (CRITICAL-01, HIGH-01, MED-02, MED-03)
+4. Grep-based confirmation across the codebase
 
 ---
 
-*Verified by security-check on 2026-04-14*
+## Verified HIGH (1)
+
+### H-1: Raft Transport Unauthenticated
+- **Verified:** Read `internal/engine/cluster_init.go:58-77` — transport created and started directly
+- **Verified:** Grep for `NodeAuthMiddleware` — only in `cluster/security.go` + test, never in `engine/`
+- **Confidence:** 100% — `NodeAuthMiddleware` exists but is never wired into the engine
+- **Impact:** Any network attacker reaching port 7947 can disrupt Raft consensus
+
+---
+
+## Verified MEDIUM (13)
+
+### M-1: Exec Health Check No Allowlist
+- **Verified:** Read `internal/health/health.go:463-508` — `exec.CommandContext(ctx, resolvedCmd, args...)`
+- **Confidence:** 100% — no validation on command path or identity
+
+### M-2: Weak Health Check SSRF
+- **Verified:** Read `internal/health/health.go:575-586` — `isInternalAddress()` only blocks 5 cloud metadata IPs
+- **Confidence:** 100% — no RFC1918/loopback/link-local blocking
+
+### M-3: Shadow Force Header
+- **Verified:** Read `internal/proxy/l7/shadow.go:107-114` — `X-OLB-Shadow-Force: true` bypass
+- **Confidence:** 100% — any client can force shadowing
+
+### M-4: Consul Token in URL
+- **Verified:** Read `internal/discovery/consul.go:339-345` — token appended as query param
+- **Confidence:** 100%
+
+### M-5: MMDB Integer Overflow + No Bounds Check
+- **Verified:** Read `internal/geodns/mmdb.go:92` — `uint32` multiplication for treeSize
+- **Verified:** Read `internal/geodns/mmdb.go:236-267` — `readNode()` indexes `r.data[offset]` without bounds check
+- **Confidence:** 100% — malformed MMDB causes out-of-bounds panic
+
+### M-6: Gossip uint16 Truncation
+- **Verified:** Read `internal/cluster/gossip_encoding.go:19,43,46` — `uint16(len(...))` without overflow check
+- **Confidence:** 100% — payloads >65535 bytes silently truncated
+
+### M-7: OAuth2 Non-Constant-Time Comparison
+- **Verified:** Read `internal/middleware/oauth2/oauth2.go:239,248` — plain `==`/`!=`
+- **Verified:** Read `internal/middleware/jwt/jwt.go` — JWT uses `subtle.ConstantTimeCompare` correctly
+- **Confidence:** 100% — inconsistency confirmed
+
+### M-8: Cluster Auth Partial Read
+- **Verified:** Read `internal/cluster/security.go:244-253` — single `conn.Read(buf)` for auth message
+- **Confidence:** 95% — TCP fragmentation can cause partial reads
+
+### M-9: Cluster Token Replay
+- **Verified:** Read `internal/cluster/security.go:159-203` — timestamp-based only, no nonce tracking
+- **Confidence:** 95% — replayable within 5-minute window
+
+### M-10: API Key JSON Injection
+- **Verified:** Read `internal/middleware/apikey/apikey.go:183-184` — string concatenation into JSON
+- **Confidence:** 90% — currently static strings only, structural weakness
+
+### M-11: Unbounded SSE Subscribers
+- **Verified:** Read `internal/admin/events.go:24-29` — no limit check in `subscribe()`
+- **Verified:** Compared with `internal/mcp/sse_transport.go` which has `MaxClients`
+- **Confidence:** 100%
+
+### M-12: Reload DoS
+- **Verified:** Read `internal/engine/lifecycle.go:457-494` — reload sets state correctly
+- **Verified:** Read `internal/admin/circuit_breaker.go` — counts errors, not successes
+- **Confidence:** 85% — requires auth + rate limit proximity
+
+### M-13: Coalesce Unbounded Growth
+- **Verified:** Read `internal/middleware/coalesce/coalesce.go:166-200` — goroutine per unique key
+- **Confidence:** 95%
+
+---
+
+## Verified LOW (15)
+
+All 15 low-severity findings confirmed by source code inspection. See SECURITY-REPORT.md for details.
+
+---
+
+## False Positives Eliminated
+
+| Claim | Investigation | Verdict |
+|-------|--------------|---------|
+| Concurrent config reload race | Read `lifecycle.go:457-494` — state check blocks concurrent reloads | NOT A FINDING |
+| ReDoS in WAF regex | Go `regexp` uses RE2 (linear-time matching) | NOT A FINDING |
+| Shadow body not restored | `io.MultiReader` restores consumed bytes (fixed in prior audit) | NOT A FINDING |
+
+---
+
+*Verified by security-check on 2026-04-14 (Full Rescan)*

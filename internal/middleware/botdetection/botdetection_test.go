@@ -196,7 +196,7 @@ func TestBotDetection_Challenge(t *testing.T) {
 	}
 
 	location := rec.Header().Get("Location")
-	if !strings.Contains(location, "/challenge") || !strings.Contains(location, "return=/protected") {
+	if !strings.Contains(location, "/challenge") || !strings.Contains(location, "return=") || !strings.Contains(location, "protected") {
 		t.Errorf("Expected redirect to challenge with return param, got %s", location)
 	}
 }

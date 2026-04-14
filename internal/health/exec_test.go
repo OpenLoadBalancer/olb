@@ -1,6 +1,7 @@
 package health
 
 import (
+	"os/exec"
 	"testing"
 	"time"
 
@@ -77,14 +78,27 @@ func TestResolveExecTemplate(t *testing.T) {
 	}
 }
 
+// findAbsCmd resolves a command name to its absolute path, skipping the test
+// if the command is not found (e.g. on platforms that lack it).
+func findAbsCmd(t *testing.T, name string) string {
+	t.Helper()
+	path, err := exec.LookPath(name)
+	if err != nil {
+		t.Skipf("command %q not found in PATH: %v", name, err)
+	}
+	return path
+}
+
 func TestCheckExec_Success(t *testing.T) {
 	c := NewChecker()
 	defer c.Stop()
 
+	echoPath := findAbsCmd(t, "echo")
+
 	b := backend.NewBackend("test-1", "127.0.0.1:8080")
 	cfg := &Check{
 		Type:     "exec",
-		Command:  "echo",
+		Command:  echoPath,
 		Args:     []string{"-n", ""},
 		Timeout:  5 * time.Second,
 		Interval: 10 * time.Second,
@@ -100,10 +114,12 @@ func TestCheckExec_Failure(t *testing.T) {
 	c := NewChecker()
 	defer c.Stop()
 
+	falsePath := findAbsCmd(t, "false")
+
 	b := backend.NewBackend("test-1", "127.0.0.1:8080")
 	cfg := &Check{
 		Type:     "exec",
-		Command:  "false", // exits with code 1
+		Command:  falsePath, // exits with code 1
 		Timeout:  5 * time.Second,
 		Interval: 10 * time.Second,
 	}
@@ -141,10 +157,12 @@ func TestCheckExec_Timeout(t *testing.T) {
 	c := NewChecker()
 	defer c.Stop()
 
+	sleepPath := findAbsCmd(t, "sleep")
+
 	b := backend.NewBackend("test-1", "127.0.0.1:8080")
 	cfg := &Check{
 		Type:     "exec",
-		Command:  "sleep",
+		Command:  sleepPath,
 		Args:     []string{"10"},
 		Timeout:  100 * time.Millisecond,
 		Interval: 10 * time.Second,
@@ -163,10 +181,12 @@ func TestCheckExec_WithBackendAddress(t *testing.T) {
 	c := NewChecker()
 	defer c.Stop()
 
+	echoPath := findAbsCmd(t, "echo")
+
 	b := backend.NewBackend("test-1", "192.168.1.1:9090")
 	cfg := &Check{
 		Type:     "exec",
-		Command:  "echo",
+		Command:  echoPath,
 		Args:     []string{"-n"},
 		Timeout:  5 * time.Second,
 		Interval: 10 * time.Second,
@@ -175,6 +195,28 @@ func TestCheckExec_WithBackendAddress(t *testing.T) {
 	result := c.checkExec(b, cfg)
 	if !result.Healthy {
 		t.Errorf("expected healthy, got error: %v", result.Error)
+	}
+}
+
+func TestCheckExec_RelativePath(t *testing.T) {
+	c := NewChecker()
+	defer c.Stop()
+
+	b := backend.NewBackend("test-1", "127.0.0.1:8080")
+	cfg := &Check{
+		Type:     "exec",
+		Command:  "echo", // relative path — must be rejected
+		Args:     []string{"-n", ""},
+		Timeout:  5 * time.Second,
+		Interval: 10 * time.Second,
+	}
+
+	result := c.checkExec(b, cfg)
+	if result.Healthy {
+		t.Error("expected unhealthy for relative command path")
+	}
+	if result.Error == nil {
+		t.Error("expected error for relative command path")
 	}
 }
 

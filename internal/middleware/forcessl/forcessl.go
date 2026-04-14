@@ -125,8 +125,16 @@ func (m *Middleware) isHTTPS(r *http.Request) bool {
 
 // buildHTTPSURL builds the HTTPS redirect URL.
 func (m *Middleware) buildHTTPSURL(r *http.Request) string {
-	// Get host without port (handles IPv6 bracket notation)
+	// Validate host to prevent open redirect
 	host := r.Host
+	if host == "" || strings.Contains(host, "/") || strings.Contains(host, "\\") {
+		host = r.URL.Host
+	}
+	if host == "" {
+		return ""
+	}
+
+	// Get host without port (handles IPv6 bracket notation)
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}

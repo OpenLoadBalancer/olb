@@ -413,9 +413,15 @@ func (pm *PluginManager) RegisterPlugin(p Plugin) error {
 // LoadPlugin loads a Go plugin from a shared object (.so) file.
 // The file must export a symbol named "NewPlugin" of type func() Plugin.
 func (pm *PluginManager) LoadPlugin(path string) error {
-	p, err := plugin.Open(path)
+	// Resolve to absolute path to prevent symlink/path traversal
+	absPath, err := filepath.Abs(path)
 	if err != nil {
-		return fmt.Errorf("failed to open plugin %s: %w", path, err)
+		return fmt.Errorf("plugin: failed to resolve path: %w", err)
+	}
+
+	p, err := plugin.Open(absPath)
+	if err != nil {
+		return fmt.Errorf("failed to open plugin %s: %w", absPath, err)
 	}
 
 	sym, err := p.Lookup("NewPlugin")
@@ -445,12 +451,17 @@ func (pm *PluginManager) LoadDir(dir string) error {
 		return nil
 	}
 
-	entries, err := os.ReadDir(dir)
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("plugin: failed to resolve dir: %w", err)
+	}
+
+	entries, err := os.ReadDir(absDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
-		return fmt.Errorf("failed to read plugin directory %s: %w", dir, err)
+		return fmt.Errorf("failed to read plugin directory %s: %w", absDir, err)
 	}
 
 	for _, entry := range entries {
@@ -460,7 +471,7 @@ func (pm *PluginManager) LoadDir(dir string) error {
 		if filepath.Ext(entry.Name()) != ".so" {
 			continue
 		}
-		path := filepath.Join(dir, entry.Name())
+		path := filepath.Join(absDir, entry.Name())
 		if err := pm.LoadPlugin(path); err != nil {
 			pm.logger.Error("failed to load plugin",
 				logging.String("path", path),

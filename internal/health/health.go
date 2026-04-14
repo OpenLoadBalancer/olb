@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -475,6 +476,11 @@ func (c *Checker) checkExec(b *backend.Backend, config *Check) Result {
 	}
 	resolvedCmd := resolveExecTemplate(config.Command, b.Address, host, port)
 
+	// Validate command path — must be absolute to prevent path injection
+	if !filepath.IsAbs(resolvedCmd) {
+		return Result{Healthy: false, Error: fmt.Errorf("exec health check: command must be an absolute path: %s", resolvedCmd)}
+	}
+
 	cmd := exec.CommandContext(ctx, resolvedCmd, args...)
 
 	var stderr bytes.Buffer
@@ -572,15 +578,22 @@ func (c *Checker) CountUnhealthy() int {
 	return count
 }
 
-// isInternalAddress checks if a host is a cloud metadata endpoint or other
-// dangerous SSRF target. Does NOT block localhost/RFC1918 since legitimate
-// backends often run on internal addresses.
+// isInternalAddress checks if a host is a cloud metadata endpoint or
+// link-local address. These are high-value SSRF targets that should never
+// be health check destinations.
+// Note: localhost/RFC1918 are NOT blocked since legitimate backends commonly
+// run on internal addresses. Health check addresses are admin-controlled.
 func isInternalAddress(host string) bool {
-	// Only block cloud metadata endpoints
 	switch host {
 	case "169.254.169.254", "metadata.google.internal", "metadata.google",
 		"100.100.100.200", "fd00:ec2::254":
 		return true
 	}
+
+	// Block all 169.254.x.x link-local addresses
+	if strings.HasPrefix(host, "169.254.") {
+		return true
+	}
+
 	return false
 }

@@ -143,7 +143,13 @@ type consulServiceEntry struct {
 func (p *ConsulProvider) getServices() (map[string][]string, error) {
 	u := p.buildURL("/v1/catalog/services", nil)
 
-	resp, err := p.client.Get(u)
+	req, err := http.NewRequest(http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	p.setAuthHeader(req)
+
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -235,7 +241,13 @@ func (p *ConsulProvider) getServiceEntries(serviceName string) ([]consulServiceE
 
 	u := p.buildURL(fmt.Sprintf("/v1/catalog/service/%s", serviceName), params)
 
-	resp, err := p.client.Get(u)
+	req, err := http.NewRequest(http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	p.setAuthHeader(req)
+
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -333,18 +345,14 @@ func (p *ConsulProvider) buildURL(path string, params url.Values) string {
 		u.RawQuery = params.Encode()
 	}
 
-	result := u.String()
+	return u.String()
+}
 
-	// Add token if present
+// setAuthHeader sets the X-Consul-Token header on the request if a token is configured.
+func (p *ConsulProvider) setAuthHeader(req *http.Request) {
 	if p.token != "" {
-		sep := "?"
-		if strings.Contains(result, "?") {
-			sep = "&"
-		}
-		result = result + sep + "token=" + url.QueryEscape(p.token)
+		req.Header.Set("X-Consul-Token", p.token)
 	}
-
-	return result
 }
 
 // parseWeight parses weight from metadata.

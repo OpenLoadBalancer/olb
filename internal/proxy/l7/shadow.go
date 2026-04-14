@@ -102,15 +102,11 @@ func (sm *ShadowManager) Wait() {
 	}
 }
 
-// ShouldShadowRequest determines if a specific request should be shadowed,
-// supporting header-based matching via X-OLB-Shadow-Force header.
+// ShouldShadowRequest determines if a specific request should be shadowed
+// based solely on the configured percentage.
 func (sm *ShadowManager) ShouldShadowRequest(req *http.Request) bool {
 	if sm == nil || !sm.enabled {
 		return false
-	}
-	// Allow explicit opt-in via header
-	if req.Header.Get("X-OLB-Shadow-Force") == "true" {
-		return true
 	}
 	return sm.ShouldShadow()
 }

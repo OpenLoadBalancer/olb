@@ -341,8 +341,15 @@ func TestConsulProvider_BuildURL_WithToken(t *testing.T) {
 	}
 	p, _ := NewConsulProvider(config)
 	u := p.buildURL("/v1/health/service/web", nil)
-	if !strings.Contains(u, "token=secret-token") {
-		t.Errorf("URL should contain token: %s", u)
+	// Token should NOT appear in URL; it is sent via X-Consul-Token header
+	if strings.Contains(u, "token=") {
+		t.Errorf("URL should NOT contain token (sent via header): %s", u)
+	}
+	// Verify token is set via header
+	req, _ := http.NewRequest(http.MethodGet, u, nil)
+	p.setAuthHeader(req)
+	if got := req.Header.Get("X-Consul-Token"); got != "secret-token" {
+		t.Errorf("X-Consul-Token header = %q, want %q", got, "secret-token")
 	}
 }
 
@@ -1772,12 +1779,18 @@ func TestConsulProvider_BuildURL_TokenWithParams(t *testing.T) {
 
 	u := p.buildURL("/v1/catalog/services", params)
 
-	// Should have both the param and the token appended with &
+	// Should have the param but NOT the token in the URL
 	if !strings.Contains(u, "dc=dc1") {
 		t.Errorf("URL should contain dc=dc1: %s", u)
 	}
-	if !strings.Contains(u, "&token=my-secret-token") {
-		t.Errorf("URL should contain &token=... when params exist: %s", u)
+	if strings.Contains(u, "token=") {
+		t.Errorf("URL should NOT contain token (sent via header): %s", u)
+	}
+	// Verify token is sent via header
+	req, _ := http.NewRequest(http.MethodGet, u, nil)
+	p.setAuthHeader(req)
+	if got := req.Header.Get("X-Consul-Token"); got != "my-secret-token" {
+		t.Errorf("X-Consul-Token header = %q, want %q", got, "my-secret-token")
 	}
 }
 

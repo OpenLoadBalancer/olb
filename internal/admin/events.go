@@ -7,6 +7,10 @@ import (
 	"sync"
 )
 
+// maxEventSubscribers limits the number of concurrent SSE subscribers
+// to prevent unbounded resource exhaustion.
+const maxEventSubscribers = 100
+
 // eventBus broadcasts EventItems to connected SSE subscribers.
 type eventBus struct {
 	mu          sync.RWMutex
@@ -21,9 +25,16 @@ func newEventBus() *eventBus {
 }
 
 // subscribe creates and registers a new subscriber channel.
+// If the subscriber limit has been reached, it returns a closed channel
+// so the caller receives EOF immediately.
 func (eb *eventBus) subscribe() chan EventItem {
 	ch := make(chan EventItem, 16)
 	eb.mu.Lock()
+	if len(eb.subscribers) >= maxEventSubscribers {
+		eb.mu.Unlock()
+		close(ch)
+		return ch
+	}
 	eb.subscribers[ch] = struct{}{}
 	eb.mu.Unlock()
 	return ch
@@ -94,6 +105,16 @@ func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request) {
 
 	// Subscribe to events
 	ch := s.eventBus.subscribe()
+
+	// If the channel is already closed, the subscriber limit was reached.
+	select {
+	case <-ch:
+		writeError(w, http.StatusServiceUnavailable, "TOO_MANY_SUBSCRIBERS",
+			"maximum number of SSE subscribers reached")
+		return
+	default:
+	}
+
 	defer s.eventBus.unsubscribe(ch)
 
 	// Send initial connection event

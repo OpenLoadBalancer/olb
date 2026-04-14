@@ -8,6 +8,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -236,7 +237,7 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 		}
 
 		// Validate issuer if configured
-		if m.config.IssuerURL != "" && tokenInfo.Issuer != "" && tokenInfo.Issuer != m.config.IssuerURL {
+		if m.config.IssuerURL != "" && tokenInfo.Issuer != "" && subtle.ConstantTimeCompare([]byte(tokenInfo.Issuer), []byte(m.config.IssuerURL)) != 1 {
 			m.unauthorized(w, "invalid issuer")
 			return
 		}
@@ -245,7 +246,7 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 		if m.config.Audience != "" && len(tokenInfo.Audience) > 0 {
 			found := false
 			for _, aud := range tokenInfo.Audience {
-				if aud == m.config.Audience {
+				if subtle.ConstantTimeCompare([]byte(aud), []byte(m.config.Audience)) == 1 {
 					found = true
 					break
 				}
