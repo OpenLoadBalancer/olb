@@ -721,6 +721,8 @@ func TestHTTPProxy_MultipleBackendsRoundRobin(t *testing.T) {
 }
 
 func TestGetClientIP(t *testing.T) {
+	p := &HTTPProxy{trustedNets: parseTrustedProxies([]string{"192.168.0.0/16"})}
+
 	tests := []struct {
 		name       string
 		remoteAddr string
@@ -767,7 +769,7 @@ func TestGetClientIP(t *testing.T) {
 				req.Header.Set(k, v)
 			}
 
-			result := getClientIP(req)
+			result := p.getClientIP(req)
 			if result != tt.expected {
 				t.Errorf("expected %q, got %q", tt.expected, result)
 			}
@@ -1039,6 +1041,8 @@ func TestPrepareOutboundRequest_WithConnectionHeader(t *testing.T) {
 }
 
 func TestGetClientIP_WithXForwardedFor(t *testing.T) {
+	p := &HTTPProxy{trustedNets: parseTrustedProxies([]string{"192.168.0.0/16"})}
+
 	tests := []struct {
 		name       string
 		xff        string
@@ -1079,7 +1083,7 @@ func TestGetClientIP_WithXForwardedFor(t *testing.T) {
 				req.Header.Set("X-Forwarded-For", tt.xff)
 			}
 
-			result := getClientIP(req)
+			result := p.getClientIP(req)
 			if result != tt.expected {
 				t.Errorf("expected %q, got %q", tt.expected, result)
 			}
@@ -1088,6 +1092,8 @@ func TestGetClientIP_WithXForwardedFor(t *testing.T) {
 }
 
 func TestGetClientIP_WithXRealIP(t *testing.T) {
+	p := &HTTPProxy{trustedNets: parseTrustedProxies([]string{"192.168.0.0/16"})}
+
 	tests := []struct {
 		name       string
 		xri        string
@@ -1122,7 +1128,7 @@ func TestGetClientIP_WithXRealIP(t *testing.T) {
 				req.Header.Set("X-Real-IP", tt.xri)
 			}
 
-			result := getClientIP(req)
+			result := p.getClientIP(req)
 			if result != tt.expected {
 				t.Errorf("expected %q, got %q", tt.expected, result)
 			}
@@ -2495,9 +2501,10 @@ func TestProxyHandler_AllBackendsAttempted(t *testing.T) {
 // --- proxy.go: getClientIP - RemoteAddr without port (line 430-432) ---
 
 func TestCov_GetClientIP_RemoteAddrNoPort(t *testing.T) {
+	p := &HTTPProxy{}
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.RemoteAddr = "no-colon-or-bracket"
-	result := getClientIP(req)
+	result := p.getClientIP(req)
 	if result != "no-colon-or-bracket" {
 		t.Errorf("expected 'no-colon-or-bracket', got %q", result)
 	}
@@ -3404,7 +3411,9 @@ func TestShadowManager_ForceHeader(t *testing.T) {
 }
 
 func TestGetClientIP_UntrustedPeerIgnoresXFF(t *testing.T) {
-	// Public IP peers should NOT trust X-Forwarded-For (prevents IP spoofing)
+	// Trust private ranges and loopback — public IPs are untrusted
+	p := &HTTPProxy{trustedNets: parseTrustedProxies([]string{"10.0.0.0/8", "192.168.0.0/16", "172.16.0.0/12", "127.0.0.1/32"})}
+
 	tests := []struct {
 		name       string
 		remoteAddr string
@@ -3424,13 +3433,13 @@ func TestGetClientIP_UntrustedPeerIgnoresXFF(t *testing.T) {
 			expected:   "198.51.100.1",
 		},
 		{
-			name:       "private peer XFF trusted",
+			name:       "trusted proxy XFF used",
 			remoteAddr: "10.0.0.5:12345",
 			headers:    map[string]string{"X-Forwarded-For": "203.0.113.50"},
 			expected:   "203.0.113.50",
 		},
 		{
-			name:       "loopback peer XFF trusted",
+			name:       "loopback proxy XFF used",
 			remoteAddr: "127.0.0.1:12345",
 			headers:    map[string]string{"X-Forwarded-For": "203.0.113.50"},
 			expected:   "203.0.113.50",
@@ -3444,7 +3453,7 @@ func TestGetClientIP_UntrustedPeerIgnoresXFF(t *testing.T) {
 			for k, v := range tt.headers {
 				req.Header.Set(k, v)
 			}
-			result := getClientIP(req)
+			result := p.getClientIP(req)
 			if result != tt.expected {
 				t.Errorf("expected %q, got %q", tt.expected, result)
 			}
@@ -3548,24 +3557,30 @@ func TestSetErrorHandler_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
-func TestIsPrivateOrLoopback(t *testing.T) {
+func TestParseTrustedProxies(t *testing.T) {
+	nets := parseTrustedProxies([]string{"10.0.0.0/8", "192.168.0.0/16", "127.0.0.1", "invalid", ""})
+	if len(nets) != 3 {
+		t.Fatalf("expected 3 nets, got %d", len(nets))
+	}
+
+	p := &HTTPProxy{trustedNets: nets}
+
 	tests := []struct {
 		ip       string
 		expected bool
 	}{
-		{"127.0.0.1", true},
 		{"10.0.0.1", true},
-		{"172.16.0.1", true},
 		{"192.168.1.1", true},
+		{"127.0.0.1", true},
+		{"172.16.0.1", false},
 		{"203.0.113.50", false},
 		{"8.8.8.8", false},
 		{"invalid", false},
-		{"", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.ip, func(t *testing.T) {
-			if got := isPrivateOrLoopback(tt.ip); got != tt.expected {
-				t.Errorf("isPrivateOrLoopback(%q) = %v, want %v", tt.ip, got, tt.expected)
+			if got := p.isTrustedProxy(tt.ip); got != tt.expected {
+				t.Errorf("isTrustedProxy(%q) = %v, want %v", tt.ip, got, tt.expected)
 			}
 		})
 	}

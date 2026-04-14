@@ -3,14 +3,19 @@ package cluster
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -200,20 +205,14 @@ func TestGenerateNodeToken(t *testing.T) {
 
 	token := GenerateNodeToken(nodeID, secret)
 
-	// Token should be a non-empty hex string
+	// Token should be a non-empty string (format: timestamp:hex)
 	if token == "" {
 		t.Error("Token should not be empty")
 	}
 
-	// Token should be 64 chars (SHA-256 hex encoded)
-	if len(token) != 64 {
-		t.Errorf("Token length = %d, want 64", len(token))
-	}
-
-	// Same input should produce same token (deterministic)
-	token2 := GenerateNodeToken(nodeID, secret)
-	if token != token2 {
-		t.Error("Same input should produce the same token")
+	// Token should contain a colon separator (timestamp:hex)
+	if !strings.Contains(token, ":") {
+		t.Error("Token should contain timestamp:hex format")
 	}
 
 	// Different node ID should produce different token
@@ -258,6 +257,35 @@ func TestVerifyNodeToken(t *testing.T) {
 	// Empty token
 	if VerifyNodeToken("", nodeID, secret) {
 		t.Error("Empty token should not verify")
+	}
+
+	// Legacy format (no timestamp) should be rejected
+	legacyToken := "abc123"
+	if VerifyNodeToken(legacyToken, nodeID, secret) {
+		t.Error("Legacy token without timestamp should be rejected")
+	}
+}
+
+func TestVerifyNodeToken_ReplayProtection(t *testing.T) {
+	secret := []byte("test-secret-key")
+	nodeID := "node1"
+
+	// Create a token with a known old timestamp (6 minutes ago)
+	ts := time.Now().Add(-6 * time.Minute).Unix()
+	mac := hmac.New(sha256.New, secret)
+	mac.Write([]byte(nodeID))
+	mac.Write([]byte(fmt.Sprintf("%d", ts)))
+	sig := hex.EncodeToString(mac.Sum(nil))
+	oldToken := fmt.Sprintf("%d:%s", ts, sig)
+
+	// Default max age is 5 minutes, so 6-minute-old token should be rejected
+	if VerifyNodeToken(oldToken, nodeID, secret) {
+		t.Error("Expired token should be rejected")
+	}
+
+	// But should pass with a longer max age
+	if !VerifyNodeTokenWithMaxAge(oldToken, nodeID, secret, 10*time.Minute) {
+		t.Error("Token should verify with extended max age")
 	}
 }
 

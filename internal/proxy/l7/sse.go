@@ -54,8 +54,14 @@ func IsSSEResponse(resp *http.Response) bool {
 
 // SSEHandler handles Server-Sent Events proxying.
 type SSEHandler struct {
-	config    *SSEConfig
-	transport *http.Transport
+	config      *SSEConfig
+	transport   *http.Transport
+	trustedNets []*net.IPNet
+}
+
+// SetTrustedNets sets the trusted proxy networks for XFF handling.
+func (h *SSEHandler) SetTrustedNets(nets []*net.IPNet) {
+	h.trustedNets = nets
 }
 
 // NewSSEHandler creates a new SSE handler.
@@ -134,7 +140,7 @@ func (sh *SSEHandler) prepareSSERequest(r *http.Request, b *backend.Backend) (*h
 	outReq.RequestURI = ""
 
 	// Set X-Forwarded headers
-	clientIP := getClientIP(r)
+	clientIP := trustedClientIP(r, sh.trustedNets)
 	if prior := outReq.Header.Get("X-Forwarded-For"); prior != "" {
 		outReq.Header.Set("X-Forwarded-For", prior+", "+clientIP)
 	} else {

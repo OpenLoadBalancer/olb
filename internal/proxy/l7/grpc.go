@@ -60,8 +60,14 @@ func DefaultGRPCConfig() *GRPCConfig {
 
 // GRPCHandler handles gRPC proxying.
 type GRPCHandler struct {
-	config    *GRPCConfig
-	transport http.RoundTripper
+	config      *GRPCConfig
+	transport   http.RoundTripper
+	trustedNets []*net.IPNet
+}
+
+// SetTrustedNets sets the trusted proxy networks for XFF handling.
+func (h *GRPCHandler) SetTrustedNets(nets []*net.IPNet) {
+	h.trustedNets = nets
 }
 
 // NewGRPCHandler creates a new gRPC handler.
@@ -174,7 +180,7 @@ func (gh *GRPCHandler) prepareGRPCRequest(r *http.Request, b *backend.Backend) (
 	outReq.RequestURI = ""
 
 	// Set X-Forwarded-For
-	clientIP := getClientIP(r)
+	clientIP := trustedClientIP(r, gh.trustedNets)
 	if prior := outReq.Header.Get("X-Forwarded-For"); prior != "" {
 		outReq.Header.Set("X-Forwarded-For", prior+", "+clientIP)
 	} else {
@@ -446,7 +452,7 @@ func (gwh *GRPCWebHandler) prepareGRPCWebRequest(r *http.Request, b *backend.Bac
 	outReq.RequestURI = ""
 
 	// Set X-Forwarded headers
-	clientIP := getClientIP(r)
+	clientIP := trustedClientIP(r, gwh.grpcHandler.trustedNets)
 	if prior := outReq.Header.Get("X-Forwarded-For"); prior != "" {
 		outReq.Header.Set("X-Forwarded-For", prior+", "+clientIP)
 	} else {

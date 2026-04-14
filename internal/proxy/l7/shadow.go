@@ -129,9 +129,16 @@ func (sm *ShadowManager) ShadowRequest(req *http.Request) {
 		const maxShadowBodySize = 4 * 1024 * 1024 // 4MB max shadow body
 		var err error
 		bodyBuf, err = io.ReadAll(io.LimitReader(req.Body, maxShadowBodySize+1))
-		if err == nil && len(bodyBuf) > 0 && len(bodyBuf) <= maxShadowBodySize {
-			// Restore the original body so the main proxy can still read it
-			req.Body = io.NopCloser(bytes.NewReader(bodyBuf))
+		if err == nil && len(bodyBuf) > 0 {
+			if len(bodyBuf) <= maxShadowBodySize {
+				// Restore the original body so the main proxy can still read it
+				req.Body = io.NopCloser(bytes.NewReader(bodyBuf))
+			} else {
+				// Body exceeds max shadow size - restore consumed bytes so
+				// the main proxy can still read the full request body.
+				req.Body = io.NopCloser(io.MultiReader(bytes.NewReader(bodyBuf), req.Body))
+				bodyBuf = nil
+			}
 		} else {
 			bodyBuf = nil
 		}

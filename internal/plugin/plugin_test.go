@@ -119,8 +119,8 @@ func TestDefaultPluginManagerConfig(t *testing.T) {
 	if cfg.PluginDir != "plugins/" {
 		t.Errorf("PluginDir = %q, want %q", cfg.PluginDir, "plugins/")
 	}
-	if !cfg.AutoLoad {
-		t.Error("AutoLoad = false, want true")
+	if cfg.AutoLoad {
+		t.Error("AutoLoad = true, want false (safe default)")
 	}
 	if len(cfg.AllowedPlugins) != 0 {
 		t.Errorf("AllowedPlugins length = %d, want 0", len(cfg.AllowedPlugins))

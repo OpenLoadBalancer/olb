@@ -305,13 +305,15 @@ func TestProxyWebSocket(t *testing.T) {
 // --- extractClientIP ---
 
 func TestExtractClientIP(t *testing.T) {
+	h := &WebSocketHandler{trustedNets: parseTrustedProxies([]string{"192.168.0.0/16"})}
+
 	tests := []struct {
 		name string
 		req  *http.Request
 		want string
 	}{
 		{
-			"X-Forwarded-For",
+			"X-Forwarded-For (trusted proxy)",
 			&http.Request{
 				Header:     http.Header{"X-Forwarded-For": []string{"10.0.0.1, 192.168.1.1"}},
 				RemoteAddr: "192.168.1.100:12345",
@@ -319,7 +321,7 @@ func TestExtractClientIP(t *testing.T) {
 			"10.0.0.1",
 		},
 		{
-			"X-Real-IP",
+			"X-Real-IP (trusted proxy)",
 			&http.Request{
 				Header:     http.Header{"X-Real-Ip": []string{"10.0.0.2"}},
 				RemoteAddr: "192.168.1.100:12345",
@@ -343,7 +345,7 @@ func TestExtractClientIP(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := extractClientIP(tt.req)
+			got := h.extractClientIP(tt.req)
 			if got != tt.want {
 				t.Errorf("extractClientIP() = %q, want %q", got, tt.want)
 			}
@@ -1730,6 +1732,8 @@ func TestWebSocketHandler_MaxConns_RejectsOverLimit(t *testing.T) {
 }
 
 func TestExtractClientIP_UntrustedPeer(t *testing.T) {
+	h := &WebSocketHandler{trustedNets: parseTrustedProxies([]string{"10.0.0.0/8", "192.168.0.0/16"})}
+
 	tests := []struct {
 		name string
 		req  *http.Request
@@ -1762,7 +1766,7 @@ func TestExtractClientIP_UntrustedPeer(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := extractClientIP(tt.req)
+			got := h.extractClientIP(tt.req)
 			if got != tt.want {
 				t.Errorf("extractClientIP() = %q, want %q", got, tt.want)
 			}

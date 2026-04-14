@@ -68,9 +68,15 @@ func IsWebSocketUpgrade(r *http.Request) bool {
 
 // WebSocketHandler handles WebSocket proxying.
 type WebSocketHandler struct {
-	config *WebSocketConfig
-	dialer *net.Dialer
-	conns  atomic.Int64 // current active WebSocket connections
+	config      *WebSocketConfig
+	dialer      *net.Dialer
+	conns       atomic.Int64 // current active WebSocket connections
+	trustedNets []*net.IPNet
+}
+
+// SetTrustedNets sets the trusted proxy networks for XFF handling.
+func (h *WebSocketHandler) SetTrustedNets(nets []*net.IPNet) {
+	h.trustedNets = nets
 }
 
 // NewWebSocketHandler creates a new WebSocket handler.
@@ -256,7 +262,7 @@ func (wh *WebSocketHandler) writeUpgradeRequest(conn net.Conn, r *http.Request, 
 	}
 
 	// Add X-Forwarded headers
-	clientIP := extractClientIP(r)
+	clientIP := wh.extractClientIP(r)
 	if clientIP != "" {
 		if prior := r.Header.Get("X-Forwarded-For"); prior != "" {
 			buf.WriteString(fmt.Sprintf("X-Forwarded-For: %s, %s\r\n", prior, clientIP))
@@ -314,23 +320,8 @@ func computeWebSocketAccept(key string) string {
 
 // extractClientIP extracts the client IP from a request.
 // Only trusts X-Forwarded-For/X-Real-IP when the direct peer is a trusted proxy.
-func extractClientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-
-	if isPrivateOrLoopback(host) {
-		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			first, _, _ := strings.Cut(xff, ",")
-			return strings.TrimSpace(first)
-		}
-		if xri := r.Header.Get("X-Real-IP"); xri != "" {
-			return strings.TrimSpace(xri)
-		}
-	}
-
-	return host
+func (h *WebSocketHandler) extractClientIP(r *http.Request) string {
+	return trustedClientIP(r, h.trustedNets)
 }
 
 // dialBackend dials the backend server for WebSocket connection.

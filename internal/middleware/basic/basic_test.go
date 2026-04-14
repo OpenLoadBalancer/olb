@@ -264,8 +264,8 @@ func TestDefaultConfig(t *testing.T) {
 	if config.Realm != "Restricted" {
 		t.Errorf("Default Realm should be 'Restricted', got %s", config.Realm)
 	}
-	if config.Hash != "sha256" {
-		t.Errorf("Default Hash should be 'sha256', got %s", config.Hash)
+	if config.Hash != "bcrypt" {
+		t.Errorf("Default Hash should be 'bcrypt', got %s", config.Hash)
 	}
 	if len(config.Users) != 0 {
 		t.Error("Default Users should be empty")

@@ -89,6 +89,9 @@ type HTTPProxy struct {
 	maxIdleConnsPerHost int
 	idleConnTimeout     time.Duration
 
+	// Trusted proxy networks for X-Forwarded-For handling
+	trustedNets []*net.IPNet
+
 	// Error handling (protected by atomic for concurrent access)
 	errorHandler atomic.Value // stores func(http.ResponseWriter, *http.Request, error)
 
@@ -115,6 +118,7 @@ type Config struct {
 	IdleConnTimeout     time.Duration
 	PassiveChecker      *health.PassiveChecker
 	ShadowConfig        *ShadowConfig
+	TrustedProxies      []string // CIDR ranges of trusted proxy servers
 }
 
 // DefaultConfig returns a default configuration.
@@ -180,6 +184,15 @@ func NewHTTPProxy(config *Config) *HTTPProxy {
 		idleConnTimeout:     idleConnTimeout,
 		errorHandler:        func() atomic.Value { v := atomic.Value{}; v.Store(defaultErrorHandler); return v }(),
 	}
+
+	// Parse trusted proxy CIDRs for XFF handling
+	p.trustedNets = parseTrustedProxies(config.TrustedProxies)
+
+	// Propagate trusted proxy nets to protocol-specific handlers
+	p.wsHandler.SetTrustedNets(p.trustedNets)
+	p.grpcHandler.SetTrustedNets(p.trustedNets)
+	p.grpcWebHandler.grpcHandler.SetTrustedNets(p.trustedNets)
+	p.sseHandler.SetTrustedNets(p.trustedNets)
 
 	// Initialize shadow manager if configured
 	if config.ShadowConfig != nil && config.ShadowConfig.Enabled {
@@ -540,7 +553,7 @@ func (p *HTTPProxy) prepareOutboundRequest(r *http.Request, b *backend.Backend) 
 	outReq.RequestURI = "" // Must be empty for client requests
 
 	// Set X-Forwarded-For
-	clientIP := getClientIP(r)
+	clientIP := p.getClientIP(r)
 	if prior := outReq.Header.Get("X-Forwarded-For"); prior != "" {
 		outReq.Header.Set("X-Forwarded-For", prior+", "+clientIP)
 	} else {
@@ -576,17 +589,17 @@ func (p *HTTPProxy) prepareOutboundRequest(r *http.Request, b *backend.Backend) 
 }
 
 // getClientIP extracts the client IP from the request.
-// Only trusts X-Forwarded-For/X-Real-IP when the direct peer is a trusted proxy.
-func getClientIP(r *http.Request) string {
+// Only trusts X-Forwarded-For/X-Real-IP when the direct peer is in TrustedProxies.
+// When TrustedProxies is empty, proxy headers are never trusted (secure default).
+func (p *HTTPProxy) getClientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
 	}
 
-	// Only trust proxy headers if the direct connection comes from a
-	// private/loopback address (trusted proxy). For public-facing deployments,
-	// the middleware-layer trusted proxy config provides finer control.
-	if isPrivateOrLoopback(host) {
+	// Only trust proxy headers if the direct connection originates from
+	// a configured trusted proxy network.
+	if p.isTrustedProxy(host) {
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 			first, _, _ := strings.Cut(xff, ",")
 			return strings.TrimSpace(first)
@@ -599,16 +612,72 @@ func getClientIP(r *http.Request) string {
 	return host
 }
 
-// isPrivateOrLoopback checks if an IP belongs to a private or loopback range.
-func isPrivateOrLoopback(ip string) bool {
-	parsed := net.ParseIP(ip)
-	if parsed == nil {
+// isTrustedProxy reports whether ip belongs to a configured trusted proxy network.
+func (p *HTTPProxy) isTrustedProxy(ipStr string) bool {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
 		return false
 	}
-	return parsed.IsLoopback() || parsed.IsPrivate()
+	for _, cidr := range p.trustedNets {
+		if cidr.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
-// copyHeaders copies headers from source to destination, excluding hop-by-hop headers.
+// parseTrustedProxies parses a list of CIDR strings into net.IPNet slices.
+// Bare IPs are treated as /32 (IPv4) or /128 (IPv6). Invalid entries are skipped.
+func parseTrustedProxies(cidrs []string) []*net.IPNet {
+	var nets []*net.IPNet
+	for _, cidr := range cidrs {
+		s := cidr
+		if !strings.Contains(s, "/") {
+			ip := net.ParseIP(s)
+			if ip == nil {
+				continue
+			}
+			if ip.To4() != nil {
+				s += "/32"
+			} else {
+				s += "/128"
+			}
+		}
+		_, ipNet, err := net.ParseCIDR(s)
+		if err != nil {
+			continue
+		}
+		nets = append(nets, ipNet)
+	}
+	return nets
+}
+
+// trustedClientIP extracts the client IP from a request using the given trusted proxy nets.
+// If trustedNets is empty, proxy headers are never trusted (secure default).
+func trustedClientIP(r *http.Request, trustedNets []*net.IPNet) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+
+	ip := net.ParseIP(host)
+	if ip != nil {
+		for _, cidr := range trustedNets {
+			if cidr.Contains(ip) {
+				if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+					first, _, _ := strings.Cut(xff, ",")
+					return strings.TrimSpace(first)
+				}
+				if xri := r.Header.Get("X-Real-IP"); xri != "" {
+					return strings.TrimSpace(xri)
+				}
+				break
+			}
+		}
+	}
+
+	return host
+}
 // Uses canonical lookup for normal http.Header keys (no allocation) and falls back
 // to lowercase lookup for raw map keys that bypass http.Header normalization.
 func copyHeaders(dst, src http.Header) {

@@ -283,7 +283,8 @@ type PluginManagerConfig struct {
 	PluginDir string
 	// AutoLoad controls whether plugins are automatically loaded from PluginDir.
 	AutoLoad bool
-	// AllowedPlugins is a whitelist of plugin names. Empty means allow all.
+	// AllowedPlugins is a whitelist of plugin names. When AutoLoad is true,
+	// AllowedPlugins must be non-empty; otherwise auto-loading is skipped with a warning.
 	AllowedPlugins []string
 }
 
@@ -291,7 +292,7 @@ type PluginManagerConfig struct {
 func DefaultPluginManagerConfig() PluginManagerConfig {
 	return PluginManagerConfig{
 		PluginDir: "plugins/",
-		AutoLoad:  true,
+		AutoLoad:  false,
 	}
 }
 
@@ -433,8 +434,17 @@ func (pm *PluginManager) LoadPlugin(path string) error {
 
 // LoadDir scans a directory for .so plugin files and loads each one.
 // Non-.so files are silently skipped. If the directory does not exist,
-// no error is returned.
+// no error is returned. If AllowedPlugins is empty, no plugins are loaded
+// and a warning is logged — use SetAllowedPlugins or configure the allowlist
+// before calling LoadDir.
 func (pm *PluginManager) LoadDir(dir string) error {
+	if len(pm.managerConfig.AllowedPlugins) == 0 {
+		pm.logger.Warn("plugin auto-load skipped: AllowedPlugins is empty — configure an explicit allowlist before loading plugins",
+			logging.String("dir", dir),
+		)
+		return nil
+	}
+
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {

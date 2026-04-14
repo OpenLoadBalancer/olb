@@ -31,7 +31,7 @@ func DefaultConfig() Config {
 		Enabled: false,
 		Realm:   "Restricted",
 		Users:   make(map[string]string),
-		Hash:    "sha256",
+		Hash:    "bcrypt",
 	}
 }
 

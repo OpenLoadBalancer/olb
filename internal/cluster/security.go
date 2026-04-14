@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -156,17 +157,49 @@ func verifyNodeCertificateWithAllowed(rawCerts [][]byte, _ [][]*x509.Certificate
 }
 
 // GenerateNodeToken generates an HMAC-SHA256 authentication token for a node.
-// The token can be used for lightweight node authentication without full mTLS.
+// The token includes a timestamp to prevent replay attacks.
 func GenerateNodeToken(nodeID string, secret []byte) string {
+	ts := time.Now().Unix()
 	mac := hmac.New(sha256.New, secret)
 	mac.Write([]byte(nodeID))
-	return hex.EncodeToString(mac.Sum(nil))
+	mac.Write([]byte(fmt.Sprintf("%d", ts)))
+	tokenBytes := mac.Sum(nil)
+	return fmt.Sprintf("%d:%s", ts, hex.EncodeToString(tokenBytes))
 }
 
 // VerifyNodeToken verifies that a token is valid for the given node ID and secret.
+// Tokens older than maxAge are rejected to prevent replay attacks.
 func VerifyNodeToken(token string, nodeID string, secret []byte) bool {
-	expected := GenerateNodeToken(nodeID, secret)
-	return hmac.Equal([]byte(token), []byte(expected))
+	// Default max age: 5 minutes
+	return VerifyNodeTokenWithMaxAge(token, nodeID, secret, 5*time.Minute)
+}
+
+// VerifyNodeTokenWithMaxAge verifies a token with a custom max age.
+func VerifyNodeTokenWithMaxAge(token string, nodeID string, secret []byte, maxAge time.Duration) bool {
+	// Split timestamp from signature
+	parts := strings.SplitN(token, ":", 2)
+	if len(parts) != 2 {
+		// Legacy token format (no timestamp) — reject
+		return false
+	}
+
+	ts, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return false
+	}
+
+	// Check freshness
+	if time.Since(time.Unix(ts, 0)) > maxAge {
+		return false
+	}
+
+	// Recompute expected token
+	mac := hmac.New(sha256.New, secret)
+	mac.Write([]byte(nodeID))
+	mac.Write([]byte(parts[0]))
+	expected := hex.EncodeToString(mac.Sum(nil))
+
+	return hmac.Equal([]byte(parts[1]), []byte(expected))
 }
 
 // NodeAuthMiddleware wraps a net.Listener to add HMAC token-based authentication
