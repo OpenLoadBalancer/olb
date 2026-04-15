@@ -149,7 +149,18 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Run tests
+      - name: Run tests (Unix with coverage)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            go test -p 1 -short -v -count=1 -timeout=600s ./...
+          else
+            go test -p 1 -short -v -count=1 -coverprofile=coverage.out -timeout=600s ./...
+          fi
+
+      - name: Run tests (Windows)
+        if: runner.os == 'Windows'
         shell: bash
         run: go test -p 1 -short -v -count=1 -coverprofile=coverage.out -timeout=600s ./...
 
