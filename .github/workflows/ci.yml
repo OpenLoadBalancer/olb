@@ -118,15 +118,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Clear existing assets before extraction (macOS fix)
-        if: runner.os == 'macOS'
-        run: rm -rf internal/webui/assets internal/webui/index.html internal/webui/favicon.svg 2>/dev/null || true
-
       - name: Download frontend artifacts
         uses: actions/download-artifact@v8
         with:
           name: frontend-assets
-          path: internal/webui/
+          path: /tmp/frontend-assets/
+
+      - name: Move frontend artifacts to webui (macOS fix)
+        run: |
+          mv /tmp/frontend-assets/* internal/webui/
+          rm -rf /tmp/frontend-assets/
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -203,15 +204,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Clear existing assets before extraction (macOS fix)
-        if: runner.os == 'macOS'
-        run: rm -rf internal/webui/assets internal/webui/index.html internal/webui/favicon.svg 2>/dev/null || true
-
       - name: Download frontend artifacts
         uses: actions/download-artifact@v8
         with:
           name: frontend-assets
-          path: internal/webui/
+          path: /tmp/frontend-assets/
+
+      - name: Move frontend artifacts to webui (macOS fix)
+        run: |
+          mv /tmp/frontend-assets/* internal/webui/
+          rm -rf /tmp/frontend-assets/
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -241,15 +243,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Clear existing assets before extraction (macOS fix)
-        if: runner.os == 'macOS'
-        run: rm -rf internal/webui/assets internal/webui/index.html internal/webui/favicon.svg 2>/dev/null || true
-
       - name: Download frontend artifacts
         uses: actions/download-artifact@v8
         with:
           name: frontend-assets
-          path: internal/webui/
+          path: /tmp/frontend-assets/
+
+      - name: Move frontend artifacts to webui (macOS fix)
+        run: |
+          mv /tmp/frontend-assets/* internal/webui/
+          rm -rf /tmp/frontend-assets/
 
       - name: Setup Go
         uses: actions/setup-go@v6
