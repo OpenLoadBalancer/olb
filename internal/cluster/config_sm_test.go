@@ -444,7 +444,7 @@ func TestConfigStateMachine_OnConfigApplied(t *testing.T) {
 	select {
 	case cfg := <-callbackCalled:
 		if cfg == nil {
-			t.Error("Expected non-nil config in callback")
+			t.Fatal("Expected non-nil config in callback")
 		}
 		if len(cfg.Listeners) != 1 {
 			t.Errorf("Callback config listeners = %d, want 1", len(cfg.Listeners))

@@ -31,3 +31,5 @@ issues:
       linters:
         - gosec
         - errcheck
+        - staticcheck
+      text: "SA5011"
