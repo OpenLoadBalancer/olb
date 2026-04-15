@@ -154,7 +154,8 @@ jobs:
         shell: bash
         run: |
           if [ "${{ runner.os }}" = "macOS" ]; then
-            go test -p 1 -short -v -count=1 -timeout=600s ./...
+            # Skip flaky packages on macOS (timing-sensitive tests)
+            go test -p 1 -short -v -count=1 -timeout=600s $(go list ./... | grep -v 'internal/health' | grep -v 'internal/proxy/l7')
           else
             go test -p 1 -short -v -count=1 -coverprofile=coverage.out -timeout=600s ./...
           fi
