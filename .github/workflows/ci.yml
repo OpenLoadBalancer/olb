@@ -142,7 +142,7 @@ jobs:
 
       - name: Run tests
         shell: bash
-        run: go test -short -v -count=1 -coverprofile=coverage.out -timeout=300s ./...
+        run: go test -p 1 -short -v -count=1 -coverprofile=coverage.out -timeout=300s ./...
 
       - name: Generate coverage report
         shell: bash
