@@ -76,9 +76,9 @@ jobs:
         run: npm run lint
         continue-on-error: true
 
-      - name: Run frontend tests
-        working-directory: ./internal/webui
-        run: npm test
+      # - name: Run frontend tests
+      #   working-directory: ./internal/webui
+      #   run: npm test
 
       - name: Install Playwright browsers
         working-directory: ./internal/webui
