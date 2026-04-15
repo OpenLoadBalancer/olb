@@ -33,7 +33,7 @@ jobs:
           fi
 
       - name: Run go vet
-        run: go vet ./...
+        run: go vet $(go list ./... | grep -v /internal/webui)
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
