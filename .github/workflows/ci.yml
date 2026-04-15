@@ -117,7 +117,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download frontend artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: frontend-assets
           path: internal/webui/
@@ -197,7 +197,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download frontend artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: frontend-assets
           path: internal/webui/
@@ -231,7 +231,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download frontend artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: frontend-assets
           path: internal/webui/
@@ -450,7 +450,7 @@ jobs:
     needs: [build]
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: binaries
           path: bin/
