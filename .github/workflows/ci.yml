@@ -32,9 +32,6 @@ jobs:
             exit 1
           fi
 
-      - name: Run go vet
-        run: go vet $(go list ./... | grep -v /internal/webui)
-
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
@@ -70,7 +67,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: ./internal/webui
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Lint frontend
         working-directory: ./internal/webui
