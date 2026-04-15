@@ -488,7 +488,9 @@ func TestLoadDir_UnreadableDirectory(t *testing.T) {
 	}
 	defer os.Chmod(subDir, 0755) // restore for TempDir cleanup
 
-	pm := NewPluginManager(DefaultPluginManagerConfig())
+	pm := NewPluginManager(PluginManagerConfig{
+		AllowedPlugins: []string{"test-plugin"},
+	})
 	err := pm.LoadDir(subDir)
 	if err == nil {
 		t.Error("expected error for unreadable directory")
