@@ -32,7 +32,7 @@
     "lucide-react": "^0.460.0",
     "radix-ui": "^1.4.3",
     "react": "^19.2.5",
-    "react-dom": "^19.0.0",
+    "react-dom": "^19.2.5",
     "react-hook-form": "^7.60.0",
     "react-router": "^7.0.0",
 "sonner": "^1.7.0",
