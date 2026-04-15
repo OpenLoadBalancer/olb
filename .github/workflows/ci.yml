@@ -163,7 +163,7 @@ jobs:
       - name: Run tests (Windows)
         if: runner.os == 'Windows'
         shell: bash
-        run: go test -p 1 -short -v -count=1 -coverprofile=coverage.out -timeout=600s ./...
+        run: go test -p 1 -short -v -count=1 -coverprofile=coverage.out -timeout=600s $(go list ./... | grep -v 'test/e2e')
 
       - name: Generate coverage report
         if: runner.os != 'macOS'
