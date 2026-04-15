@@ -268,3 +268,207 @@ logging {
   #   compress    = true
   # }
 }
+
+# ---------------------------------------------------------------------------
+# WAF (Web Application Firewall)
+# ---------------------------------------------------------------------------
+waf {
+  enabled = true
+  mode    = "block"  # "enforce" (block), "monitor" (log only), "disabled"
+
+  ip_acl {
+    enabled = true
+
+    whitelist {
+      cidr   = "10.0.0.0/8"
+      reason = "Internal network"
+    }
+
+    whitelist {
+      cidr   = "192.168.0.0/16"
+      reason = "Office VPN"
+    }
+
+    blacklist {
+      cidr    = "203.0.113.0/24"
+      reason  = "Known attacker range"
+      expires = "2026-12-31T23:59:59Z"
+    }
+
+    auto_ban {
+      enabled     = true
+      default_ttl = "1h"
+      max_ttl     = "24h"
+    }
+  }
+
+  rate_limit {
+    enabled       = true
+    sync_interval = "5s"
+
+    store {
+      type = "memory"
+    }
+
+    rules {
+      id             = "global-limit"
+      scope          = "ip"
+      limit          = 100
+      window         = "1m"
+      burst          = 150
+      action         = "block"
+      auto_ban_after = 0
+    }
+  }
+
+  sanitizer {
+    enabled            = true
+    max_header_size    = 8192
+    max_header_count   = 50
+    max_body_size      = 10485760
+    max_url_length     = 2048
+    max_cookie_size    = 4096
+    max_cookie_count   = 20
+    block_null_bytes   = true
+    normalize_encoding = true
+    strip_hop_by_hop   = true
+    allowed_methods    = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+  }
+
+  detection {
+    enabled = true
+    mode    = "enforce"
+
+    threshold {
+      block = 50
+      log   = 25
+    }
+
+    detectors {
+      sqli {
+        enabled          = true
+        score_multiplier = 1.0
+      }
+      xss {
+        enabled          = true
+        score_multiplier = 1.0
+      }
+      path_traversal {
+        enabled          = true
+        score_multiplier = 1.0
+      }
+      cmdi {
+        enabled          = true
+        score_multiplier = 1.0
+      }
+      xxe {
+        enabled          = true
+        score_multiplier = 1.0
+      }
+      ssrf {
+        enabled          = true
+        score_multiplier = 1.0
+      }
+    }
+  }
+
+  bot_detection {
+    enabled = true
+    mode    = "enforce"
+
+    tls_fingerprint {
+      enabled           = true
+      known_bots_action = "log"
+      unknown_action    = "log"
+      mismatch_action   = "block"
+    }
+
+    user_agent {
+      enabled              = true
+      block_empty          = true
+      block_known_scanners = true
+    }
+
+    behavior {
+      enabled              = true
+      window               = "5m"
+      rps_threshold        = 100
+      error_rate_threshold = 50
+    }
+  }
+
+  response {
+    security_headers {
+      enabled                = true
+      x_content_type_options = true
+      x_frame_options        = "DENY"
+      referrer_policy        = "strict-origin-when-cross-origin"
+      permissions_policy     = "camera=(), microphone=(), geolocation=()"
+      content_security_policy = "default-src 'self'"
+
+      hsts {
+        enabled           = true
+        max_age           = 31536000
+        include_subdomains = true
+        preload           = false
+      }
+    }
+
+    data_masking {
+      enabled            = true
+      mask_credit_cards  = true
+      mask_ssn           = true
+      mask_emails        = false
+      mask_api_keys      = true
+      strip_stack_traces = true
+    }
+
+    error_pages {
+      enabled = true
+      mode    = "production"
+    }
+  }
+
+  logging {
+    level       = "info"
+    format      = "json"
+    log_allowed = false
+    log_blocked = true
+    log_body    = false
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Cluster configuration (Raft consensus)
+# ---------------------------------------------------------------------------
+cluster {
+  enabled        = false
+  node_id        = "node-1"
+  bind_addr      = "0.0.0.0"
+  bind_port      = 9090
+  data_dir       = "/var/lib/olb/raft"
+  election_tick  = "2s"
+  heartbeat_tick = "500ms"
+  peers          = ["node-2:10.0.1.11:9090", "node-3:10.0.1.12:9090"]
+
+  node_auth {
+    shared_secret    = "${CLUSTER_SECRET}"
+    allowed_node_ids = ["node-1", "node-2", "node-3"]
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Server tuning
+# ---------------------------------------------------------------------------
+server {
+  max_connections            = 10000
+  max_connections_per_source = 100
+  max_connections_per_backend = 1000
+  proxy_timeout              = "60s"
+  dial_timeout               = "10s"
+  max_retries                = 3
+  max_idle_conns             = 100
+  max_idle_conns_per_host    = 10
+  idle_conn_timeout          = "90s"
+  drain_timeout              = "30s"
+}

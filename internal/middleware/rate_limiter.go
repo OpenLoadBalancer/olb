@@ -218,7 +218,9 @@ func (m *RateLimitMiddleware) Wrap(next http.Handler) http.Handler {
 
 		if !allowed {
 			w.Header().Set("Retry-After", strconv.FormatInt(int64(retryAfter.Seconds()), 10))
-			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"error":"rate limit exceeded"}`))
 			return
 		}
 

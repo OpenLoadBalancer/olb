@@ -291,10 +291,16 @@ cluster:
   bind_port: 7946
   data_dir: "/var/lib/olb/cluster"
   peers:
-    - "10.0.0.11:7946"
-    - "10.0.0.12:7946"
+    - "olb-node-2:10.0.0.11:7946"
+    - "olb-node-3:10.0.0.12:7946"
   election_tick: "2s"
   heartbeat_tick: "500ms"
+  node_auth:
+    shared_secret: "${CLUSTER_SECRET}"  # Set via env var
+    allowed_node_ids:
+      - "olb-node-1"
+      - "olb-node-2"
+      - "olb-node-3"
 ```
 
 ```yaml
@@ -306,8 +312,16 @@ cluster:
   bind_port: 7946
   data_dir: "/var/lib/olb/cluster"
   peers:
-    - "10.0.0.10:7946"
-    - "10.0.0.12:7946"
+    - "olb-node-1:10.0.0.10:7946"
+    - "olb-node-3:10.0.0.12:7946"
+  election_tick: "2s"
+  heartbeat_tick: "500ms"
+  node_auth:
+    shared_secret: "${CLUSTER_SECRET}"
+    allowed_node_ids:
+      - "olb-node-1"
+      - "olb-node-2"
+      - "olb-node-3"
 ```
 
 ```yaml
@@ -319,8 +333,16 @@ cluster:
   bind_port: 7946
   data_dir: "/var/lib/olb/cluster"
   peers:
-    - "10.0.0.10:7946"
-    - "10.0.0.11:7946"
+    - "olb-node-1:10.0.0.10:7946"
+    - "olb-node-2:10.0.0.11:7946"
+  election_tick: "2s"
+  heartbeat_tick: "500ms"
+  node_auth:
+    shared_secret: "${CLUSTER_SECRET}"
+    allowed_node_ids:
+      - "olb-node-1"
+      - "olb-node-2"
+      - "olb-node-3"
 ```
 
 ### VIP with Keepalived
@@ -362,7 +384,7 @@ vrrp_instance VI_OLB {
 ```bash
 # /usr/local/bin/check_olb.sh
 #!/bin/bash
-curl -sf http://localhost:8081/api/v1/status >/dev/null || exit 1
+curl -sf http://localhost:8081/api/v1/system/health >/dev/null || exit 1
 ```
 
 ---
@@ -453,13 +475,13 @@ spec:
               cpu: "2000m"
           livenessProbe:
             httpGet:
-              path: /api/v1/status
+              path: /api/v1/system/health
               port: 8081
             initialDelaySeconds: 10
             periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /api/v1/status
+              path: /api/v1/system/health
               port: 8081
             initialDelaySeconds: 5
             periodSeconds: 5
@@ -813,16 +835,18 @@ echo "GET https://your-domain.com/" | vegeta attack \
 
 ```bash
 # Systemd health check
-curl -sf http://localhost:8081/api/v1/status | jq
+curl -sf http://localhost:8081/api/v1/system/health | jq
 
 # Expected output:
 {
-  "state": "running",
-  "uptime": "72h15m30s",
-  "version": "0.1.0",
-  "listeners": 2,
-  "pools": 3,
-  "routes": 5
+  "success": true,
+  "data": {
+    "status": "healthy",
+    "checks": {
+      "listeners": {"status": "up", "count": 2, "total": 2},
+      "backends": {"status": "up", "healthy": 5, "total": 5}
+    }
+  }
 }
 ```
 
@@ -859,11 +883,75 @@ systemctl reload olb
 
 # 5. Verify
 olb version
-curl http://localhost:8081/api/v1/status | jq .version
+curl http://localhost:8081/api/v1/version | jq .data.version
 ```
 
 ---
 
 ## Troubleshooting
 
-See [Troubleshooting Playbook](troubleshooting.md) for detailed debugging procedures.
+For detailed debugging procedures, see the [Troubleshooting Playbook](troubleshooting.md).
+
+### Common Issues
+
+**Symptom: All backends unhealthy**
+```bash
+# Check backend health status
+curl http://localhost:8081/api/v1/health | jq
+
+# Verify backend connectivity from OLB node
+curl -v http://10.0.1.10:8080/health
+
+# Check if health check path is correct in config
+curl http://localhost:8081/api/v1/config | jq '.data.pools[].health_check'
+```
+
+**Symptom: Config hot reload fails**
+```bash
+# Check reload error count
+curl http://localhost:8081/api/v1/system/info | jq '.data'
+
+# Verify new config is valid before reload
+olb config validate --config /etc/olb/olb.yaml
+
+# Check OLB logs for validation errors
+journalctl -u olb --since "5 minutes ago" | grep -i "reload\|config\|error"
+```
+
+**Symptom: High memory usage**
+```bash
+# Check memory profile
+curl http://localhost:8081/debug/pprof/heap > heap.prof
+go tool pprof heap.prof
+
+# Common causes:
+# - Connection pool too large (check max_idle_conns)
+# - Too many idle connections (reduce idle_conn_timeout)
+# - WAF detection score accumulation (check detection logging)
+```
+
+**Symptom: Cluster split-brain**
+```bash
+# Check Raft state on each node
+curl http://localhost:8081/api/v1/cluster/status | jq '.data.raft_state'
+
+# If multiple nodes claim leadership, check network connectivity
+# between nodes on the Raft port (default 7946)
+nc -zv 10.0.0.11 7946
+nc -zv 10.0.0.12 7946
+
+# Restart the minority partition node to force re-election
+systemctl restart olb
+```
+
+**Symptom: 502 Bad Gateway**
+```bash
+# Check if backends are healthy
+curl http://localhost:8081/api/v1/backends
+
+# Check if backend accepts connections
+curl -v http://10.0.1.10:8080/
+
+# Check backend response time — may be timing out
+# Increase proxy_timeout or dial_timeout in server config
+```

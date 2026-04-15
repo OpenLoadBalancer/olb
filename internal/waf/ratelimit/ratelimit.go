@@ -1,6 +1,8 @@
 package ratelimit
 
 import (
+	"encoding/json"
+	"log"
 	"net"
 	"net/http"
 	"path"
@@ -50,7 +52,14 @@ func New(cfg Config) *RateLimiter {
 	}
 
 	// Start cleanup goroutine
-	go rl.cleanupLoop()
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[ratelimit] panic recovered in cleanup: %v", r)
+			}
+		}()
+		rl.cleanupLoop()
+	}()
 
 	return rl
 }
@@ -93,7 +102,7 @@ func WriteRateLimitResponse(w http.ResponseWriter, retryAfter int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
 	w.WriteHeader(http.StatusTooManyRequests)
-	_, _ = w.Write([]byte(`{"error":"rate limit exceeded","layer":"rate_limit"}`))
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": "rate limit exceeded", "layer": "rate_limit"})
 }
 
 // AddRule adds a new rate limiting rule.

@@ -4,6 +4,7 @@ package admin
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -16,7 +17,9 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	resp := ErrorResponse(code, message)
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("admin: failed to encode error response: %v", err)
+	}
 }
 
 // writeSuccess writes a success response with data.
@@ -24,7 +27,9 @@ func writeSuccess(w http.ResponseWriter, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	resp := SuccessResponse(data)
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("admin: failed to encode success response: %v", err)
+	}
 }
 
 // readBody reads and returns the request body, limited to 1MB.

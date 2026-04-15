@@ -14,6 +14,7 @@ import (
 
 	"github.com/openloadbalancer/olb/internal/backend"
 	olbErrors "github.com/openloadbalancer/olb/pkg/errors"
+	"log"
 )
 
 // TCPProxyConfig configures TCP proxy behavior.
@@ -99,6 +100,11 @@ func (p *TCPProxy) Stop(ctx context.Context) error {
 	// Wait for connections to close with timeout
 	done := make(chan struct{})
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[tcp] panic recovered in drain: %v", r)
+			}
+		}()
 		p.connWg.Wait()
 		close(done)
 	}()
@@ -113,6 +119,9 @@ func (p *TCPProxy) Stop(ctx context.Context) error {
 
 // HandleConnection handles a single TCP connection.
 func (p *TCPProxy) HandleConnection(clientConn net.Conn) {
+	defer func() {
+		recover() // prevent a single connection panic from crashing the process
+	}()
 	defer clientConn.Close()
 
 	// Check max connections (atomic CAS to prevent TOCTOU overshoot)
@@ -238,18 +247,23 @@ func (p *TCPProxy) proxyConnections(clientConn, backendConn net.Conn) {
 // copyWithTimeout copies data with an idle timeout.
 // If IdleTimeout is 0, a default of 5 minutes is used to prevent goroutines
 // from blocking indefinitely on unresponsive connections.
+//
+// On Linux, io.CopyBuffer uses splice(2) via net.TCPConn.ReadFrom for
+// zero-copy transfer between TCP connections.
 func (p *TCPProxy) copyWithTimeout(dst, src net.Conn) error {
 	timeout := p.config.IdleTimeout
 	if timeout <= 0 {
 		timeout = 5 * time.Minute
 	}
 	buf := make([]byte, p.config.BufferSize)
+	if len(buf) == 0 {
+		buf = make([]byte, 32*1024)
+	}
 
 	for {
-		// Check context before each read to allow prompt cancellation
+		// Check context before each iteration to allow prompt cancellation
 		select {
 		case <-p.ctx.Done():
-			// Interrupt any pending read by setting a past deadline
 			src.SetReadDeadline(time.Now())
 			return p.ctx.Err()
 		default:
@@ -257,25 +271,18 @@ func (p *TCPProxy) copyWithTimeout(dst, src net.Conn) error {
 
 		src.SetReadDeadline(time.Now().Add(timeout))
 
-		nr, err := src.Read(buf)
-		if nr > 0 {
-			src.SetReadDeadline(time.Time{})
-
-			nw, writeErr := dst.Write(buf[:nr])
-			if writeErr != nil {
-				return writeErr
-			}
-			if nw != nr {
-				return io.ErrShortWrite
-			}
-		}
-
+		n, err := io.CopyBuffer(dst, src, buf)
 		if err != nil {
-			if isNormalCloseError(err) {
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
+				if n > 0 {
+					continue
+				}
 				return nil
 			}
 			return err
 		}
+		return nil
 	}
 }
 
@@ -533,38 +540,33 @@ func CopyBidirectional(conn1, conn2 net.Conn, idleTimeout time.Duration) (int64,
 // copyWithBuffer copies data with a buffer and idle timeout.
 // If idleTimeout is 0, a default of 5 minutes is used to prevent goroutines
 // from blocking indefinitely on unresponsive connections.
+//
+// On Linux, io.CopyBuffer uses splice(2) via net.TCPConn.ReadFrom for
+// zero-copy transfer between TCP connections.
 func copyWithBuffer(dst, src net.Conn, idleTimeout time.Duration) (int64, error) {
-	buf := make([]byte, 32*1024)
-	var total int64
-
 	timeout := idleTimeout
 	if timeout <= 0 {
 		timeout = 5 * time.Minute
 	}
+	buf := make([]byte, 32*1024)
+	var total int64
 
 	for {
 		src.SetReadDeadline(time.Now().Add(timeout))
 
-		nr, err := src.Read(buf)
-		if nr > 0 {
-			src.SetReadDeadline(time.Time{})
-
-			nw, writeErr := dst.Write(buf[:nr])
-			total += int64(nw)
-			if writeErr != nil {
-				return total, writeErr
-			}
-			if nw != nr {
-				return total, io.ErrShortWrite
-			}
-		}
-
+		n, err := io.CopyBuffer(dst, src, buf)
+		total += n
 		if err != nil {
-			if isNormalCloseError(err) {
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
+				if n > 0 {
+					continue
+				}
 				return total, nil
 			}
 			return total, err
 		}
+		return total, nil
 	}
 }
 

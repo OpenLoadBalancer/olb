@@ -251,3 +251,182 @@ format = "json"
 # max_backups = 5
 # max_age     = 30
 # compress    = true
+
+# ---------------------------------------------------------------------------
+# WAF (Web Application Firewall)
+# ---------------------------------------------------------------------------
+[waf]
+enabled = true
+mode    = "block"  # "enforce" (block), "monitor" (log only), "disabled"
+
+  [waf.ip_acl]
+  enabled = true
+
+    [[waf.ip_acl.whitelist]]
+    cidr   = "10.0.0.0/8"
+    reason = "Internal network"
+
+    [[waf.ip_acl.whitelist]]
+    cidr   = "192.168.0.0/16"
+    reason = "Office VPN"
+
+    [[waf.ip_acl.blacklist]]
+    cidr    = "203.0.113.0/24"
+    reason  = "Known attacker range"
+    expires = "2026-12-31T23:59:59Z"
+
+    [waf.ip_acl.auto_ban]
+    enabled     = true
+    default_ttl = "1h"
+    max_ttl     = "24h"
+
+  [waf.rate_limit]
+  enabled       = true
+  sync_interval = "5s"
+
+    [waf.rate_limit.store]
+    type = "memory"
+
+    [[waf.rate_limit.rules]]
+    id           = "global-limit"
+    scope        = "ip"
+    limit        = 100
+    window       = "1m"
+    burst        = 150
+    action       = "block"
+    auto_ban_after = 0
+
+  [waf.sanitizer]
+  enabled            = true
+  max_header_size    = 8192
+  max_header_count   = 50
+  max_body_size      = 10485760
+  max_url_length     = 2048
+  max_cookie_size    = 4096
+  max_cookie_count   = 20
+  block_null_bytes   = true
+  normalize_encoding = true
+  strip_hop_by_hop   = true
+  allowed_methods    = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+
+  [waf.detection]
+  enabled = true
+  mode    = "enforce"
+
+    [waf.detection.threshold]
+    block = 50
+    log   = 25
+
+    [waf.detection.detectors]
+
+      [waf.detection.detectors.sqli]
+      enabled          = true
+      score_multiplier = 1.0
+
+      [waf.detection.detectors.xss]
+      enabled          = true
+      score_multiplier = 1.0
+
+      [waf.detection.detectors.path_traversal]
+      enabled          = true
+      score_multiplier = 1.0
+
+      [waf.detection.detectors.cmdi]
+      enabled          = true
+      score_multiplier = 1.0
+
+      [waf.detection.detectors.xxe]
+      enabled          = true
+      score_multiplier = 1.0
+
+      [waf.detection.detectors.ssrf]
+      enabled          = true
+      score_multiplier = 1.0
+
+  [waf.bot_detection]
+  enabled = true
+  mode    = "enforce"
+
+    [waf.bot_detection.tls_fingerprint]
+    enabled          = true
+    known_bots_action = "log"
+    unknown_action   = "log"
+    mismatch_action  = "block"
+
+    [waf.bot_detection.user_agent]
+    enabled              = true
+    block_empty          = true
+    block_known_scanners = true
+
+    [waf.bot_detection.behavior]
+    enabled              = true
+    window               = "5m"
+    rps_threshold        = 100
+    error_rate_threshold = 50
+
+  [waf.response]
+
+    [waf.response.security_headers]
+    enabled                = true
+    x_content_type_options = true
+    x_frame_options        = "DENY"
+    referrer_policy        = "strict-origin-when-cross-origin"
+    permissions_policy     = "camera=(), microphone=(), geolocation=()"
+    content_security_policy = "default-src 'self'"
+
+      [waf.response.security_headers.hsts]
+      enabled           = true
+      max_age           = 31536000
+      include_subdomains = true
+      preload           = false
+
+    [waf.response.data_masking]
+    enabled            = true
+    mask_credit_cards  = true
+    mask_ssn           = true
+    mask_emails        = false
+    mask_api_keys      = true
+    strip_stack_traces = true
+
+    [waf.response.error_pages]
+    enabled = true
+    mode    = "production"
+
+  [waf.logging]
+  level       = "info"
+  format      = "json"
+  log_allowed = false
+  log_blocked = true
+  log_body    = false
+
+# ---------------------------------------------------------------------------
+# Cluster configuration (Raft consensus)
+# ---------------------------------------------------------------------------
+[cluster]
+enabled        = false
+node_id        = "node-1"
+bind_addr      = "0.0.0.0"
+bind_port      = 9090
+data_dir       = "/var/lib/olb/raft"
+election_tick  = "2s"
+heartbeat_tick = "500ms"
+peers          = ["node-2:10.0.1.11:9090", "node-3:10.0.1.12:9090"]
+
+  [cluster.node_auth]
+  shared_secret    = "${CLUSTER_SECRET}"
+  allowed_node_ids = ["node-1", "node-2", "node-3"]
+
+# ---------------------------------------------------------------------------
+# Server tuning
+# ---------------------------------------------------------------------------
+[server]
+max_connections            = 10000
+max_connections_per_source = 100
+max_connections_per_backend = 1000
+proxy_timeout              = "60s"
+dial_timeout               = "10s"
+max_retries                = 3
+max_idle_conns             = 100
+max_idle_conns_per_host    = 10
+idle_conn_timeout          = "90s"
+drain_timeout              = "30s"

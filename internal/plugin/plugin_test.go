@@ -1014,6 +1014,149 @@ func TestPluginManager_LoadPlugin_InvalidFile(t *testing.T) {
 	}
 }
 
+// --------------------------------------------------------------------------
+// Tests: LoadDir with AllowedPlugins set (exercises full code path)
+// The existing LoadDir tests in plugin_test.go use DefaultPluginManagerConfig()
+// which has empty AllowedPlugins, so they only hit the early-return path.
+// These tests set AllowedPlugins to exercise the actual directory-reading code.
+// --------------------------------------------------------------------------
+
+func TestLoadDir_WithAllowedPlugins_EmptyDir(t *testing.T) {
+	dir := t.TempDir()
+
+	cfg := PluginManagerConfig{
+		AllowedPlugins: []string{"some-plugin"},
+	}
+	pm := NewPluginManager(cfg)
+
+	err := pm.LoadDir(dir)
+	if err != nil {
+		t.Fatalf("LoadDir() error = %v", err)
+	}
+	if len(pm.ListPlugins()) != 0 {
+		t.Errorf("plugins count = %d, want 0", len(pm.ListPlugins()))
+	}
+}
+
+func TestLoadDir_WithAllowedPlugins_NonexistentDir(t *testing.T) {
+	cfg := PluginManagerConfig{
+		AllowedPlugins: []string{"some-plugin"},
+	}
+	pm := NewPluginManager(cfg)
+
+	err := pm.LoadDir("/nonexistent/plugin/directory/with/allowlist")
+	if err != nil {
+		t.Fatalf("LoadDir() should not error for nonexistent directory, got: %v", err)
+	}
+}
+
+func TestLoadDir_WithAllowedPlugins_NonSoFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	for _, name := range []string{"readme.txt", "config.yaml", "script.sh"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("test"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg := PluginManagerConfig{
+		AllowedPlugins: []string{"some-plugin"},
+	}
+	pm := NewPluginManager(cfg)
+
+	err := pm.LoadDir(dir)
+	if err != nil {
+		t.Fatalf("LoadDir() error = %v", err)
+	}
+	if len(pm.ListPlugins()) != 0 {
+		t.Errorf("plugins count = %d, want 0", len(pm.ListPlugins()))
+	}
+}
+
+func TestLoadDir_WithAllowedPlugins_InvalidSoFile(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a fake .so file — LoadPlugin will fail to open it, but the
+	// directory scanning and .so detection code path is exercised.
+	fakeSo := filepath.Join(dir, "fake.so")
+	if err := os.WriteFile(fakeSo, []byte("not-a-real-plugin"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := PluginManagerConfig{
+		AllowedPlugins: []string{"fake"},
+	}
+	pm := NewPluginManager(cfg)
+
+	// LoadDir should not return an error — individual load failures are logged
+	// but don't fail the batch.
+	err := pm.LoadDir(dir)
+	if err != nil {
+		t.Fatalf("LoadDir() error = %v", err)
+	}
+
+	// Plugin should not be loaded since the .so is invalid
+	if len(pm.ListPlugins()) != 0 {
+		t.Errorf("plugins count = %d, want 0", len(pm.ListPlugins()))
+	}
+}
+
+func TestLoadDir_WithAllowedPlugins_SkipsDirectories(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a subdirectory named .so — should be skipped (entry.IsDir() check)
+	if err := os.Mkdir(filepath.Join(dir, "subdir.so"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Create a .so-named file alongside it
+	if err := os.WriteFile(filepath.Join(dir, "real.so"), []byte("fake"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := PluginManagerConfig{
+		AllowedPlugins: []string{"real"},
+	}
+	pm := NewPluginManager(cfg)
+
+	err := pm.LoadDir(dir)
+	if err != nil {
+		t.Fatalf("LoadDir() error = %v", err)
+	}
+	// real.so fails to load (invalid .so), subdir.so was skipped entirely
+	if len(pm.ListPlugins()) != 0 {
+		t.Errorf("plugins count = %d, want 0", len(pm.ListPlugins()))
+	}
+}
+
+func TestLoadDir_WithAllowedPlugins_MultipleSoFiles_AllInvalid(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create multiple fake .so files — all should fail individually but LoadDir succeeds
+	for i := 0; i < 3; i++ {
+		name := fmt.Sprintf("plugin-%d.so", i)
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("fake"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg := PluginManagerConfig{
+		AllowedPlugins: []string{"plugin-0", "plugin-1", "plugin-2"},
+	}
+	pm := NewPluginManager(cfg)
+
+	err := pm.LoadDir(dir)
+	if err != nil {
+		t.Fatalf("LoadDir() error = %v (should succeed even when individual loads fail)", err)
+	}
+	if len(pm.ListPlugins()) != 0 {
+		t.Errorf("plugins count = %d, want 0 (all invalid .so)", len(pm.ListPlugins()))
+	}
+}
+
+// --------------------------------------------------------------------------
+// Tests: Concurrent access safety
+// --------------------------------------------------------------------------
+
 func TestPluginManager_ConcurrentAccess(t *testing.T) {
 	pm := NewPluginManager(DefaultPluginManagerConfig())
 

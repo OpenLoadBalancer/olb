@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -214,6 +215,11 @@ func (cm *ClusterManager) Leave() error {
 	// Drain phase: wait for in-flight connections to complete
 	drainDone := make(chan struct{})
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[cluster] panic recovered in drain: %v", r)
+			}
+		}()
 		defer close(drainDone)
 
 		// If a connection drainer is available, poll until connections reach zero
@@ -444,7 +450,9 @@ func writeJSON(w http.ResponseWriter, statusCode int, data any) {
 		Success: statusCode >= 200 && statusCode < 300,
 		Data:    data,
 	}
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("cluster: failed to encode JSON response: %v", err)
+	}
 }
 
 // writeJSONError writes a JSON error response.
@@ -458,7 +466,9 @@ func writeJSONError(w http.ResponseWriter, statusCode int, code, message string)
 			Message: message,
 		},
 	}
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("cluster: failed to encode JSON error response: %v", err)
+	}
 }
 
 // FormatMembersTable formats the members list as a text table.

@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"log"
 	"time"
 )
 
@@ -160,6 +161,11 @@ func (g *Gossip) handlePingReq(payload []byte, from string) {
 
 	// Wait for ACK from target, then relay to original requester.
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[gossip] panic recovered in relay: %v", r)
+			}
+		}()
 		select {
 		case <-ackCh:
 			// Target responded; relay ACK to requester.

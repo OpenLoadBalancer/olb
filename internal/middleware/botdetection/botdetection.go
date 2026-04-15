@@ -3,6 +3,7 @@ package botdetection
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"path"
@@ -341,7 +342,8 @@ func (m *Middleware) determineAction(info BotInfo) Action {
 func (m *Middleware) block(w http.ResponseWriter, r *http.Request, info BotInfo) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusForbidden)
-	_, _ = w.Write([]byte(`{"error":"Access denied","reason":"bot detected","type":"` + info.Type + `"}`))
+	resp, _ := json.Marshal(map[string]string{"error": "Access denied", "reason": "bot detected", "type": info.Type})
+	_, _ = w.Write(resp)
 }
 
 // challenge redirects to challenge page.

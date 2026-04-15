@@ -13,6 +13,7 @@ import (
 	"github.com/openloadbalancer/olb/internal/listener"
 	"github.com/openloadbalancer/olb/internal/security"
 	olbTLS "github.com/openloadbalancer/olb/internal/tls"
+	"log"
 )
 
 // createMTLSListener creates an HTTPS listener with mTLS (mutual TLS) support.
@@ -106,6 +107,11 @@ func (l *mtlsHTTPSListener) Start() error {
 
 	// Use ListenAndServeTLS with empty cert/key since tlsConfig has GetCertificate
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[mTLS] panic recovered in listener: %v", r)
+			}
+		}()
 		err := srv.ListenAndServeTLS("", "")
 		if err != nil && err != http.ErrServerClosed {
 			l.mu.Lock()

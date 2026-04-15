@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 )
@@ -356,6 +357,11 @@ func (m *Manager) AggregateEvents() <-chan *Event {
 		wg.Add(1)
 		go func(p Provider) {
 			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[discovery] panic recovered in event forwarder: %v", r)
+				}
+			}()
 			for event := range p.Events() {
 				select {
 				case agg <- event:
@@ -368,6 +374,11 @@ func (m *Manager) AggregateEvents() <-chan *Event {
 
 	// Close aggregated channel when all forwarders finish
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[discovery] panic recovered in forwarder: %v", r)
+			}
+		}()
 		wg.Wait()
 		close(agg)
 	}()

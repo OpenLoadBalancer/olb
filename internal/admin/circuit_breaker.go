@@ -100,6 +100,11 @@ func (acb *adminCircuitBreaker) Execute(ctx context.Context, fn func(ctx context
 
 	done := make(chan error, 1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				done <- fmt.Errorf("panic in admin handler: %v", r)
+			}
+		}()
 		done <- fn(callCtx)
 	}()
 

@@ -2,6 +2,7 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -33,23 +34,24 @@ type CORSMiddleware struct {
 }
 
 // NewCORSMiddleware creates a new CORS middleware.
-func NewCORSMiddleware(config CORSConfig) *CORSMiddleware {
-	m := &CORSMiddleware{
-		config:         config,
-		allowedOrigins: make(map[string]bool),
-		allowedHeaders: make(map[string]bool),
-		allowedMethods: make(map[string]bool),
-	}
-
-	// Process allowed origins
+// Returns an error if the configuration is invalid (e.g., wildcard origin
+// combined with AllowCredentials).
+func NewCORSMiddleware(config CORSConfig) (*CORSMiddleware, error) {
 	// Reject wildcard origins when credentials are enabled to prevent
 	// effectively disabling same-origin policy for credentialed requests.
 	if config.AllowCredentials {
 		for _, origin := range config.AllowedOrigins {
 			if origin == "*" {
-				panic("CORS misconfiguration: AllowedOrigins cannot contain '*' when AllowCredentials is true — specify explicit origins instead")
+				return nil, errors.New("CORS misconfiguration: AllowedOrigins cannot contain '*' when AllowCredentials is true — specify explicit origins instead")
 			}
 		}
+	}
+
+	m := &CORSMiddleware{
+		config:         config,
+		allowedOrigins: make(map[string]bool),
+		allowedHeaders: make(map[string]bool),
+		allowedMethods: make(map[string]bool),
 	}
 	for _, origin := range config.AllowedOrigins {
 		if origin == "*" {
@@ -83,7 +85,7 @@ func NewCORSMiddleware(config CORSConfig) *CORSMiddleware {
 		m.maxAgeStr = strconv.Itoa(int(config.MaxAge.Seconds()))
 	}
 
-	return m
+	return m, nil
 }
 
 // Name returns the middleware name.

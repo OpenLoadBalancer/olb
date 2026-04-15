@@ -295,6 +295,11 @@ func Apply(cfg ProfileConfig) (cleanup func(), err error) {
 			Handler: mux,
 		}
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[profiling] panic recovered in server: %v", r)
+				}
+			}()
 			// ListenAndServe returns ErrServerClosed on clean shutdown.
 			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				log.Printf("profiling: server error: %v", err)

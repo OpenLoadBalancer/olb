@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"math/rand"
 	"net"
 	"strconv"
 	"sync"
@@ -315,16 +316,20 @@ func (c *Cluster) incrementTerm() uint64 {
 	return c.currentTerm.Add(1)
 }
 
-// resetElectionTimer resets the election timer.
+// resetElectionTimer resets the election timer with randomized jitter.
+// Uses ElectionTick to 3*ElectionTick range for split vote prevention.
 func (c *Cluster) resetElectionTimer() {
 	c.timerMu.Lock()
 	if c.electionTimer != nil {
 		c.electionTimer.Stop()
 	}
 
-	// Random timeout between 150ms and 300ms (to avoid split votes)
-	timeout := 150*time.Millisecond + time.Duration(time.Now().UnixNano()%150)*time.Millisecond
-	c.electionTimer = time.NewTimer(timeout)
+	base := c.config.ElectionTick
+	if base <= 0 {
+		base = 300 * time.Millisecond
+	}
+	jitter := time.Duration(rand.Int63n(int64(2 * base)))
+	c.electionTimer = time.NewTimer(base + jitter)
 	c.timerMu.Unlock()
 }
 
@@ -396,6 +401,11 @@ func (c *Cluster) startElection() {
 
 	for _, addr := range peers {
 		go func(addr string) {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[raft] panic recovered in RequestVote RPC to %s: %v", addr, r)
+				}
+			}()
 
 			if c.transport != nil {
 				// Send real RPC via TCPTransport
@@ -433,6 +443,11 @@ func (c *Cluster) startElection() {
 
 	select {
 	case <-done:
+		// Abort if stepped down via HandleRequestVote (tiebreaker or higher term)
+		if c.GetState() != StateCandidate {
+			c.resetElectionTimer()
+			return
+		}
 		votesMu.Lock()
 		v := votes
 		votesMu.Unlock()
@@ -443,7 +458,11 @@ func (c *Cluster) startElection() {
 			c.resetElectionTimer()
 		}
 	case <-time.After(c.config.ElectionTick):
-		// Election timeout
+		// Abort if stepped down via HandleRequestVote
+		if c.GetState() != StateCandidate {
+			c.resetElectionTimer()
+			return
+		}
 		c.setState(StateFollower)
 		c.resetElectionTimer()
 	}
@@ -584,6 +603,11 @@ func (c *Cluster) handleCommand(cmd *Command) {
 	var once sync.Once
 
 	replicatePeer := func(p peerInfo) {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[raft] panic recovered in replication to %s: %v", p.address, r)
+			}
+		}()
 		if c.transport == nil {
 			// Local/test mode: simulate successful replication
 			successMu.Lock()
@@ -664,6 +688,11 @@ func (c *Cluster) maybeCompactLog() {
 	}
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[raft] panic recovered in compaction: %v", r)
+			}
+		}()
 		select {
 		case <-c.stopCh:
 			return
@@ -836,6 +865,17 @@ func (c *Cluster) HandleRequestVote(req *RequestVote) *RequestVoteResponse {
 	}
 
 	votedFor, _ := c.votedFor.Load().(string)
+
+	// Split vote tiebreaker: if this node is a candidate in the same term and
+	// has already voted for itself, step down for the candidate with the higher
+	// NodeID. This deterministically breaks split votes where multiple candidates
+	// start elections simultaneously after leader death.
+	if votedFor == c.config.NodeID && req.Term == c.GetTerm() && req.CandidateID > c.config.NodeID {
+		c.setState(StateFollower)
+		c.votedFor.Store("")
+		votedFor = ""
+	}
+
 	if (votedFor == "" || votedFor == req.CandidateID) && c.isLogUpToDate(req.LastLogIndex, req.LastLogTerm) {
 		c.votedFor.Store(req.CandidateID)
 		c.resetElectionTimer()

@@ -142,6 +142,10 @@ type Logger struct {
 	fields []Field
 	mu     sync.RWMutex
 	name   string
+
+	// ExitFunc is called when Fatal/Fatalf is invoked.
+	// Defaults to os.Exit(1). Override in tests or to allow graceful shutdown.
+	ExitFunc func(code int)
 }
 
 // Output is the interface for log outputs.
@@ -153,8 +157,9 @@ type Output interface {
 // New creates a new Logger with the given output.
 func New(output Output) *Logger {
 	l := &Logger{
-		output: output,
-		fields: nil,
+		output:   output,
+		fields:   nil,
+		ExitFunc: os.Exit,
 	}
 	l.level.Store(int32(InfoLevel))
 	return l
@@ -236,7 +241,9 @@ func (l *Logger) log(level Level, msg string, fields []Field) {
 
 	// Fatal exits
 	if level == FatalLevel {
-		os.Exit(1)
+		if l.ExitFunc != nil {
+			l.ExitFunc(1)
+		}
 	}
 }
 

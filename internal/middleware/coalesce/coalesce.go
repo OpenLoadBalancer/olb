@@ -4,6 +4,7 @@ package coalesce
 import (
 	"bytes"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -203,6 +204,11 @@ func (m *Middleware) executeRequest(w http.ResponseWriter, r *http.Request, next
 
 	// Clean up after TTL
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[coalesce] panic recovered in cleanup: %v", r)
+			}
+		}()
 		select {
 		case <-time.After(m.config.TTL):
 		case <-m.done:

@@ -13,15 +13,16 @@ import (
 
 // Config configures logging middleware.
 type Config struct {
-	Enabled         bool     // Enable logging
-	Format          string   // Format: "json", "combined", "common", "custom"
-	CustomFormat    string   // Custom log format template
-	Fields          []string // Fields to include: "timestamp", "method", "path", "status", "duration", "bytes", "ip", "user_agent", "referer", "request_id"
-	ExcludePaths    []string // Paths to exclude from logging
-	ExcludeStatus   []int    // Status codes to exclude
-	MinDuration     string   // Only log requests slower than this (e.g., "100ms")
-	RequestHeaders  []string // Request headers to log
-	ResponseHeaders []string // Response headers to log
+	Enabled         bool             // Enable logging
+	Format          string           // Format: "json", "combined", "common", "custom"
+	CustomFormat    string           // Custom log format template
+	Fields          []string         // Fields to include: "timestamp", "method", "path", "status", "duration", "bytes", "ip", "user_agent", "referer", "request_id"
+	ExcludePaths    []string         // Paths to exclude from logging
+	ExcludeStatus   []int            // Status codes to exclude
+	MinDuration     string           // Only log requests slower than this (e.g., "100ms")
+	RequestHeaders  []string         // Request headers to log
+	ResponseHeaders []string         // Response headers to log
+	LogFunc         func(msg string) // Optional log output function; defaults to fmt.Println
 }
 
 // DefaultConfig returns default logging configuration.
@@ -39,6 +40,7 @@ func DefaultConfig() Config {
 type Middleware struct {
 	config      Config
 	minDuration time.Duration
+	logFunc     func(msg string)
 }
 
 // responseRecorder wraps http.ResponseWriter to capture status and size.
@@ -62,6 +64,7 @@ func New(config Config) *Middleware {
 	return &Middleware{
 		config:      config,
 		minDuration: minDuration,
+		logFunc:     config.LogFunc,
 	}
 }
 
@@ -115,8 +118,12 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 		// Build log entry
 		entry := m.buildLogEntry(r, rec, duration, start)
 
-		// Output log (using fmt for now, could integrate with logging package)
-		fmt.Println(entry)
+		// Output log
+		if m.logFunc != nil {
+			m.logFunc(entry)
+		} else {
+			fmt.Println(entry)
+		}
 	})
 }
 

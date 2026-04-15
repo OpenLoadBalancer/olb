@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/openloadbalancer/olb/internal/admin"
+	"log"
 	"os"
 	"strconv"
 	"sync"
@@ -173,6 +174,11 @@ func (t *TUI) fetchData() {
 
 	go func() {
 		defer wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[tui] panic recovered in FetchSystemInfo: %v", r)
+			}
+		}()
 		if info, err := t.fetcher.FetchSystemInfo(); err == nil {
 			mu.Lock()
 			data.SystemInfo = info
@@ -184,6 +190,11 @@ func (t *TUI) fetchData() {
 
 	go func() {
 		defer wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[tui] panic recovered in FetchBackends: %v", r)
+			}
+		}()
 		if pools, err := t.fetcher.FetchBackends(); err == nil {
 			mu.Lock()
 			data.Pools = pools
@@ -193,6 +204,11 @@ func (t *TUI) fetchData() {
 
 	go func() {
 		defer wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[tui] panic recovered in FetchRoutes: %v", r)
+			}
+		}()
 		if routes, err := t.fetcher.FetchRoutes(); err == nil {
 			mu.Lock()
 			data.Routes = routes
@@ -202,6 +218,11 @@ func (t *TUI) fetchData() {
 
 	go func() {
 		defer wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[tui] panic recovered in FetchHealth: %v", r)
+			}
+		}()
 		if health, err := t.fetcher.FetchHealth(); err == nil {
 			mu.Lock()
 			data.Health = health

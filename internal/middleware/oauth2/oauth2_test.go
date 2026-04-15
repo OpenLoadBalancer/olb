@@ -1807,9 +1807,9 @@ func TestAudience_UnmarshalJSON_Invalid(t *testing.T) {
 	}
 }
 
-// --- jsonEscape test ---
+// --- JSON escaping test (previously jsonEscape, now handled by json.Marshal) ---
 
-func TestJsonEscape(t *testing.T) {
+func TestJSONEscape(t *testing.T) {
 	tests := []struct {
 		input  string
 		substr string // substring that must appear in output
@@ -1818,9 +1818,13 @@ func TestJsonEscape(t *testing.T) {
 		{`<script>`, `\u003cscript\u003e`},
 	}
 	for _, tt := range tests {
-		got := jsonEscape(tt.input)
+		data, err := json.Marshal(map[string]string{"msg": tt.input})
+		if err != nil {
+			t.Fatalf("Marshal error: %v", err)
+		}
+		got := string(data)
 		if !strings.Contains(got, tt.substr) {
-			t.Errorf("jsonEscape(%q) = %q, want to contain %q", tt.input, got, tt.substr)
+			t.Errorf("json.Marshal(%q) = %q, want to contain %q", tt.input, got, tt.substr)
 		}
 	}
 }

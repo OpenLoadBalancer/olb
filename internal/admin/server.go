@@ -496,7 +496,14 @@ func newRateLimiter(maxReqs int, windowStr string) *rateLimiter {
 		window:   window,
 		stopCh:   make(chan struct{}),
 	}
-	go rl.cleanupLoop()
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[admin] panic recovered in rate limiter cleanup: %v", r)
+			}
+		}()
+		rl.cleanupLoop()
+	}()
 	return rl
 }
 
@@ -537,6 +544,7 @@ func (rl *rateLimiter) middleware(next http.Handler) http.Handler {
 		if !exists || time.Since(v.lastSeen) > rl.window {
 			if !exists && len(rl.visitors) >= maxVisitors {
 				rl.mu.Unlock()
+				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("Retry-After", strconv.FormatFloat(rl.window.Seconds(), 'f', 0, 64))
 				w.WriteHeader(http.StatusTooManyRequests)
 				_, _ = w.Write([]byte(`{"error":"rate limit exceeded"}`))
@@ -551,6 +559,7 @@ func (rl *rateLimiter) middleware(next http.Handler) http.Handler {
 		v.lastSeen = time.Now()
 		if v.count > rl.maxReqs {
 			rl.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Retry-After", strconv.FormatFloat(rl.window.Seconds(), 'f', 0, 64))
 			w.WriteHeader(http.StatusTooManyRequests)
 			_, _ = w.Write([]byte(`{"error":"rate limit exceeded"}`))

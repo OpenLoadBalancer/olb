@@ -23,6 +23,12 @@ func (e *Engine) IsRunning() bool {
 	return e.state == StateRunning
 }
 
+// Done returns a channel that is closed when the engine shuts down.
+// Callers can block on this to wait for the engine to stop.
+func (e *Engine) Done() <-chan struct{} {
+	return e.stopCh
+}
+
 // GetState returns the current engine state.
 func (e *Engine) GetState() State {
 	e.mu.RLock()

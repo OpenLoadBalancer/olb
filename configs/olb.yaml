@@ -275,8 +275,6 @@ middleware:
     error_threshold: 50
   retry:
     enabled: true
-  cache:
-    enabled: false
   jwt:
     enabled: false
     secret: ""              # HMAC secret for HS256/HS384/HS512 algorithms
@@ -351,7 +349,6 @@ middleware:
   api_key:
     enabled: false
     header: "X-API-Key"     # Header to check for API key
-    query_param: "api_key"  # Query parameter alternative
     hash: "sha256"          # Key storage: "sha256" or "plain"
     keys:                   # key_id: api_key_hash (generate with: echo -n "your-key" | sha256sum)
       # service-a: "REPLACE_WITH_SHA256_HASH_OF_YOUR_API_KEY"
@@ -382,12 +379,199 @@ middleware:
 # WAF (Web Application Firewall)
 waf:
   enabled: true
-  mode: block
+  mode: block                    # "enforce" (block), "monitor" (log only), "disabled"
+
+  # IP Access Control Lists
+  ip_acl:
+    enabled: true
+    whitelist:                   # IPs/CIDRs always allowed
+      - cidr: "10.0.0.0/8"
+        reason: "Internal network"
+      - cidr: "192.168.0.0/16"
+        reason: "Office VPN"
+    blacklist:                   # IPs/CIDRs always blocked
+      - cidr: "203.0.113.0/24"
+        reason: "Known attacker range"
+        expires: "2026-12-31T23:59:59Z"
+    auto_ban:
+      enabled: true
+      default_ttl: "1h"         # Ban duration for auto-detected attackers
+      max_ttl: "24h"            # Maximum ban duration
+
+  # WAF-integrated rate limiting
+  rate_limit:
+    enabled: true
+    sync_interval: "5s"         # Counter sync interval for clustered mode
+    store:
+      type: "memory"            # "memory" or "redis"
+      # address: "redis:6379"   # Required for redis store
+      # password: ""            # Redis password (use env var in production)
+      database: 0
+    rules:
+      - id: "global-limit"
+        scope: "ip"             # "ip", "path", "ip+path", "header:X-API-Key", "global"
+        limit: 100
+        window: "1m"
+        burst: 150
+        action: "block"         # "block" or "throttle"
+        auto_ban_after: 0       # Auto-ban after N violations (0 = disabled)
+      - id: "api-endpoint"
+        scope: "ip+path"
+        paths:
+          - "/api/*"
+        limit: 50
+        window: "1m"
+        burst: 75
+        action: "throttle"
+
+  # Request sanitization
+  sanitizer:
+    enabled: true
+    max_header_size: 8192        # Max header value size in bytes
+    max_header_count: 50         # Max number of headers per request
+    max_body_size: 10485760      # Max request body size (10 MB)
+    max_url_length: 2048         # Max URL length
+    max_cookie_size: 4096        # Max cookie size
+    max_cookie_count: 20         # Max number of cookies
+    block_null_bytes: true       # Block requests containing null bytes
+    normalize_encoding: true     # Normalize percent-encoded characters
+    strip_hop_by_hop: true       # Remove hop-by-hop headers
+    allowed_methods:             # Only these HTTP methods are permitted
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - PATCH
+      - HEAD
+      - OPTIONS
+
+  # Threat detection engine
+  detection:
+    enabled: true
+    mode: "enforce"              # "enforce" (block) or "monitor" (log only)
+    threshold:
+      block: 50                  # Score threshold to block request
+      log: 25                    # Score threshold to log request
+    detectors:
+      sqli:
+        enabled: true
+        score_multiplier: 1.0
+      xss:
+        enabled: true
+        score_multiplier: 1.0
+      path_traversal:
+        enabled: true
+        score_multiplier: 1.0
+      cmdi:                      # Command injection
+        enabled: true
+        score_multiplier: 1.0
+      xxe:                       # XML External Entity
+        enabled: true
+        score_multiplier: 1.0
+      ssrf:                      # Server-Side Request Forgery
+        enabled: true
+        score_multiplier: 1.0
+    exclusions:                  # Paths excluded from specific detectors
+      - path: "/api/webhook"
+        detectors:
+          - sqli
+        reason: "Third-party webhook with encoded SQL content"
+        condition: "whitelist"
+
+  # Bot detection
+  bot_detection:
+    enabled: true
+    mode: "enforce"              # "enforce" or "monitor"
+    tls_fingerprint:             # JA3/JA4 fingerprint-based detection
+      enabled: true
+      known_bots_action: "log"   # "block" or "log" for known bot fingerprints
+      unknown_action: "log"      # Action for unknown TLS fingerprints
+      mismatch_action: "block"   # Action for UA/TLS mismatches
+    user_agent:
+      enabled: true
+      block_empty: true          # Block requests with no User-Agent
+      block_known_scanners: true # Block known scanner user agents
+    behavior:                    # Behavioral analysis
+      enabled: true
+      window: "5m"               # Analysis time window
+      rps_threshold: 100         # Requests/sec threshold
+      error_rate_threshold: 50   # Error rate % threshold
+
+  # Response protection
+  response:
+    security_headers:
+      enabled: true
+      hsts:
+        enabled: true
+        max_age: 31536000        # 1 year
+        include_subdomains: true
+        preload: false
+      x_content_type_options: true
+      x_frame_options: "DENY"
+      referrer_policy: "strict-origin-when-cross-origin"
+      permissions_policy: "camera=(), microphone=(), geolocation=()"
+      content_security_policy: "default-src 'self'"
+    data_masking:
+      enabled: true
+      mask_credit_cards: true    # Mask CC numbers in responses
+      mask_ssn: true             # Mask SSNs in responses
+      mask_emails: false
+      mask_api_keys: true        # Mask patterns resembling API keys
+      strip_stack_traces: true   # Remove stack traces from error responses
+    error_pages:
+      enabled: true
+      mode: "production"         # "production" (generic pages) or "development" (detailed)
+
+  # WAF event logging
+  logging:
+    level: "info"                # "debug", "info", "warn", "error"
+    format: "json"               # "json" or "text"
+    log_allowed: false           # Log requests that pass WAF checks
+    log_blocked: true            # Log blocked requests
+    log_body: false              # Include request body in WAF logs (security sensitive)
+
+# Server-level tuning (connection limits, timeouts, pool sizes)
+server:
+  max_connections: 10000             # Global concurrent connection limit
+  max_connections_per_source: 100    # Per client IP
+  max_connections_per_backend: 1000  # Per backend
+  proxy_timeout: "60s"               # Max duration for a proxied request
+  dial_timeout: "10s"                # Max duration for connecting to backends
+  max_retries: 3                     # Retry attempts per request
+  max_idle_conns: 100                # Max idle connections in transport pool
+  max_idle_conns_per_host: 10        # Max idle connections per backend
+  idle_conn_timeout: "90s"           # Idle connection timeout
+  drain_timeout: "30s"               # Graceful shutdown drain timeout
 
 # TLS configuration
 tls:
   cert_file: /etc/olb/certs/server.crt
   key_file: /etc/olb/certs/server.key
+
+# Cluster configuration (Raft consensus for config replication)
+cluster:
+  enabled: false
+  node_id: "node-1"                  # Unique node identifier
+  bind_addr: "0.0.0.0"
+  bind_port: 9090                    # Raft RPC port
+  data_dir: "/var/lib/olb/raft"      # Raft log & snapshot directory
+  election_tick: "2s"                # Raft election timeout
+  heartbeat_tick: "500ms"            # Raft heartbeat interval
+  peers:                             # Other cluster nodes
+    - "node-2:10.0.1.11:9090"
+    - "node-3:10.0.1.12:9090"
+  node_auth:                         # Inter-node authentication (recommended)
+    shared_secret: "${CLUSTER_SECRET}"  # Set via env var in production
+    allowed_node_ids:
+      - "node-1"
+      - "node-2"
+      - "node-3"
+
+# Service Discovery (optional)
+discovery:
+  enabled: false
+  type: "dns"                        # "static", "dns", "consul", "docker", "file"
+  refresh_interval: "30s"
 
 # Listeners
 listeners:

@@ -18,6 +18,7 @@ import (
 	"github.com/openloadbalancer/olb/internal/backend"
 	olbErrors "github.com/openloadbalancer/olb/pkg/errors"
 	"github.com/openloadbalancer/olb/pkg/utils"
+	"log"
 )
 
 // HTTP2Config configures HTTP/2 proxy behavior.
@@ -347,6 +348,11 @@ func (l *HTTP2Listener) Start() error {
 
 	// Start serving in a goroutine
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[http2] panic recovered in server: %v", r)
+			}
+		}()
 		defer l.running.Store(false)
 
 		err := l.server.Serve(l.listener)

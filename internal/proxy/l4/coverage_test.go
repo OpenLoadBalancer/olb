@@ -153,8 +153,9 @@ func TestUDPProxy_ReceiveFromBackend_ForwardsData(t *testing.T) {
 		proxy.receiveFromBackend(session)
 		close(done)
 	}()
-	// Brief pause to ensure receiveFromBackend goroutine is running
-	time.Sleep(10 * time.Millisecond)
+	// Wait for receiveFromBackend goroutine to enter its Read loop.
+	// A fixed sleep is unreliable under load, so we retry the assertion.
+	time.Sleep(50 * time.Millisecond)
 	go func() {
 		buf := make([]byte, 65535)
 		n, addr, err := backendServer.ReadFrom(buf)
@@ -174,8 +175,14 @@ func TestUDPProxy_ReceiveFromBackend_ForwardsData(t *testing.T) {
 	if string(clientBuf[:n]) != string(testData) {
 		t.Errorf("client received %q, want %q", string(clientBuf[:n]), string(testData))
 	}
-	if session.packetsOut.Load() < 1 {
-		t.Error("expected packetsOut >= 1")
+	// Wait for packetsOut to be incremented (may take a moment under load)
+	deadline := time.Now().Add(2 * time.Second)
+	for session.packetsOut.Load() < 1 {
+		if time.Now().After(deadline) {
+			t.Error("expected packetsOut >= 1")
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	if session.bytesOut.Load() < int64(len(testData)) {
 		t.Errorf("expected bytesOut >= %d, got %d", len(testData), session.bytesOut.Load())

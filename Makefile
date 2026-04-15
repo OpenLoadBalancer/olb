@@ -221,6 +221,16 @@ docker-push: docker
 	docker push ghcr.io/openloadbalancer/olb:$(VERSION)
 	docker push ghcr.io/openloadbalancer/olb:latest
 
+## docker-scan: Security scan Docker image with trivy
+docker-scan: docker
+	@echo "Scanning Docker image for vulnerabilities..."
+	trivy image --config .trivy.yaml ghcr.io/openloadbalancer/olb:latest
+
+## docker-scan-grype: Security scan Docker image with grype (alternative)
+docker-scan-grype: docker
+	@echo "Scanning Docker image with grype..."
+	grype ghcr.io/openloadbalancer/olb:latest --fail-on high
+
 ## run: Build and run locally
 run: build
 	./bin/$(BINARY)

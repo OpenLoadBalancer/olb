@@ -195,7 +195,9 @@ func (m *Middleware) validateCredentials(username, password string) bool {
 // unauthorized writes unauthorized response.
 func (m *Middleware) unauthorized(w http.ResponseWriter, realm string) {
 	w.Header().Set("WWW-Authenticate", `Basic realm="`+realm+`"`)
-	http.Error(w, `{"error":"unauthorized","message":"authentication required"}`, http.StatusUnauthorized)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	_, _ = w.Write([]byte(`{"error":"unauthorized","message":"authentication required"}`))
 }
 
 // contextKey is the key for username in context.

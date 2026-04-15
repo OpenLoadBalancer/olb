@@ -25,6 +25,11 @@ func (e *Engine) setupSignalHandlers() {
 	e.wg.Add(1)
 	go func() {
 		defer e.wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				e.logger.Error("Signal handler panic recovered", logging.Any("panic", r))
+			}
+		}()
 		for {
 			select {
 			case sig := <-sigCh:

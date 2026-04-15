@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -54,7 +55,14 @@ func newAuthFailureLimiter() *authFailureLimiter {
 		entries: make(map[string]*authFailureEntry),
 		stopCh:  make(chan struct{}),
 	}
-	go l.cleanupLoop()
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[auth] panic recovered in cleanup: %v", r)
+			}
+		}()
+		l.cleanupLoop()
+	}()
 	return l
 }
 
@@ -160,7 +168,9 @@ func AuthMiddleware(config *AuthConfig) func(http.Handler) http.Handler {
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("Retry-After", "300")
 				w.WriteHeader(http.StatusTooManyRequests)
-				json.NewEncoder(w).Encode(ErrorResponse("TOO_MANY_FAILURES", "too many auth failures, try again later"))
+				if err := json.NewEncoder(w).Encode(ErrorResponse("TOO_MANY_FAILURES", "too many auth failures, try again later")); err != nil {
+					log.Printf("admin: failed to encode lockout response: %v", err)
+				}
 				return
 			}
 
@@ -247,7 +257,9 @@ func (c *AuthConfig) writeUnauthorized(w http.ResponseWriter, message string) {
 	w.WriteHeader(http.StatusUnauthorized)
 
 	resp := ErrorResponse("UNAUTHORIZED", message)
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("admin: failed to encode unauthorized response: %v", err)
+	}
 }
 
 // HashPassword generates a bcrypt hash of the password.

@@ -3,6 +3,7 @@
 package logging
 
 import (
+	"log"
 	"os"
 	"os/signal"
 	"sync"
@@ -39,6 +40,11 @@ func (h *ReopenHandler) Start() {
 		signal.Notify(h.sigCh, syscall.SIGUSR1)
 
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[logging] panic recovered in SIGUSR1 handler: %v", r)
+				}
+			}()
 			for {
 				select {
 				case <-h.sigCh:

@@ -188,11 +188,15 @@ func BenchmarkHTTPProxy_WithMiddleware(b *testing.B) {
 		},
 		SecurityPreset: middleware.SecurityPresetBasic,
 	}))
-	chain.Use(middleware.NewCORSMiddleware(middleware.CORSConfig{
+	corsMW, err := middleware.NewCORSMiddleware(middleware.CORSConfig{
 		AllowedOrigins: []string{"*"},
 		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE"},
 		AllowedHeaders: []string{"Content-Type", "Authorization"},
-	}))
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+	chain.Use(corsMW)
 
 	proxy, cleanup := setupProxyStack(b, hostPort(srv), chain)
 	defer cleanup()
@@ -483,12 +487,16 @@ func BenchmarkMiddlewareChain_Full(b *testing.B) {
 		},
 		SecurityPreset: middleware.SecurityPresetStrict,
 	}))
-	chain.Use(middleware.NewCORSMiddleware(middleware.CORSConfig{
+	corsMW2, err := middleware.NewCORSMiddleware(middleware.CORSConfig{
 		AllowedOrigins:   []string{"https://example.com", "https://app.example.com"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
 		AllowedHeaders:   []string{"Content-Type", "Authorization", "X-Request-Id"},
 		AllowCredentials: true,
-	}))
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+	chain.Use(corsMW2)
 	chain.Use(NewNoopMiddleware("metrics", middleware.PriorityMetrics))
 	chain.Use(NewNoopMiddleware("access-log", middleware.PriorityAccessLog))
 
@@ -968,12 +976,15 @@ func BenchmarkMiddleware_Headers(b *testing.B) {
 func BenchmarkMiddleware_CORS(b *testing.B) {
 	b.ReportAllocs()
 
-	mw := middleware.NewCORSMiddleware(middleware.CORSConfig{
+	mw, err := middleware.NewCORSMiddleware(middleware.CORSConfig{
 		AllowedOrigins:   []string{"https://example.com", "https://app.example.com"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE"},
 		AllowedHeaders:   []string{"Content-Type", "Authorization"},
 		AllowCredentials: true,
 	})
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

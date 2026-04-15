@@ -9,21 +9,27 @@ import (
 )
 
 func TestCORSMiddleware_Name(t *testing.T) {
-	m := NewCORSMiddleware(CORSConfig{})
+	m, err := NewCORSMiddleware(CORSConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if m.Name() != "cors" {
 		t.Errorf("expected name 'cors', got '%s'", m.Name())
 	}
 }
 
 func TestCORSMiddleware_Priority(t *testing.T) {
-	m := NewCORSMiddleware(CORSConfig{})
+	m, err := NewCORSMiddleware(CORSConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if m.Priority() != PriorityCORS {
 		t.Errorf("expected priority %d, got %d", PriorityCORS, m.Priority())
 	}
 }
 
 func TestCORSMiddleware_PreflightRequest(t *testing.T) {
-	m := NewCORSMiddleware(CORSConfig{
+	m, err := NewCORSMiddleware(CORSConfig{
 		AllowedOrigins:   []string{"https://example.com"},
 		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
 		AllowedHeaders:   []string{"Content-Type", "Authorization"},
@@ -31,6 +37,9 @@ func TestCORSMiddleware_PreflightRequest(t *testing.T) {
 		AllowCredentials: true,
 		MaxAge:           86400 * time.Second,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("next handler should not be called for preflight")
@@ -72,12 +81,15 @@ func TestCORSMiddleware_PreflightRequest(t *testing.T) {
 }
 
 func TestCORSMiddleware_ActualRequest(t *testing.T) {
-	m := NewCORSMiddleware(CORSConfig{
+	m, err := NewCORSMiddleware(CORSConfig{
 		AllowedOrigins:   []string{"https://example.com"},
 		AllowedMethods:   []string{"GET", "POST"},
 		ExposedHeaders:   []string{"X-Custom-Header"},
 		AllowCredentials: true,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	nextCalled := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -120,10 +132,13 @@ func TestCORSMiddleware_ActualRequest(t *testing.T) {
 }
 
 func TestCORSMiddleware_WildcardOrigin(t *testing.T) {
-	m := NewCORSMiddleware(CORSConfig{
+	m, err := NewCORSMiddleware(CORSConfig{
 		AllowedOrigins: []string{"*"},
 		AllowedMethods: []string{"GET", "POST"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -142,28 +157,27 @@ func TestCORSMiddleware_WildcardOrigin(t *testing.T) {
 
 func TestCORSMiddleware_WildcardOriginWithCredentials(t *testing.T) {
 	// When AllowCredentials is true, wildcard origin should be rejected at construction
-	defer func() {
-		r := recover()
-		if r == nil {
-			t.Error("expected panic when creating CORS middleware with wildcard origin and credentials enabled")
-		}
-		msg, ok := r.(string)
-		if !ok || !strings.Contains(msg, "AllowedOrigins cannot contain '*'") {
-			t.Errorf("unexpected panic message: %v", r)
-		}
-	}()
-	NewCORSMiddleware(CORSConfig{
+	_, err := NewCORSMiddleware(CORSConfig{
 		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST"},
 		AllowCredentials: true,
 	})
+	if err == nil {
+		t.Fatal("expected error when creating CORS middleware with wildcard origin and credentials enabled")
+	}
+	if !strings.Contains(err.Error(), "AllowedOrigins cannot contain '*'") {
+		t.Errorf("unexpected error message: %v", err)
+	}
 }
 
 func TestCORSMiddleware_SpecificOriginMatching(t *testing.T) {
-	m := NewCORSMiddleware(CORSConfig{
+	m, err := NewCORSMiddleware(CORSConfig{
 		AllowedOrigins: []string{"https://example.com", "https://app.example.com"},
 		AllowedMethods: []string{"GET"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	tests := []struct {
 		origin  string
@@ -204,10 +218,13 @@ func TestCORSMiddleware_SpecificOriginMatching(t *testing.T) {
 }
 
 func TestCORSMiddleware_CredentialsWithoutWildcard(t *testing.T) {
-	m := NewCORSMiddleware(CORSConfig{
+	m, err := NewCORSMiddleware(CORSConfig{
 		AllowedOrigins:   []string{"https://example.com"},
 		AllowCredentials: true,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -229,11 +246,14 @@ func TestCORSMiddleware_CredentialsWithoutWildcard(t *testing.T) {
 }
 
 func TestCORSMiddleware_PreflightWithRequestedHeaders(t *testing.T) {
-	m := NewCORSMiddleware(CORSConfig{
+	m, err := NewCORSMiddleware(CORSConfig{
 		AllowedOrigins: []string{"https://example.com"},
 		AllowedMethods: []string{"GET", "POST", "DELETE"},
 		AllowedHeaders: []string{"Content-Type", "Authorization", "X-Custom"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("next handler should not be called for preflight")
@@ -258,10 +278,13 @@ func TestCORSMiddleware_PreflightWithRequestedHeaders(t *testing.T) {
 }
 
 func TestCORSMiddleware_PreflightDisallowedOrigin(t *testing.T) {
-	m := NewCORSMiddleware(CORSConfig{
+	m, err := NewCORSMiddleware(CORSConfig{
 		AllowedOrigins: []string{"https://example.com"},
 		AllowedMethods: []string{"GET"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("next handler should not be called for preflight")
@@ -284,9 +307,12 @@ func TestCORSMiddleware_PreflightDisallowedOrigin(t *testing.T) {
 }
 
 func TestCORSMiddleware_NoOriginHeader(t *testing.T) {
-	m := NewCORSMiddleware(CORSConfig{
+	m, err := NewCORSMiddleware(CORSConfig{
 		AllowedOrigins: []string{"*"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	nextCalled := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -311,10 +337,13 @@ func TestCORSMiddleware_NoOriginHeader(t *testing.T) {
 }
 
 func TestCORSMiddleware_CaseInsensitiveOrigin(t *testing.T) {
-	m := NewCORSMiddleware(CORSConfig{
+	m, err := NewCORSMiddleware(CORSConfig{
 		AllowedOrigins: []string{"https://EXAMPLE.COM"},
 		AllowedMethods: []string{"GET"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

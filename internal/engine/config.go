@@ -13,6 +13,7 @@ import (
 	"github.com/openloadbalancer/olb/internal/proxy/l7"
 	"github.com/openloadbalancer/olb/internal/router"
 	olbTLS "github.com/openloadbalancer/olb/internal/tls"
+	"log"
 )
 
 // loadConfig reloads configuration from disk.
@@ -211,6 +212,11 @@ func (e *Engine) applyConfigInternal(newCfg *config.Config, noRollback bool) err
 		e.wg.Add(1)
 		go func(p *l7.HTTPProxy) {
 			defer e.wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[engine] panic recovered in proxy drain: %v", r)
+				}
+			}()
 			select {
 			case <-time.After(5 * time.Second):
 			case <-e.stopCh:
@@ -223,6 +229,11 @@ func (e *Engine) applyConfigInternal(newCfg *config.Config, noRollback bool) err
 	e.wg.Add(1)
 	go func(hc *health.Checker) {
 		defer e.wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[engine] panic recovered in health checker drain: %v", r)
+			}
+		}()
 		select {
 		case <-time.After(10 * time.Second):
 		case <-e.stopCh:

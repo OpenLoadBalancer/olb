@@ -277,7 +277,9 @@ func (mw *WAFMiddleware) Wrap(next http.Handler) http.Handler {
 		// Panic recovery — fail-closed for security
 		defer func() {
 			if err := recover(); err != nil {
-				http.Error(w, `{"error":"internal waf error","layer":"recovery"}`, http.StatusInternalServerError)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"error":"internal waf error","layer":"recovery"}`))
 			}
 		}()
 

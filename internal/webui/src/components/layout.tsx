@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { Menu, Server, ChevronRight, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-provider"
@@ -10,20 +10,74 @@ import { Link, useLocation } from "react-router"
 export function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
+  const sidebarRef = useRef<HTMLElement>(null)
+  const openButtonRef = useRef<HTMLButtonElement>(null)
+  const previouslyFocusedElement = useRef<HTMLElement | null>(null)
 
   // Close sidebar on route change (mobile)
   useEffect(() => { setSidebarOpen(false) }, [location.pathname])
 
-  // Close sidebar on Escape
+  // Focus trap and restore for mobile sidebar
   useEffect(() => {
+    if (!sidebarOpen) return
+
+    // Save the currently focused element so we can restore it on close
+    previouslyFocusedElement.current = document.activeElement as HTMLElement
+
+    // Move focus into the sidebar
+    const sidebar = sidebarRef.current
+    if (sidebar) {
+      // Focus the first focusable element (close button)
+      const firstFocusable = sidebar.querySelector<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      )
+      firstFocusable?.focus()
+    }
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && sidebarOpen) {
+      if (e.key === "Escape") {
         setSidebarOpen(false)
+        return
+      }
+
+      if (e.key === "Tab" && sidebar) {
+        const focusable = sidebar.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )
+        if (focusable.length === 0) return
+
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+
+        if (e.shiftKey) {
+          // Shift+Tab: if focus is on first element, wrap to last
+          if (document.activeElement === first && last) {
+            e.preventDefault()
+            last.focus()
+          }
+        } else {
+          // Tab: if focus is on last element, wrap to first
+          if (document.activeElement === last && first) {
+            e.preventDefault()
+            first.focus()
+          }
+        }
       }
     }
+
     document.addEventListener("keydown", handleKeyDown)
     return () => document.removeEventListener("keydown", handleKeyDown)
   }, [sidebarOpen])
+
+  // Restore focus when sidebar closes
+  useEffect(() => {
+    if (!sidebarOpen && previouslyFocusedElement.current) {
+      previouslyFocusedElement.current.focus()
+      previouslyFocusedElement.current = null
+    }
+  }, [sidebarOpen])
+
+  const closeSidebar = useCallback(() => setSidebarOpen(false), [])
 
   return (
     <div className="min-h-screen bg-background">
@@ -41,12 +95,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
+          onClick={closeSidebar}
           aria-hidden="true"
         />
       )}
 
       <aside
+        ref={sidebarRef}
         id="sidebar-nav"
         role="navigation"
         aria-label="Main navigation"
@@ -64,7 +119,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             variant="ghost"
             size="icon"
             className="lg:hidden"
-            onClick={() => setSidebarOpen(false)}
+            onClick={closeSidebar}
             aria-label="Close navigation menu"
           >
             <X className="h-5 w-5" />
@@ -94,6 +149,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <div className="lg:pl-64">
         <header role="banner" className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 lg:px-6">
           <Button
+            ref={openButtonRef}
             variant="ghost"
             size="icon"
             className="lg:hidden"

@@ -506,6 +506,13 @@ func (p *SNIBasedProxy) acceptLoop() {
 		p.wg.Add(1)
 		go func() {
 			defer p.wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					// Prevent a single malformed connection from crashing the
+					// entire process. The connection is already closed by
+					// handleConnection or the runtime on panic.
+				}
+			}()
 			p.handleConnection(conn)
 		}()
 	}

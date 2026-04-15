@@ -2,7 +2,6 @@
 package oauth2
 
 import (
-	"bytes"
 	"context"
 	"crypto"
 	"crypto/ecdsa"
@@ -664,21 +663,16 @@ func (m *Middleware) unauthorized(w http.ResponseWriter, message string) {
 	w.Header().Set("WWW-Authenticate", "Bearer")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusUnauthorized)
-	_, _ = w.Write([]byte(`{"error":"unauthorized","message":"` + jsonEscape(message) + `"}`))
+	resp, _ := json.Marshal(map[string]string{"error": "unauthorized", "message": message})
+	_, _ = w.Write(resp)
 }
 
 // forbidden writes forbidden response.
 func (m *Middleware) forbidden(w http.ResponseWriter, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusForbidden)
-	_, _ = w.Write([]byte(`{"error":"forbidden","message":"` + jsonEscape(message) + `"}`))
-}
-
-// jsonEscape escapes a string for safe embedding in a JSON value.
-func jsonEscape(s string) string {
-	var buf bytes.Buffer
-	json.HTMLEscape(&buf, []byte(s))
-	return buf.String()
+	resp, _ := json.Marshal(map[string]string{"error": "forbidden", "message": message})
+	_, _ = w.Write(resp)
 }
 
 // contextKey is the key for token info in context.

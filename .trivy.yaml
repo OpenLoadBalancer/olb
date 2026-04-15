@@ -1,0 +1,29 @@
+# Trivy security scan configuration for OpenLoadBalancer
+# Usage: trivy image --config .trivy.yaml openloadbalancer/olb:latest
+
+# Exit with non-zero code if vulnerabilities found at these severity levels
+severity:
+  - CRITICAL
+  - HIGH
+
+# Ignore these CVEs (documented justification required)
+# ignorefile: .trivyignore
+
+# Skip specific checks
+skip-dirs:
+  - /etc/olb/configs
+
+# Scanner configuration
+scanners:
+  - vuln      # CVE database
+  - misconfig # Dockerfile best practices
+  - secret    # Hardcoded secrets
+
+# Report format (override with: --format json/table/sarif)
+format: table
+
+# Don't fail on unfixed vulnerabilities (only fail on fixable ones)
+ignore-unfixed: true
+
+# Timeout for scanning
+timeout: 5m

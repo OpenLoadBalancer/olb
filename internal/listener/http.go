@@ -3,6 +3,7 @@ package listener
 import (
 	"context"
 	"errors"
+	"log"
 	"net"
 	"net/http"
 	"sync"
@@ -113,6 +114,11 @@ func (l *HTTPListener) Start() error {
 
 	// Start serving in a goroutine
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[http] panic recovered in listener: %v", r)
+			}
+		}()
 		defer l.running.Store(false)
 
 		err := l.server.Serve(l.listener)

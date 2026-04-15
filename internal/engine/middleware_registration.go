@@ -146,6 +146,9 @@ func registerLoggingMiddleware(ctx *middlewareRegistrationContext) {
 		MinDuration:     l.MinDuration,
 		RequestHeaders:  l.RequestHeaders,
 		ResponseHeaders: l.ResponseHeaders,
+		LogFunc: func(msg string) {
+			ctx.logger.Info(msg)
+		},
 	}))
 }
 
@@ -605,10 +608,15 @@ func registerCORSMiddleware(ctx *middlewareRegistrationContext) {
 	if len(methods) == 0 {
 		methods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
 	}
-	ctx.chain.Use(middleware.NewCORSMiddleware(middleware.CORSConfig{
+	corsMW, err := middleware.NewCORSMiddleware(middleware.CORSConfig{
 		AllowedOrigins: origins, AllowedMethods: methods, AllowedHeaders: c.AllowedHeaders,
 		AllowCredentials: c.AllowCredentials, MaxAge: time.Duration(c.MaxAge) * time.Second,
-	}))
+	})
+	if err != nil {
+		ctx.logger.Error("CORS middleware disabled: " + err.Error())
+		return
+	}
+	ctx.chain.Use(corsMW)
 }
 
 func registerCSPMiddleware(ctx *middlewareRegistrationContext) {

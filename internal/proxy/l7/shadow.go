@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"log"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -156,6 +157,11 @@ func (sm *ShadowManager) ShadowRequest(req *http.Request) {
 		sm.wg.Add(1)
 		go func(req *http.Request, addr string, t ShadowTarget, body []byte) {
 			defer sm.wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[shadow] panic recovered: %v", r)
+				}
+			}()
 			select {
 			case sm.sem <- struct{}{}:
 				sm.sendShadow(req, addr, t, body)

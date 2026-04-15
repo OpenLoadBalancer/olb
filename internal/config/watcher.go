@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"os"
 	"sync"
 	"time"
@@ -60,6 +61,11 @@ func NewWatcher(path string, interval time.Duration, callback ChangeCallback, er
 func (w *Watcher) Start(ctx context.Context) {
 	w.wg.Add(1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[config] panic recovered in watcher: %v", r)
+			}
+		}()
 		defer w.wg.Done()
 		w.watch(ctx)
 	}()

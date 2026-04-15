@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -203,6 +204,11 @@ func (sh *SSEHandler) streamSSEResponseWithContext(w http.ResponseWriter, r *htt
 	// spawning a new one per line, preventing unbounded goroutine growth.
 	lineCh := make(chan readLineResult, 1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[sse] panic recovered in reader: %v", r)
+			}
+		}()
 		for {
 			line, err := reader.ReadBytes('\n')
 			lineCh <- readLineResult{line: line, err: err}

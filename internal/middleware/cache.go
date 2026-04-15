@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -353,8 +354,11 @@ func (c *CacheMiddleware) revalidateInBackground(key string, next http.Handler, 
 
 	go func() {
 		defer c.revalidating.Delete(key)
-
-		// Clone the request with a fresh context — the original request's
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[cache] panic recovered in background revalidation: %v", r)
+			}
+		}()
 		// context is canceled as soon as the handler returns, which would
 		// immediately kill the background revalidation.
 		bgCtx, bgCancel := context.WithTimeout(context.Background(), 30*time.Second)

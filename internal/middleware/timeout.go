@@ -61,8 +61,11 @@ func (t *TimeoutMiddleware) Wrap(next http.Handler) http.Handler {
 		tw := &timeoutWriter{ResponseWriter: w}
 
 		go func() {
+			defer func() {
+				recover() // prevent downstream panic from crashing the process
+				close(done)
+			}()
 			next.ServeHTTP(tw, r)
-			close(done)
 		}()
 
 		select {

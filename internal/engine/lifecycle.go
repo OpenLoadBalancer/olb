@@ -82,6 +82,11 @@ func (e *Engine) Start() error {
 	e.wg.Add(1)
 	go func() {
 		defer e.wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				e.logger.Error("Admin server panic recovered", logging.Any("panic", r))
+			}
+		}()
 		addr := adminAddr
 		e.logger.Info("Admin server starting",
 			logging.String("address", addr),
@@ -162,6 +167,11 @@ func (e *Engine) Start() error {
 		e.wg.Add(1)
 		go func() {
 			defer e.wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					e.logger.Error("Discovery cancel panic recovered", logging.Any("panic", r))
+				}
+			}()
 			<-e.stopCh
 			cancel()
 		}()
@@ -182,6 +192,11 @@ func (e *Engine) Start() error {
 		e.wg.Add(1)
 		go func() {
 			defer e.wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					e.logger.Error("System metrics panic recovered", logging.Any("panic", r))
+				}
+			}()
 			ticker := time.NewTicker(10 * time.Second)
 			defer ticker.Stop()
 			// Initial update (read pointers under RLock to avoid race with applyConfig)
@@ -386,6 +401,12 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 		}
 	}
 
+	// 3a. Wait for in-flight shadow requests
+	if e.shadowMgr != nil {
+		e.shadowMgr.Wait()
+		e.logger.Info("Shadow requests drained")
+	}
+
 	// 4. Stop health checkers
 	if e.passiveChecker != nil {
 		e.passiveChecker.Stop()
@@ -432,6 +453,11 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 	// Wait for goroutines
 	done := make(chan struct{})
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				e.logger.Error("WaitGroup drain panic recovered", logging.Any("panic", r))
+			}
+		}()
 		e.wg.Wait()
 		close(done)
 	}()

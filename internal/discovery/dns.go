@@ -3,6 +3,7 @@ package discovery
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -79,6 +80,11 @@ func (p *DNSProvider) refresh() error {
 		wg.Add(1)
 		go func(srv *net.SRV) {
 			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[discovery] panic recovered in DNS SRV resolver: %v", r)
+				}
+			}()
 
 			// Resolve target to IP
 			addrs, err := p.resolver.LookupHost(p.ctx, srv.Target)

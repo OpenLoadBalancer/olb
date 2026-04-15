@@ -114,11 +114,15 @@ func (s *Server) addBackend(w http.ResponseWriter, r *http.Request) {
 
 	// Raft mode: propose the backend addition through consensus
 	if s.raftProposer != nil {
-		backendJSON, _ := json.Marshal(map[string]any{
+		backendJSON, err := json.Marshal(map[string]any{
 			"id":      req.ID,
 			"address": req.Address,
 			"weight":  req.Weight,
 		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to marshal backend data")
+			return
+		}
 		if err := s.raftProposer.ProposeUpdateBackend(poolName, backendJSON); err != nil {
 			writeError(w, http.StatusConflict, "RAFT_ERROR",
 				"failed to propose backend addition")

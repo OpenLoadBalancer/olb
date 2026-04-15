@@ -467,3 +467,107 @@ func BenchmarkCopyBidirectional(b *testing.B) {
 		<-done
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Sustained throughput benchmark
+// ---------------------------------------------------------------------------
+
+// BenchmarkTCPProxy_SustainedThroughput measures throughput over a single
+// long-lived TCP connection through the proxy. Reports bytes/second.
+// On Linux with splice(), this would measure kernel-level zero-copy throughput.
+func BenchmarkTCPProxy_SustainedThroughput(b *testing.B) {
+	b.ReportAllocs()
+
+	backendAddr, backendCleanup := tcpGenerateServer(b, 10*time.Second)
+	defer backendCleanup()
+
+	proxy, _ := setupTCPProxy(b, backendAddr)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		b.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go proxy.HandleConnection(conn)
+		}
+	}()
+
+	proxyAddr := ln.Addr().String()
+	const chunkSize = 64 * 1024
+
+	conn, err := net.DialTimeout("tcp", proxyAddr, 2*time.Second)
+	if err != nil {
+		b.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	buf := make([]byte, chunkSize)
+	totalBytes := int64(0)
+
+	b.SetBytes(int64(chunkSize))
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		n, err := conn.Read(buf)
+		if err != nil {
+			break
+		}
+		totalBytes += int64(n)
+	}
+
+	b.ReportMetric(float64(totalBytes)/b.Elapsed().Seconds()/1024/1024, "MB/s")
+}
+
+// tcpGenerateServer creates a TCP server that continuously sends data
+// until the connection is closed or duration expires.
+func tcpGenerateServer(b *testing.B, duration time.Duration) (string, func()) {
+	b.Helper()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		b.Fatalf("listen: %v", err)
+	}
+
+	done := make(chan struct{})
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				select {
+				case <-done:
+					return
+				default:
+					return
+				}
+			}
+
+			go func(c net.Conn) {
+				defer c.Close()
+				data := make([]byte, 64*1024)
+				deadline := time.Now().Add(duration)
+				c.SetWriteDeadline(deadline)
+				for {
+					_, err := c.Write(data)
+					if err != nil {
+						return
+					}
+				}
+			}(conn)
+		}
+	}()
+
+	cleanup := func() {
+		ln.Close()
+		close(done)
+	}
+
+	return ln.Addr().String(), cleanup
+}
