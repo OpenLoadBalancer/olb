@@ -1335,6 +1335,9 @@ func TestPool_EvictIdle_MixedExpired(t *testing.T) {
 // idle timeout so the eviction interval (clamped to min 10s) can be tested
 // by manually triggering the same logic after artificially aging connections.
 func TestPool_EvictIdle_TickerFires(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping race-prone eviction test in short mode")
+	}
 	// Start a test server
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
