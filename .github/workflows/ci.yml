@@ -549,7 +549,7 @@ jobs:
           tags: ghcr.io/openloadbalancer/olb:scan-target
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@v0.29.0
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: ghcr.io/openloadbalancer/olb:scan-target
           config: .trivy.yaml
