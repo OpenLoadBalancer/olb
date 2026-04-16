@@ -5,9 +5,9 @@ import { cn } from "@/lib/utils";
 const stats = [
   { label: "Dependencies", value: 0, prefix: "", suffix: "" },
   { label: "p99 Latency", value: 1, prefix: "<", suffix: "ms" },
-  { label: "Algorithms", value: 14, prefix: "", suffix: "" },
+  { label: "Algorithms", value: 16, prefix: "", suffix: "" },
   { label: "Middleware", value: 16, prefix: "", suffix: "" },
-  { label: "Packages Tested", value: 48, prefix: "", suffix: "" },
+  { label: "Packages Tested", value: 69, prefix: "", suffix: "" },
 ];
 
 function AnimatedNumber({
@@ -106,7 +106,7 @@ export function Hero() {
         {/* Badge */}
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-border bg-muted/50 text-sm text-muted-foreground mb-8">
           <Sparkles className="w-3.5 h-3.5 text-primary" />
-          <span>Production-ready L4/L7 load balancer, written in pure Go</span>
+          <span>v1.0.0 is now available — Production-ready L4/L7 load balancer</span>
         </div>
 
         {/* Heading */}
@@ -121,7 +121,7 @@ export function Hero() {
         {/* Subtitle */}
         <p className="max-w-2xl mx-auto text-lg sm:text-xl text-muted-foreground leading-relaxed mb-10">
           A high-performance L4/L7 load balancer for any backend — Node.js,
-          Python, Java, Go, or anything that speaks HTTP/TCP. 14 algorithms,
+          Python, Java, Go, or anything that speaks HTTP/TCP. 16 algorithms,
           6-layer WAF, Raft clustering, and a real-time dashboard — all in a
           single binary with zero external dependencies. Written in pure Go.
         </p>
