@@ -29,7 +29,81 @@ func (d *Detector) Detect(ctx *detection.RequestContext) []detection.Finding {
 		return nil
 	}
 
-	return d.analyzeXML(string(ctx.Body))
+	body := string(ctx.Body)
+
+	// Check UTF-7 encoded XXE attempts (e.g., +ADw-!DOCTYPE for <!DOCTYPE)
+	if decoded := decodeUTF7(body); decoded != body {
+		if findings := d.analyzeXML(decoded); len(findings) > 0 {
+			// Mark as UTF-7 bypass attempt
+			findings[0].Rule = "utf7_" + findings[0].Rule
+			return findings
+		}
+	}
+
+	return d.analyzeXML(body)
+}
+
+// decodeUTF7 performs minimal UTF-7 decoding to detect obfuscated XXE payloads.
+// UTF-7 encodes characters as +AAAA- sequences. Attackers use this to bypass
+// XML filters (e.g., +ADw- = <, +AD4- = >, +ACM- = #).
+func decodeUTF7(s string) string {
+	if !strings.Contains(s, "+") {
+		return s
+	}
+	var b strings.Builder
+	i := 0
+	for i < len(s) {
+		if s[i] == '+' && i+1 < len(s) && s[i+1] != '-' && s[i+1] != '+' {
+			// Find the end of the UTF-7 sequence
+			end := strings.IndexByte(s[i+1:], '-')
+			if end == -1 {
+				b.WriteByte(s[i])
+				i++
+				continue
+			}
+			end += i + 1 // absolute position of '-'
+
+			// Decode the base64-like portion between + and -
+			encoded := s[i+1 : end]
+			decoded := decodeUTF7Sequence(encoded)
+			b.WriteString(decoded)
+			i = end + 1
+		} else if s[i] == '+' && i+1 < len(s) && s[i+1] == '-' {
+			// "+-" is an escaped +
+			b.WriteByte('+')
+			i += 2
+		} else {
+			b.WriteByte(s[i])
+			i++
+		}
+	}
+	return b.String()
+}
+
+// decodeUTF7Sequence decodes a UTF-7 modified base64 sequence.
+// This handles the most common characters used in XXE bypass attempts.
+func decodeUTF7Sequence(s string) string {
+	// UTF-7 uses modified base64 where '=' is omitted and '/' maps differently.
+	// Common UTF-7 sequences used in XXE:
+	// +ADw- = <  (U+003C)
+	// +AD4- = >  (U+003E)
+	// +ACM- = #  (U+0023)
+	// +ACI- = "  (U+0022)
+	// +ACY- = &  (U+0026)
+	// +ACU- = %  (U+0025)
+	known := map[string]string{
+		"ADW": "<", "AD4": ">", "ACM": "#", "ACI": "\"", "ACY": "&", "ACU": "%",
+		"AAG": " ", "AAS": "'", "AA0": "\r", "AAW": "\n",
+		"AEA": "@", "AEE": "!", "AEI": "\"", "AEM": "#",
+		"AD0": "=", "AA8": "/", "ACW": ",", "AC4": ".",
+		"AFS": "[", "AFQ": "]", "AF0": "]", "AWA": "`", "ACA": " ",
+		"AAO": ";", "ABA": "(", "ABQ": ")",
+	}
+	if v, ok := known[strings.ToUpper(s)]; ok {
+		return v
+	}
+	// Return original if not a known sequence
+	return "+" + s + "-"
 }
 
 func (d *Detector) analyzeXML(body string) []detection.Finding {

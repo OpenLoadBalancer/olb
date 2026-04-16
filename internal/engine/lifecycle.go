@@ -43,6 +43,9 @@ func (e *Engine) Start() error {
 		}
 	}
 
+	// 1a. Start certificate expiry monitoring
+	e.tlsManager.StartExpiryMonitor(1 * time.Hour)
+
 	// 2. Start OCSP manager for certificate stapling
 	if e.ocspManager != nil {
 		if err := e.ocspManager.Start(); err != nil {
@@ -358,6 +361,9 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 			e.logger.Info("OCSP manager stopped")
 		}
 	}
+
+	// 0g. Stop TLS certificate expiry monitor
+	e.tlsManager.StopExpiryMonitor()
 
 	// 1. Stop accepting new connections (close listeners)
 	for _, l := range e.listeners {

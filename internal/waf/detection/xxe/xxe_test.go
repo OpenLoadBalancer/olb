@@ -319,6 +319,97 @@ func TestXXE_EmptyBodyBytes(t *testing.T) {
 	}
 }
 
+func TestXXE_UTF7Bypass(t *testing.T) {
+	d := New()
+	tests := []struct {
+		name      string
+		body      string
+		wantRule  string
+		wantScore int
+	}{
+		{
+			name:      "UTF-7 full XXE with file://",
+			body:      "+ADw-!DOCTYPE foo +AFs-+ADw-ENTITY xxe SYSTEM +ACI-file:///etc/passwd+ACI-+AD4-+AF0-+AD4-",
+			wantRule:  "utf7_system_file",
+			wantScore: 95,
+		},
+		{
+			name:      "UTF-7 DOCTYPE only",
+			body:      "+ADw-!DOCTYPE html+AD4-",
+			wantRule:  "utf7_doctype",
+			wantScore: 30,
+		},
+		{
+			name:      "UTF-7 entity declaration",
+			body:      "+ADw-!DOCTYPE foo +AFs-+ADw-!ENTITY xxe +ACI-value+ACI-+AD4-+AF0-+AD4-",
+			wantRule:  "utf7_entity_declaration",
+			wantScore: 70,
+		},
+		{
+			name:      "UTF-7 parameter entity",
+			body:      "+ADw-!DOCTYPE foo +AFs-+ADw-!ENTITY +ACU- xxe +ACI-value+ACI-+AD4-+AF0-+AD4-",
+			wantRule:  "utf7_parameter_entity",
+			wantScore: 85,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := xmlCtx(tt.body)
+			findings := d.Detect(ctx)
+			if len(findings) == 0 {
+				t.Fatalf("expected UTF-7 XXE detection, got none for body: %q", tt.body)
+			}
+			if findings[0].Rule != tt.wantRule {
+				t.Errorf("expected rule %q, got %q", tt.wantRule, findings[0].Rule)
+			}
+			if findings[0].Score != tt.wantScore {
+				t.Errorf("expected score %d, got %d", tt.wantScore, findings[0].Score)
+			}
+		})
+	}
+}
+
+func TestXXE_UTF7_PlainXMLUnaffected(t *testing.T) {
+	d := New()
+	ctx := xmlCtx(`<?xml version="1.0"?><root><item>safe + data</item></root>`)
+	findings := d.Detect(ctx)
+	if len(findings) != 0 {
+		t.Error("expected no findings for safe XML with plain + character")
+	}
+}
+
+func TestXXE_UTF7_EscapedPlus(t *testing.T) {
+	d := New()
+	ctx := xmlCtx(`+-<?xml version="1.0"?><root>escaped plus</root>`)
+	findings := d.Detect(ctx)
+	if len(findings) != 0 {
+		t.Error("expected no findings for +- escaped plus (no UTF-7 sequences)")
+	}
+}
+
+func TestDecodeUTF7_KnownSequences(t *testing.T) {
+	tests := []struct {
+		input  string
+		expect string
+	}{
+		{"+ADw-!DOCTYPE+AD4-", "<!DOCTYPE>"},
+		{"+AD4-", ">"},
+		{"+ACI-", `"`},
+		{"+ACY-", "&"},
+		{"+ACU-", "%"},
+		{"+-text", "+text"},
+		{"no encoding", "no encoding"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := decodeUTF7(tt.input)
+			if got != tt.expect {
+				t.Errorf("decodeUTF7(%q) = %q, want %q", tt.input, got, tt.expect)
+			}
+		})
+	}
+}
+
 func TestXXE_CaseInsensitive(t *testing.T) {
 	d := New()
 	ctx := xmlCtx(`<!doctype foo [<!entity xxe SYSTEM "FILE:///etc/passwd">]>`)

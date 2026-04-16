@@ -234,7 +234,7 @@ describe('useMutation', () => {
       mutationResult = await result.current.mutate({ pool: 'web', id: 'b1' })
     })
 
-    expect(mutationFn).toHaveBeenCalledWith({ pool: 'web', id: 'b1' })
+    expect(mutationFn).toHaveBeenCalledWith({ pool: 'web', id: 'b1' }, expect.any(AbortSignal))
     expect(mutationResult).toEqual({ message: 'ok' })
     expect(result.current.data).toEqual({ message: 'ok' })
     expect(result.current.isLoading).toBe(false)

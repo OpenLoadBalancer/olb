@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/openloadbalancer/olb/internal/backend"
+	"github.com/openloadbalancer/olb/internal/metrics"
 )
 
 // ShadowConfig configures request shadowing/mirroring.
@@ -40,6 +41,11 @@ type ShadowManager struct {
 	// sem bounds the number of concurrent in-flight shadow requests.
 	sem chan struct{}
 	wg  sync.WaitGroup
+
+	// Metrics
+	requestsTotal *metrics.Counter
+	errorsTotal   *metrics.Counter
+	droppedTotal  *metrics.Counter
 }
 
 const maxConcurrentShadow = 1000
@@ -61,6 +67,9 @@ func NewShadowManager(config ShadowConfig) *ShadowManager {
 			Timeout:   config.Timeout,
 			Transport: transport,
 		},
+		requestsTotal: metrics.NewCounter("shadow_requests_total", "Total shadow requests sent"),
+		errorsTotal:   metrics.NewCounter("shadow_errors_total", "Total shadow request errors"),
+		droppedTotal:  metrics.NewCounter("shadow_dropped_total", "Total shadow requests dropped (semaphore full)"),
 	}
 }
 
@@ -168,6 +177,7 @@ func (sm *ShadowManager) ShadowRequest(req *http.Request) {
 				<-sm.sem
 			default:
 				// Semaphore full - drop shadow request
+				sm.droppedTotal.Inc()
 			}
 		}(req, be.Address, target, bodyBuf)
 	}
@@ -214,8 +224,10 @@ func (sm *ShadowManager) sendShadow(req *http.Request, backendAddr string, targe
 	}
 
 	// Send request (fire and forget)
+	sm.requestsTotal.Inc()
 	resp, err := sm.client.Do(shadowReq)
 	if err != nil {
+		sm.errorsTotal.Inc()
 		return
 	}
 	resp.Body.Close()

@@ -20,6 +20,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/openloadbalancer/olb/pkg/version"
 )
 
 // JSON-RPC 2.0 protocol version.
@@ -30,8 +32,7 @@ const mcpProtocolVersion = "2024-11-05"
 
 // Server name and version.
 const (
-	serverName    = "olb-mcp"
-	serverVersion = "0.1.0"
+	serverName = "olb-mcp"
 )
 
 // JSON-RPC error codes.
@@ -530,7 +531,7 @@ func (s *Server) handleInitialize(_ json.RawMessage) (any, *ResponseError) {
 		},
 		"serverInfo": map[string]any{
 			"name":    serverName,
-			"version": serverVersion,
+			"version": version.Version,
 		},
 	}, nil
 }
@@ -1311,7 +1312,7 @@ func (t *HTTPTransport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Limit request body to 1MB
-	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
 		return

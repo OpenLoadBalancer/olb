@@ -6,10 +6,11 @@ import (
 
 // WAFMetrics holds Prometheus-compatible metrics for the WAF.
 type WAFMetrics struct {
-	RequestsTotal  *metrics.CounterVec
-	BlockedTotal   *metrics.CounterVec
-	DetectorHits   *metrics.CounterVec
-	LatencySeconds *metrics.HistogramVec
+	RequestsTotal      *metrics.CounterVec
+	BlockedTotal       *metrics.CounterVec
+	DetectorHits       *metrics.CounterVec
+	SecurityEventsTotal *metrics.CounterVec
+	LatencySeconds     *metrics.HistogramVec
 }
 
 // RegisterWAFMetrics creates and registers WAF metrics with the registry.
@@ -40,6 +41,13 @@ func RegisterWAFMetrics(registry *metrics.Registry) *WAFMetrics {
 		[]string{"detector"},
 	)
 	registry.RegisterCounterVec(m.DetectorHits)
+
+	m.SecurityEventsTotal = metrics.NewCounterVec(
+		"security_events_total",
+		"Total security events by rule type",
+		[]string{"rule"},
+	)
+	registry.RegisterCounterVec(m.SecurityEventsTotal)
 
 	m.LatencySeconds = metrics.NewHistogramVec(
 		"waf_latency_seconds",
@@ -73,6 +81,14 @@ func (m *WAFMetrics) RecordDetectorHit(detector string) {
 		return
 	}
 	m.DetectorHits.WithLabels(map[string]string{"detector": detector}).Inc()
+}
+
+// RecordSecurityEvent records a security event by rule type.
+func (m *WAFMetrics) RecordSecurityEvent(rule string) {
+	if m == nil || m.SecurityEventsTotal == nil {
+		return
+	}
+	m.SecurityEventsTotal.WithLabels(map[string]string{"rule": rule}).Inc()
 }
 
 // RecordLatency records WAF processing latency.

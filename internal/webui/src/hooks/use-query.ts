@@ -42,24 +42,33 @@ function isTransientError(err: unknown): boolean {
   return false
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms)
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer)
+      reject(new DOMException('Aborted', 'AbortError'))
+    }, { once: true })
+  })
 }
 
 export function useQuery<T>(
-  queryFn: () => Promise<{ success: boolean; data?: T }>,
+  queryFn: (signal?: AbortSignal) => Promise<{ success: boolean; data?: T }>,
   options: UseQueryOptions<T> = {}
 ): QueryResult<T> {
   const { onSuccess, onError, enabled = true, refetchInterval, retryCount = MAX_RETRIES } = options
   const [data, setData] = useState<T | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
-  const abortedRef = useRef(false)
+  const controllerRef = useRef<AbortController | null>(null)
 
   const fetch = useCallback(async () => {
     if (!enabled) return
 
-    abortedRef.current = false
+    // Abort any previous in-flight request
+    controllerRef.current?.abort()
+    const controller = new AbortController()
+    controllerRef.current = controller
 
     try {
       setIsLoading(true)
@@ -68,21 +77,23 @@ export function useQuery<T>(
       let lastError: Error | null = null
 
       for (let attempt = 0; attempt <= retryCount; attempt++) {
-        if (abortedRef.current) return
+        if (controller.signal.aborted) return
 
         try {
-          const response = await queryFn()
+          const response = await queryFn(controller.signal)
+          if (controller.signal.aborted) return
           if (response.success && response.data !== undefined) {
             setData(response.data)
             onSuccess?.(response.data)
             return
           }
         } catch (err) {
+          if (controller.signal.aborted) return
           lastError = err instanceof Error ? err : new Error('Unknown error')
 
           // Only retry transient errors, and only if we have retries left
           if (attempt < retryCount && isTransientError(err)) {
-            await sleep(RETRY_DELAYS[attempt] ?? 4000)
+            await sleep(RETRY_DELAYS[attempt] ?? 4000, controller.signal)
             continue
           }
 
@@ -92,18 +103,20 @@ export function useQuery<T>(
       }
 
       // All attempts exhausted
-      if (lastError) {
+      if (lastError && !controller.signal.aborted) {
         setError(lastError)
         onError?.(lastError)
       }
     } finally {
-      setIsLoading(false)
+      if (!controller.signal.aborted) {
+        setIsLoading(false)
+      }
     }
   }, [queryFn, enabled, onSuccess, onError, retryCount])
 
   useEffect(() => {
     fetch()
-    return () => { abortedRef.current = true }
+    return () => { controllerRef.current?.abort() }
   }, [fetch])
 
   useEffect(() => {
@@ -128,29 +141,44 @@ interface MutationResult<T, V> {
 }
 
 export function useMutation<T, V = void>(
-  mutationFn: (variables: V) => Promise<T>,
+  mutationFn: (variables: V, signal?: AbortSignal) => Promise<T>,
   options: UseMutationOptions<T, V> = {}
 ): MutationResult<T, V> {
   const { onSuccess, onError } = options
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
   const [data, setData] = useState<T | null>(null)
+  const controllerRef = useRef<AbortController | null>(null)
+
+  // Abort on unmount
+  useEffect(() => {
+    return () => { controllerRef.current?.abort() }
+  }, [])
 
   const mutate = useCallback(async (variables: V): Promise<T | undefined> => {
+    // Abort previous in-flight request
+    controllerRef.current?.abort()
+    const controller = new AbortController()
+    controllerRef.current = controller
+
     try {
       setIsLoading(true)
       setError(null)
-      const result = await mutationFn(variables)
+      const result = await mutationFn(variables, controller.signal)
+      if (controller.signal.aborted) return undefined
       setData(result)
       onSuccess?.(result, variables)
       return result
     } catch (err) {
+      if (controller.signal.aborted) return undefined
       const error = err instanceof Error ? err : new Error('Unknown error')
       setError(error)
       onError?.(error, variables)
       throw error
     } finally {
-      setIsLoading(false)
+      if (!controller.signal.aborted) {
+        setIsLoading(false)
+      }
     }
   }, [mutationFn, onSuccess, onError])
 
@@ -159,7 +187,7 @@ export function useMutation<T, V = void>(
 
 // Health query hook
 export function useHealth(options?: UseQueryOptions<{ status: string; checks: Record<string, { status: string; message?: string }>; timestamp: string }>) {
-  return useQuery(() => api.getHealth(), {
+  return useQuery((signal) => api.getHealth(signal), {
     refetchInterval: 30000,
     ...options
   })
@@ -167,7 +195,7 @@ export function useHealth(options?: UseQueryOptions<{ status: string; checks: Re
 
 // System info query hook
 export function useSystemInfo(options?: UseQueryOptions<{ version: string; commit: string; build_date: string; uptime: string; state: string; go_version: string }>) {
-  return useQuery(() => api.getInfo(), {
+  return useQuery((signal) => api.getInfo(signal), {
     refetchInterval: 60000,
     ...options
   })
@@ -175,7 +203,7 @@ export function useSystemInfo(options?: UseQueryOptions<{ version: string; commi
 
 // Pools query hook
 export function usePools(options?: UseQueryOptions<APIPoolInfo[]>) {
-  return useQuery(() => api.getPools(), {
+  return useQuery((signal) => api.getPools(signal), {
     refetchInterval: 10000,
     ...options
   })
@@ -183,7 +211,7 @@ export function usePools(options?: UseQueryOptions<APIPoolInfo[]>) {
 
 // Routes query hook
 export function useRoutes(options?: UseQueryOptions<APIRouteInfo[]>) {
-  return useQuery(() => api.getRoutes(), {
+  return useQuery((signal) => api.getRoutes(signal), {
     refetchInterval: 30000,
     ...options
   })
@@ -191,7 +219,7 @@ export function useRoutes(options?: UseQueryOptions<APIRouteInfo[]>) {
 
 // Certificates query hook
 export function useCertificates(options?: UseQueryOptions<APICertificateInfo[]>) {
-  return useQuery(() => api.getCertificates(), {
+  return useQuery((signal) => api.getCertificates(signal), {
     refetchInterval: 60000,
     ...options
   })
@@ -199,7 +227,7 @@ export function useCertificates(options?: UseQueryOptions<APICertificateInfo[]>)
 
 // WAF status query hook
 export function useWAFStatus(options?: UseQueryOptions<APIWAFStatus>) {
-  return useQuery(() => api.getWAFStatus(), {
+  return useQuery((signal) => api.getWAFStatus(signal), {
     refetchInterval: 30000,
     ...options
   })
@@ -207,7 +235,7 @@ export function useWAFStatus(options?: UseQueryOptions<APIWAFStatus>) {
 
 // Cluster status query hook
 export function useClusterStatus(options?: UseQueryOptions<APIClusterStatus>) {
-  return useQuery(() => api.getClusterStatus(), {
+  return useQuery((signal) => api.getClusterStatus(signal), {
     refetchInterval: 10000,
     ...options
   })
@@ -215,7 +243,7 @@ export function useClusterStatus(options?: UseQueryOptions<APIClusterStatus>) {
 
 // Cluster members query hook
 export function useClusterMembers(options?: UseQueryOptions<APIClusterMember[]>) {
-  return useQuery(() => api.getClusterMembers(), {
+  return useQuery((signal) => api.getClusterMembers(signal), {
     refetchInterval: 10000,
     ...options
   })
@@ -223,7 +251,7 @@ export function useClusterMembers(options?: UseQueryOptions<APIClusterMember[]>)
 
 // Config query hook
 export function useConfig(options?: UseQueryOptions<Record<string, unknown>>) {
-  return useQuery(() => api.getConfig(), {
+  return useQuery((signal) => api.getConfig(signal), {
     refetchInterval: 60000,
     ...options
   })
@@ -231,7 +259,7 @@ export function useConfig(options?: UseQueryOptions<Record<string, unknown>>) {
 
 // Metrics query hook
 export function useMetrics(options?: UseQueryOptions<MetricsData>) {
-  return useQuery(() => api.getMetrics(), {
+  return useQuery((signal) => api.getMetrics(signal), {
     refetchInterval: 15000,
     ...options
   })
@@ -239,7 +267,7 @@ export function useMetrics(options?: UseQueryOptions<MetricsData>) {
 
 // Health status (per-backend) query hook
 export function useBackendHealth(options?: UseQueryOptions<BackendHealth[]>) {
-  return useQuery(() => api.getHealthStatus(), {
+  return useQuery((signal) => api.getHealthStatus(signal), {
     refetchInterval: 10000,
     ...options
   })
@@ -279,7 +307,7 @@ export function useToastMutation<T, V = void>(
 
 // Middleware status query hook
 export function useMiddlewareStatus(options?: UseQueryOptions<APIMiddlewareStatusItem[]>) {
-  return useQuery(() => api.getMiddlewareStatus(), {
+  return useQuery((signal) => api.getMiddlewareStatus(signal), {
     refetchInterval: 30000,
     ...options
   })
@@ -287,7 +315,7 @@ export function useMiddlewareStatus(options?: UseQueryOptions<APIMiddlewareStatu
 
 // Events query hook
 export function useEvents(options?: UseQueryOptions<APIEventItem[]>) {
-  return useQuery(() => api.getEvents(), {
+  return useQuery((signal) => api.getEvents(signal), {
     refetchInterval: 15000,
     ...options
   })

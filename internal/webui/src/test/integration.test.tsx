@@ -23,6 +23,7 @@ import { toast } from 'sonner'
 describe('API Mutation Integration', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    vi.clearAllMocks()
   })
 
   it('useMutation handles successful POST mutation', async () => {
@@ -211,6 +212,7 @@ describe('API Mutation Integration', () => {
 describe('Query Error Handling Integration', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    vi.clearAllMocks()
   })
 
   it('useQuery does NOT retry on 404 (non-transient)', async () => {
@@ -253,7 +255,7 @@ describe('Error Boundary Behavior', () => {
     // Create a simple component that shows error state
     function TestComponent() {
       const { data, error, isLoading, refetch } = useQuery(
-        () => api.getHealth(),
+        (signal) => api.getHealth(signal),
         { retryCount: 0 }
       )
 

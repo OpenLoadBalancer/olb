@@ -849,17 +849,12 @@ func TestVerifySignature_UnsupportedAlgorithm(t *testing.T) {
 	config.Algorithm = "RS256" // Unsupported
 	config.Secret = "test-secret"
 
-	mw, err := New(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = mw.verifySignature("header", "claims", "c2ln")
+	_, err := New(config)
 	if err == nil {
-		t.Error("verifySignature() should fail for unsupported algorithm")
+		t.Fatal("New() should reject unsupported algorithm")
 	}
-	if err.Error() != "unsupported algorithm" {
-		t.Errorf("Expected 'unsupported algorithm', got: %v", err)
+	if !strings.Contains(err.Error(), "unsupported JWT algorithm") {
+		t.Errorf("Expected 'unsupported JWT algorithm', got: %v", err)
 	}
 }
 

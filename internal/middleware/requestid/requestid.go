@@ -86,6 +86,9 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 		if requestID != "" {
 			r = r.WithContext(context.WithValue(r.Context(), requestIDKey, requestID))
 
+			// Set on request header so downstream consumers (WAF, access log) can read it
+			r.Header.Set(m.config.Header, requestID)
+
 			// Add to response headers if configured
 			if m.config.Response {
 				w.Header().Set(m.config.Header, requestID)

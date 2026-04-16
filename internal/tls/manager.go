@@ -21,6 +21,10 @@ type Certificate struct {
 	IsWildcard bool
 }
 
+// ExpiryAlertFunc is called when a certificate is approaching expiry.
+// The function receives the domain names, days until expiry, and the expiry time.
+type ExpiryAlertFunc func(names []string, daysUntilExpiry int, expiresAt time.Time)
+
 // Manager manages TLS certificates with support for exact and wildcard matching.
 type Manager struct {
 	mu sync.RWMutex
@@ -33,6 +37,11 @@ type Manager struct {
 
 	// defaultCert is returned when no match is found (optional)
 	defaultCert *Certificate
+
+	// expiry monitoring
+	expiryStop chan struct{}
+	expiryWg   sync.WaitGroup
+	expiryAlert ExpiryAlertFunc
 }
 
 // NewManager creates a new TLS certificate manager.
@@ -40,7 +49,83 @@ func NewManager() *Manager {
 	return &Manager{
 		exactCerts:    make(map[string]*Certificate),
 		wildcardCerts: make(map[string]*Certificate),
+		expiryStop:    make(chan struct{}),
 	}
+}
+
+// SetExpiryAlert registers a callback for certificate expiry warnings.
+// The callback is invoked during periodic checks when a certificate
+// is within 30 days of expiry.
+func (m *Manager) SetExpiryAlert(fn ExpiryAlertFunc) {
+	m.expiryAlert = fn
+}
+
+// StartExpiryMonitor begins periodic certificate expiry checking.
+// Checks run at the given interval. A reasonable default is 1 hour.
+func (m *Manager) StartExpiryMonitor(interval time.Duration) {
+	if interval <= 0 {
+		interval = 1 * time.Hour
+	}
+	m.expiryWg.Add(1)
+	go m.expiryMonitorLoop(interval)
+}
+
+func (m *Manager) expiryMonitorLoop(interval time.Duration) {
+	defer m.expiryWg.Done()
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	// Check immediately on start
+	m.checkExpiry()
+
+	for {
+		select {
+		case <-m.expiryStop:
+			return
+		case <-ticker.C:
+			m.checkExpiry()
+		}
+	}
+}
+
+// checkExpiry examines all loaded certificates and logs/alerts on approaching expiry.
+func (m *Manager) checkExpiry() {
+	m.mu.RLock()
+	allCerts := make(map[string]*Certificate, len(m.exactCerts)+len(m.wildcardCerts))
+	for k, v := range m.exactCerts {
+		allCerts[k] = v
+	}
+	for k, v := range m.wildcardCerts {
+		allCerts[k] = v
+	}
+	m.mu.RUnlock()
+
+	warnThreshold := 30 * 24 * time.Hour // 30 days
+
+	for _, cert := range allCerts {
+		expiresAt := time.Unix(cert.Expiry, 0)
+		remaining := time.Until(expiresAt)
+
+		if remaining < 0 {
+			log.Printf("ALERT: TLS certificate for %v has EXPIRED (%s)", cert.Names, expiresAt.Format(time.RFC3339))
+			if m.expiryAlert != nil {
+				m.expiryAlert(cert.Names, 0, expiresAt)
+			}
+		} else if remaining < warnThreshold {
+			days := int(remaining.Hours() / 24)
+			log.Printf("WARNING: TLS certificate for %v expires in %d days (%s)", cert.Names, days, expiresAt.Format(time.RFC3339))
+			if m.expiryAlert != nil {
+				m.expiryAlert(cert.Names, days, expiresAt)
+			}
+		}
+	}
+}
+
+// StopExpiryMonitor stops the certificate expiry monitoring goroutine.
+func (m *Manager) StopExpiryMonitor() {
+	close(m.expiryStop)
+	m.expiryWg.Wait()
 }
 
 // LoadCertificate loads a certificate from PEM files.

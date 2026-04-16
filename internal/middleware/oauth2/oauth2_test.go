@@ -744,9 +744,10 @@ func buildECJWT(key *ecdsa.PrivateKey, alg, kid string, claims map[string]interf
 func createMiddlewareWithJWKS(t *testing.T, jwksURL string) *Middleware {
 	t.Helper()
 	mw, err := New(Config{
-		Enabled:       true,
-		JwksURL:       jwksURL,
-		CacheDuration: "1h",
+		Enabled:           true,
+		JwksURL:           jwksURL,
+		CacheDuration:     "1h",
+		AllowInsecureHTTP: true, // Test servers use http://
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -766,6 +767,7 @@ func TestWrap_RSAFullFlow_Success(t *testing.T) {
 	cfg.JwksURL = srv.URL
 	cfg.Audience = "my-client"
 	cfg.IssuerURL = "https://example.com"
+	cfg.AllowInsecureHTTP = true
 
 	mw, err := New(cfg)
 	if err != nil {
@@ -815,6 +817,7 @@ func TestWrap_ExpiredToken(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Enabled = true
 	cfg.JwksURL = srv.URL
+	cfg.AllowInsecureHTTP = true
 	mw, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -853,6 +856,7 @@ func TestWrap_NotBeforeFuture(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Enabled = true
 	cfg.JwksURL = srv.URL
+	cfg.AllowInsecureHTTP = true
 	mw, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -890,6 +894,7 @@ func TestWrap_InvalidIssuer(t *testing.T) {
 	cfg.Enabled = true
 	cfg.JwksURL = srv.URL
 	cfg.IssuerURL = "https://expected.com"
+	cfg.AllowInsecureHTTP = true
 	mw, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -927,6 +932,7 @@ func TestWrap_InvalidAudience(t *testing.T) {
 	cfg.Enabled = true
 	cfg.JwksURL = srv.URL
 	cfg.Audience = "expected-aud"
+	cfg.AllowInsecureHTTP = true
 	mw, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -964,6 +970,7 @@ func TestWrap_AudienceArrayMatch(t *testing.T) {
 	cfg.Enabled = true
 	cfg.JwksURL = srv.URL
 	cfg.Audience = "my-client"
+	cfg.AllowInsecureHTTP = true
 	mw, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -1003,6 +1010,7 @@ func TestWrap_SufficientScopes(t *testing.T) {
 	cfg.Enabled = true
 	cfg.JwksURL = srv.URL
 	cfg.Scopes = []string{"read", "write"}
+	cfg.AllowInsecureHTTP = true
 	mw, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -1042,6 +1050,7 @@ func TestWrap_InsufficientScopes_Returns403(t *testing.T) {
 	cfg.Enabled = true
 	cfg.JwksURL = srv.URL
 	cfg.Scopes = []string{"admin"}
+	cfg.AllowInsecureHTTP = true
 	mw, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -1079,6 +1088,7 @@ func TestWrap_InvalidSignature(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Enabled = true
 	cfg.JwksURL = srv.URL
+	cfg.AllowInsecureHTTP = true
 	mw, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -1111,6 +1121,7 @@ func TestWrap_NoneAlgorithm(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Enabled = true
 	cfg.JwksURL = "http://unused"
+	cfg.AllowInsecureHTTP = true
 	mw, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -1138,6 +1149,7 @@ func TestWrap_EmptyAlgorithm(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Enabled = true
 	cfg.JwksURL = "http://unused"
+	cfg.AllowInsecureHTTP = true
 	mw, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -1166,6 +1178,7 @@ func TestWrap_MalformedJWT_InvalidHeader(t *testing.T) {
 	cfg.Enabled = true
 	cfg.JwksURL = "http://unused"
 	cfg.IssuerURL = "https://example.com"
+	cfg.AllowInsecureHTTP = true
 	mw, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -1193,6 +1206,7 @@ func TestWrap_MalformedJWT_InvalidClaims(t *testing.T) {
 	cfg.Enabled = true
 	cfg.JwksURL = "http://unused"
 	cfg.IssuerURL = "https://example.com"
+	cfg.AllowInsecureHTTP = true
 	mw, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -1220,6 +1234,7 @@ func TestWrap_MalformedJWT_InvalidBase64(t *testing.T) {
 	cfg.Enabled = true
 	cfg.JwksURL = "http://unused"
 	cfg.IssuerURL = "https://example.com"
+	cfg.AllowInsecureHTTP = true
 	mw, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -1405,6 +1420,7 @@ func TestIntrospectToken_Active(t *testing.T) {
 		IntrospectionURL: srv.URL,
 		ClientID:         "my-client",
 		ClientSecret:     "my-secret",
+		AllowInsecureHTTP: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1434,7 +1450,11 @@ func TestIntrospectToken_Inactive(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	mw, err := New(Config{Enabled: true, IntrospectionURL: srv.URL})
+	mw, err := New(Config{
+		Enabled:           true,
+		IntrospectionURL:  srv.URL,
+		AllowInsecureHTTP: true,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1454,7 +1474,11 @@ func TestIntrospectToken_Non200Status(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	mw, err := New(Config{Enabled: true, IntrospectionURL: srv.URL})
+	mw, err := New(Config{
+		Enabled:           true,
+		IntrospectionURL:  srv.URL,
+		AllowInsecureHTTP: true,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1471,7 +1495,11 @@ func TestIntrospectToken_InvalidJSON(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	mw, err := New(Config{Enabled: true, IntrospectionURL: srv.URL})
+	mw, err := New(Config{
+		Enabled:           true,
+		IntrospectionURL:  srv.URL,
+		AllowInsecureHTTP: true,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1492,7 +1520,11 @@ func TestIntrospectToken_NoClientCredentials(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	mw, err := New(Config{Enabled: true, IntrospectionURL: srv.URL})
+	mw, err := New(Config{
+		Enabled:           true,
+		IntrospectionURL:  srv.URL,
+		AllowInsecureHTTP: true,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1512,6 +1544,7 @@ func TestWrap_IntrospectionFullFlow(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Enabled = true
 	cfg.IntrospectionURL = srv.URL
+	cfg.AllowInsecureHTTP = true
 	cfg.ClientID = "my-client"
 	cfg.ClientSecret = "my-secret"
 
@@ -1552,6 +1585,7 @@ func TestWrap_IntrospectionInactiveToken(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Enabled = true
 	cfg.IntrospectionURL = srv.URL
+	cfg.AllowInsecureHTTP = true
 
 	mw, err := New(cfg)
 	if err != nil {
@@ -1581,6 +1615,7 @@ func TestWrap_IntrospectionExpiredToken(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Enabled = true
 	cfg.IntrospectionURL = srv.URL
+	cfg.AllowInsecureHTTP = true
 
 	mw, err := New(cfg)
 	if err != nil {
@@ -1906,6 +1941,7 @@ func TestValidateToken_IntrospectionPriorityOverJWT(t *testing.T) {
 		Enabled:          true,
 		IntrospectionURL: srv.URL,
 		JwksURL:          "http://unused",
+		AllowInsecureHTTP: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1934,8 +1970,9 @@ func TestWrap_ExcludedSubPath(t *testing.T) {
 	mw, err := New(Config{
 		Enabled:       true,
 		JwksURL:       srv.URL,
-		ExcludePaths:  []string{"/public"},
-		CacheDuration: "1h",
+		ExcludePaths:      []string{"/public"},
+		CacheDuration:     "1h",
+		AllowInsecureHTTP: true,
 	})
 	if err != nil {
 		t.Fatal(err)

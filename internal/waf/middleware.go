@@ -273,6 +273,7 @@ func (mw *WAFMiddleware) Wrap(next http.Handler) http.Handler {
 		}
 
 		start := time.Now()
+		requestID := r.Header.Get("X-Request-ID")
 
 		// Panic recovery — fail-closed for security
 		defer func() {
@@ -291,6 +292,7 @@ func (mw *WAFMiddleware) Wrap(next http.Handler) http.Handler {
 			case ipacl.ActionBypass:
 				evt := &WAFEvent{
 					Timestamp: time.Now(),
+					RequestID: requestID,
 					RemoteIP:  remoteIP,
 					Method:    r.Method,
 					Path:      r.URL.Path,
@@ -304,6 +306,7 @@ func (mw *WAFMiddleware) Wrap(next http.Handler) http.Handler {
 			case ipacl.ActionBlock:
 				evt := &WAFEvent{
 					Timestamp: time.Now(),
+					RequestID: requestID,
 					RemoteIP:  remoteIP,
 					Method:    r.Method,
 					Path:      r.URL.Path,
@@ -327,6 +330,7 @@ func (mw *WAFMiddleware) Wrap(next http.Handler) http.Handler {
 			if !allowed {
 				evt := &WAFEvent{
 					Timestamp: time.Now(),
+					RequestID: requestID,
 					RemoteIP:  remoteIP,
 					Method:    r.Method,
 					Path:      r.URL.Path,
@@ -347,6 +351,7 @@ func (mw *WAFMiddleware) Wrap(next http.Handler) http.Handler {
 		if valErr != nil {
 			evt := &WAFEvent{
 				Timestamp: time.Now(),
+				RequestID: requestID,
 				RemoteIP:  remoteIP,
 				Method:    r.Method,
 				Path:      r.URL.Path,
@@ -389,6 +394,7 @@ func (mw *WAFMiddleware) Wrap(next http.Handler) http.Handler {
 			if err == nil && result != nil && result.IsBlocked() {
 				evt := &WAFEvent{
 					Timestamp:  time.Now(),
+					RequestID: requestID,
 					RemoteIP:   remoteIP,
 					Method:     r.Method,
 					Path:       r.URL.Path,
@@ -423,6 +429,7 @@ func (mw *WAFMiddleware) Wrap(next http.Handler) http.Handler {
 			if detResult.Blocked {
 				evt := &WAFEvent{
 					Timestamp:  time.Now(),
+					RequestID: requestID,
 					RemoteIP:   remoteIP,
 					Method:     r.Method,
 					Path:       r.URL.Path,
@@ -449,6 +456,7 @@ func (mw *WAFMiddleware) Wrap(next http.Handler) http.Handler {
 			if botResult.Blocked {
 				evt := &WAFEvent{
 					Timestamp:  time.Now(),
+					RequestID: requestID,
 					RemoteIP:   remoteIP,
 					Method:     r.Method,
 					Path:       r.URL.Path,
@@ -477,6 +485,7 @@ func (mw *WAFMiddleware) Wrap(next http.Handler) http.Handler {
 		// Log allowed request
 		evt := &WAFEvent{
 			Timestamp: time.Now(),
+			RequestID: requestID,
 			RemoteIP:  remoteIP,
 			Method:    r.Method,
 			Path:      r.URL.Path,

@@ -204,71 +204,76 @@ export interface EventItem {
 
 export const api = {
   // System
-  getHealth: () => fetchAPI<APIResponse<HealthStatus>>('/system/health'),
-  getInfo: () => fetchAPI<APIResponse<SystemInfo>>('/system/info'),
-  reload: () => fetchAPI<APIResponse<{ message: string }>>('/system/reload', { method: 'POST' }),
+  getHealth: (signal?: AbortSignal) => fetchAPI<APIResponse<HealthStatus>>('/system/health', { signal }),
+  getInfo: (signal?: AbortSignal) => fetchAPI<APIResponse<SystemInfo>>('/system/info', { signal }),
+  reload: (signal?: AbortSignal) => fetchAPI<APIResponse<{ message: string }>>('/system/reload', { method: 'POST', signal }),
 
   // Version
-  getVersion: () => fetchAPI<APIResponse<SystemInfo>>('/version'),
+  getVersion: (signal?: AbortSignal) => fetchAPI<APIResponse<SystemInfo>>('/version', { signal }),
 
   // Pools
-  getPools: () => fetchAPI<APIResponse<PoolInfo[]>>('/pools'),
-  getPool: (name: string) => fetchAPI<APIResponse<PoolInfo>>(`/pools/${encodeURIComponent(name)}`),
+  getPools: (signal?: AbortSignal) => fetchAPI<APIResponse<PoolInfo[]>>('/pools', { signal }),
+  getPool: (name: string, signal?: AbortSignal) => fetchAPI<APIResponse<PoolInfo>>(`/pools/${encodeURIComponent(name)}`, { signal }),
 
   // Backends
-  getBackends: (pool: string) => fetchAPI<APIResponse<PoolInfo>>(`/backends/${encodeURIComponent(pool)}`),
-  getBackend: (pool: string, id: string) => fetchAPI<APIResponse<BackendDetail>>(`/backends/${encodeURIComponent(pool)}/${encodeURIComponent(id)}`),
-  addBackend: (pool: string, req: AddBackendRequest) =>
+  getBackends: (pool: string, signal?: AbortSignal) => fetchAPI<APIResponse<PoolInfo>>(`/backends/${encodeURIComponent(pool)}`, { signal }),
+  getBackend: (pool: string, id: string, signal?: AbortSignal) => fetchAPI<APIResponse<BackendDetail>>(`/backends/${encodeURIComponent(pool)}/${encodeURIComponent(id)}`, { signal }),
+  addBackend: (pool: string, req: AddBackendRequest, signal?: AbortSignal) =>
     fetchAPI<APIResponse<BackendInfo>>(`/backends/${encodeURIComponent(pool)}`, {
       method: 'POST',
       body: JSON.stringify(req),
+      signal,
     }),
-  updateBackend: (pool: string, id: string, req: UpdateBackendRequest) =>
+  updateBackend: (pool: string, id: string, req: UpdateBackendRequest, signal?: AbortSignal) =>
     fetchAPI<APIResponse<BackendInfo>>(`/backends/${encodeURIComponent(pool)}/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(req),
+      signal,
     }),
-  removeBackend: (pool: string, id: string) =>
+  removeBackend: (pool: string, id: string, signal?: AbortSignal) =>
     fetchAPI<APIResponse<{ message: string }>>(`/backends/${encodeURIComponent(pool)}/${encodeURIComponent(id)}`, {
       method: 'DELETE',
+      signal,
     }),
-  drainBackend: (pool: string, id: string) =>
+  drainBackend: (pool: string, id: string, signal?: AbortSignal) =>
     fetchAPI<APIResponse<{ message: string }>>(`/backends/${encodeURIComponent(pool)}/${encodeURIComponent(id)}/drain`, {
       method: 'POST',
+      signal,
     }),
 
   // Routes
-  getRoutes: () => fetchAPI<APIResponse<RouteInfo[]>>('/routes'),
+  getRoutes: (signal?: AbortSignal) => fetchAPI<APIResponse<RouteInfo[]>>('/routes', { signal }),
 
   // Health
-  getHealthStatus: () => fetchAPI<APIResponse<BackendHealth[]>>('/health'),
+  getHealthStatus: (signal?: AbortSignal) => fetchAPI<APIResponse<BackendHealth[]>>('/health', { signal }),
 
   // Metrics
-  getMetrics: () => fetchAPI<APIResponse<MetricsData>>('/metrics'),
+  getMetrics: (signal?: AbortSignal) => fetchAPI<APIResponse<MetricsData>>('/metrics', { signal }),
 
   // Config
-  getConfig: () => fetchAPI<APIResponse<Record<string, unknown>>>('/config'),
+  getConfig: (signal?: AbortSignal) => fetchAPI<APIResponse<Record<string, unknown>>>('/config', { signal }),
 
   // Certificates
-  getCertificates: () => fetchAPI<APIResponse<CertificateInfo[]>>('/certificates'),
+  getCertificates: (signal?: AbortSignal) => fetchAPI<APIResponse<CertificateInfo[]>>('/certificates', { signal }),
 
   // WAF
-  getWAFStatus: () => fetchAPI<APIResponse<WAFStatus>>('/waf/status'),
+  getWAFStatus: (signal?: AbortSignal) => fetchAPI<APIResponse<WAFStatus>>('/waf/status', { signal }),
 
   // Cluster
-  getClusterStatus: () => fetchAPI<APIResponse<ClusterStatus>>('/cluster/status'),
-  getClusterMembers: () => fetchAPI<APIResponse<ClusterMember[]>>('/cluster/members'),
-  joinCluster: (seedAddrs: string[]) =>
+  getClusterStatus: (signal?: AbortSignal) => fetchAPI<APIResponse<ClusterStatus>>('/cluster/status', { signal }),
+  getClusterMembers: (signal?: AbortSignal) => fetchAPI<APIResponse<ClusterMember[]>>('/cluster/members', { signal }),
+  joinCluster: (seedAddrs: string[], signal?: AbortSignal) =>
     fetchAPI<APIResponse<{ message: string }>>('/cluster/join', {
       method: 'POST',
       body: JSON.stringify({ seed_addrs: seedAddrs }),
+      signal,
     }),
-  leaveCluster: () =>
-    fetchAPI<APIResponse<{ message: string }>>('/cluster/leave', { method: 'POST' }),
+  leaveCluster: (signal?: AbortSignal) =>
+    fetchAPI<APIResponse<{ message: string }>>('/cluster/leave', { method: 'POST', signal }),
 
   // Middleware status
-  getMiddlewareStatus: () => fetchAPI<APIResponse<MiddlewareStatusItem[]>>('/middleware/status'),
+  getMiddlewareStatus: (signal?: AbortSignal) => fetchAPI<APIResponse<MiddlewareStatusItem[]>>('/middleware/status', { signal }),
 
   // Events
-  getEvents: () => fetchAPI<APIResponse<EventItem[]>>('/events'),
+  getEvents: (signal?: AbortSignal) => fetchAPI<APIResponse<EventItem[]>>('/events', { signal }),
 }

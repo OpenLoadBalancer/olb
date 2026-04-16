@@ -69,13 +69,23 @@ func (d *Detector) analyzePath(input, location string) *detection.Finding {
 		}
 	}
 
-	// Encoded traversals
+	// Encoded traversals (literal dots, encoded separator)
 	if strings.Contains(lower, "..%2f") || strings.Contains(lower, "..%5c") {
 		score := 80
 		if score > maxScore {
 			maxScore = score
 			maxRule = "encoded_traversal"
 			maxEvidence = "..%2f"
+		}
+	}
+
+	// Fully encoded traversals (encoded dots, any separator)
+	if strings.Contains(lower, "%2e%2e/") || strings.Contains(lower, "%2e%2e%2f") || strings.Contains(lower, "%2e%2e%5c") {
+		score := 80
+		if score > maxScore {
+			maxScore = score
+			maxRule = "encoded_traversal"
+			maxEvidence = "%2e%2e"
 		}
 	}
 

@@ -88,6 +88,9 @@ func (el *EventLogger) LogEvent(evt *WAFEvent) {
 		}
 		for _, f := range evt.Findings {
 			el.metrics.RecordDetectorHit(f.Detector)
+			if f.Rule != "" {
+				el.metrics.RecordSecurityEvent(f.Rule)
+			}
 		}
 		if evt.LatencyNS > 0 {
 			el.metrics.RecordLatency(evt.Layer, float64(evt.LatencyNS)/1e9)

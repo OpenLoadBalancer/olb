@@ -381,3 +381,33 @@ func TestPathTraversal_QueryWithTraversal(t *testing.T) {
 		t.Error("expected detection for query with traversal")
 	}
 }
+
+func TestPathTraversal_FullyEncodedDots(t *testing.T) {
+	d := New()
+	tests := []struct {
+		name string
+		path string
+	}{
+		{"encoded dots with literal slash", "/%2e%2e/safe/path"},
+		{"encoded dots with encoded slash", "/%2e%2e%2fsafe%2fpath"},
+		{"encoded dots with encoded backslash", "/%2e%2e%5csafe%5cpath"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := newCtx(tt.path, "")
+			findings := d.Detect(ctx)
+			found := false
+			for _, f := range findings {
+				if f.Rule == "encoded_traversal" {
+					found = true
+					if f.Score != 80 {
+						t.Errorf("expected score 80, got %d", f.Score)
+					}
+				}
+			}
+			if !found {
+				t.Errorf("expected encoded_traversal for %q", tt.path)
+			}
+		})
+	}
+}

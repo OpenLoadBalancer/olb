@@ -33,8 +33,9 @@ type Config struct {
 	Header           string   // Authorization header name (default: "Authorization")
 	Prefix           string   // Token prefix (default: "Bearer ")
 	ExcludePaths     []string // Paths to exclude
-	IntrospectionURL string   // Token introspection endpoint (optional)
-	CacheDuration    string   // JWKS cache duration (default: "1h")
+	IntrospectionURL  string   // Token introspection endpoint (optional)
+	CacheDuration     string   // JWKS cache duration (default: "1h")
+	AllowInsecureHTTP bool     // Allow http:// URLs (development only, NOT for production)
 }
 
 // DefaultConfig returns default OAuth2 configuration.
@@ -159,6 +160,28 @@ func New(config Config) (*Middleware, error) {
 	if config.CacheDuration != "" {
 		if d, err := time.ParseDuration(config.CacheDuration); err == nil {
 			cacheDuration = d
+		}
+	}
+
+	// Validate that sensitive endpoints use HTTPS (skip for test/dev with AllowInsecureHTTP)
+	if !config.AllowInsecureHTTP {
+		for _, field := range []struct {
+			name string
+			url  string
+		}{
+			{"introspection_url", config.IntrospectionURL},
+			{"jwks_url", config.JwksURL},
+			{"issuer_url", config.IssuerURL},
+		} {
+			if field.url != "" {
+				u, err := url.Parse(field.url)
+				if err != nil {
+					return nil, fmt.Errorf("invalid %s: %w", field.name, err)
+				}
+				if u.Scheme != "https" {
+					return nil, fmt.Errorf("%s must use HTTPS, got %q (set allow_insecure_http: true for development only)", field.name, u.Scheme)
+				}
+			}
 		}
 	}
 

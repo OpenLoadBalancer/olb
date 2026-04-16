@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"hash"
 	"net/http"
 	"strings"
@@ -60,10 +61,20 @@ type Middleware struct {
 	mu        sync.RWMutex
 }
 
+// allowedAlgorithms is the set of JWT algorithms accepted by this middleware.
+var allowedAlgorithms = map[string]bool{
+	"HS256": true, "HS384": true, "HS512": true,
+	"EdDSA": true,
+}
+
 // New creates a new JWT middleware.
 func New(config Config) (*Middleware, error) {
 	if !config.Enabled {
 		return &Middleware{config: config}, nil
+	}
+
+	if !allowedAlgorithms[config.Algorithm] {
+		return nil, fmt.Errorf("unsupported JWT algorithm: %s (allowed: HS256, HS384, HS512, EdDSA)", config.Algorithm)
 	}
 
 	m := &Middleware{
@@ -170,7 +181,10 @@ func (m *Middleware) validateToken(token string) (*Claims, error) {
 		return nil, err
 	}
 
-	// Verify algorithm
+	// Verify algorithm — reject "none" and empty
+	if header.Algorithm == "" || header.Algorithm == "none" {
+		return nil, errors.New("algorithm not allowed")
+	}
 	if header.Algorithm != m.config.Algorithm {
 		return nil, errors.New("algorithm mismatch")
 	}
