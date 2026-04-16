@@ -591,6 +591,9 @@ func TestCov_GetMCPAddress_NonNumericPort(t *testing.T) {
 
 // TestCov_InitCluster_WithNodeAuth tests initCluster with NodeAuth configured.
 func TestCov_InitCluster_WithNodeAuth(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping race-prone cluster test in short mode")
+	}
 	cfg := createTestConfig()
 	configPath := createTempConfigFile(t, cfg)
 

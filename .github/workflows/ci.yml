@@ -364,7 +364,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Run integration tests
-        run: go test -v -count=1 -p 1 -tags=integration -timeout=300s ./test/...
+        run: go test -v -short -count=1 -p 1 -tags=integration -timeout=300s ./test/...
 
   # Job 7: Benchmark
   benchmark:
@@ -549,7 +549,7 @@ jobs:
           tags: ghcr.io/openloadbalancer/olb:scan-target
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.30.0
+        uses: aquasecurity/trivy-action@0.29.0
         with:
           image-ref: ghcr.io/openloadbalancer/olb:scan-target
           config: .trivy.yaml

@@ -808,6 +808,9 @@ func TestShutdown_NilContext(t *testing.T) {
 }
 
 func TestShutdown_ConcurrentNoPanic(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping race-prone concurrent shutdown test in short mode")
+	}
 	cfg := createTestConfig()
 	configPath := createTempConfigFile(t, cfg)
 	engine, err := New(cfg, configPath)

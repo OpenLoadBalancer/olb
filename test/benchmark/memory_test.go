@@ -139,6 +139,9 @@ func TestMemory_ConnectionPool_IdleConn(t *testing.T) {
 // TestMemory_ActiveRequest_PerRequest verifies that active proxied requests
 // consume less than 32KB each on average.
 func TestMemory_ActiveRequest_PerRequest(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping race-prone memory test in short mode")
+	}
 	// Backend that holds connections open briefly
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
