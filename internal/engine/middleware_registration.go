@@ -448,9 +448,11 @@ func registerJWTMiddleware(ctx *middlewareRegistrationContext) {
 		},
 	})
 	if err != nil {
-		ctx.logger.Error("Failed to initialize JWT middleware",
-			logging.Error(err),
-		)
+		if ctx.logger != nil {
+			ctx.logger.Error("Failed to initialize JWT middleware",
+				logging.Error(err),
+			)
+		}
 		return
 	}
 	ctx.chain.Use(jwtMW)

@@ -230,6 +230,7 @@ func (sm *ShadowManager) sendShadow(req *http.Request, backendAddr string, targe
 		sm.errorsTotal.Inc()
 		return
 	}
+	io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
 }
 

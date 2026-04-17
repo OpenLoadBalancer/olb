@@ -3,6 +3,7 @@ package waf
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"os"
 	"sync"
 	"time"
@@ -117,11 +118,14 @@ func (el *EventLogger) LogEvent(evt *WAFEvent) {
 
 	data, err := json.Marshal(evt)
 	if err != nil {
+		log.Printf("[waf] failed to marshal event: %v", err)
 		return
 	}
 
 	el.mu.Lock()
-	el.writer.Write(append(data, '\n'))
+	if _, err := el.writer.Write(append(data, '\n')); err != nil {
+		log.Printf("[waf] failed to write event log: %v", err)
+	}
 	el.mu.Unlock()
 }
 

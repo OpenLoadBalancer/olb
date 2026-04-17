@@ -3,8 +3,8 @@ package discovery
 import (
 	"context"
 	"encoding/json"
-
 	"fmt"
+	"log"
 	"github.com/openloadbalancer/olb/internal/config/yaml"
 	"maps"
 	"os"
@@ -289,7 +289,7 @@ func (p *StaticFileProvider) watchFile() {
 			return
 		case <-ticker.C:
 			if err := p.loadServices(); err != nil {
-				// Log error but continue watching
+				log.Printf("[discovery] static file reload failed for %q: %v", p.filePath, err)
 			}
 		}
 	}

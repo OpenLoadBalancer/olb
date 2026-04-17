@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"sync/atomic"
 	"time"
@@ -62,7 +63,9 @@ func (t *TimeoutMiddleware) Wrap(next http.Handler) http.Handler {
 
 		go func() {
 			defer func() {
-				recover() // prevent downstream panic from crashing the process
+				if r := recover(); r != nil {
+					log.Printf("[timeout] panic recovered in handler goroutine: %v", r)
+				}
 				close(done)
 			}()
 			next.ServeHTTP(tw, r)

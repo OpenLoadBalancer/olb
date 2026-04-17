@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"runtime/debug"
 )
@@ -9,7 +10,7 @@ import (
 // RecoveryConfig configures the panic recovery middleware.
 type RecoveryConfig struct {
 	// LogFunc is called with the panic value and stack trace.
-	// If nil, panics are silently recovered with a 500 response.
+	// If nil, panics are logged via log.Printf.
 	LogFunc func(panicVal any, stack string)
 }
 
@@ -38,6 +39,8 @@ func (rm *RecoveryMiddleware) Wrap(next http.Handler) http.Handler {
 				stack := string(debug.Stack())
 				if rm.config.LogFunc != nil {
 					rm.config.LogFunc(rv, stack)
+				} else {
+					log.Printf("[recovery] panic recovered: %v\n%s", rv, stack)
 				}
 
 				// Only write error if nothing was written yet

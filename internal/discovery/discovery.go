@@ -316,7 +316,7 @@ func (m *Manager) Stop() error {
 	}
 
 	if len(errs) > 0 {
-		return errors.New("one or more providers failed to stop")
+		return errors.Join(errs...)
 	}
 
 	return nil

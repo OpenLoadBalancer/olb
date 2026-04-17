@@ -229,9 +229,9 @@ func (p *Pool) dial(ctx context.Context) (net.Conn, error) {
 // Close closes all connections in the pool.
 func (p *Pool) Close() error {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 
 	if p.closed {
+		p.mu.Unlock()
 		return nil
 	}
 
@@ -249,6 +249,10 @@ func (p *Pool) Close() error {
 		conn.Conn.Close()
 	}
 	p.idle = p.idle[:0]
+	p.mu.Unlock()
+
+	// Wait for eviction goroutine to finish
+	p.wg.Wait()
 
 	return nil
 }

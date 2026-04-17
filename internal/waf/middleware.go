@@ -2,6 +2,7 @@ package waf
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -278,6 +279,7 @@ func (mw *WAFMiddleware) Wrap(next http.Handler) http.Handler {
 		// Panic recovery — fail-closed for security
 		defer func() {
 			if err := recover(); err != nil {
+			log.Printf("[waf] panic recovered in middleware: %v", err)
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusInternalServerError)
 				_, _ = w.Write([]byte(`{"error":"internal waf error","layer":"recovery"}`))

@@ -52,7 +52,7 @@ func (p *DNSProvider) Start(ctx context.Context) error {
 
 	// Do initial lookup
 	if err := p.refresh(); err != nil {
-		// Log error but continue
+		log.Printf("[discovery] DNS lookup failed for %q: %v", p.domain, err)
 	}
 
 	// Start refresh loop
@@ -141,7 +141,7 @@ func (p *DNSProvider) refreshLoop() {
 			return
 		case <-ticker.C:
 			if err := p.refresh(); err != nil {
-				// Log error but continue
+				log.Printf("[discovery] DNS lookup failed for %q: %v", p.domain, err)
 			}
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -198,7 +199,7 @@ func (p *ConsulProvider) watchService(serviceName string) {
 func (p *ConsulProvider) refreshService(serviceName string) {
 	entries, err := p.getServiceEntries(serviceName)
 	if err != nil {
-		// Log error but continue
+		log.Printf("[discovery] Consul service entries failed for %q: %v", serviceName, err)
 		return
 	}
 
@@ -319,7 +320,7 @@ func (p *ConsulProvider) watchCatalog() {
 		case <-ticker.C:
 			services, err := p.getServices()
 			if err != nil {
-				continue
+				log.Printf("[discovery] Consul catalog fetch failed: %v", err); continue
 			}
 
 			for serviceName := range services {
