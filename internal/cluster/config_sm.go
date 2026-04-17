@@ -109,6 +109,9 @@ type ConfigStateMachine struct {
 	// onConfigApplied is called after a config change is successfully committed.
 	onConfigApplied func(*config.Config)
 
+	// wg tracks in-flight callback goroutines so callers can wait for drain.
+	wg sync.WaitGroup
+
 	// onWAFCommand is called when a WAF-specific command is applied via Raft.
 	// WAF middleware registers this callback to apply WAF state changes.
 	onWAFCommand func(cmdType ConfigCommandType, payload json.RawMessage) error
@@ -175,9 +178,10 @@ func (sm *ConfigStateMachine) Apply(command []byte) ([]byte, error) {
 
 	// Notify callback
 	if sm.onConfigApplied != nil {
-		// Pass a copy to avoid race conditions
 		cfgCopy := sm.cloneConfigLocked()
+		sm.wg.Add(1)
 		go func() {
+			defer sm.wg.Done()
 			defer func() {
 				if r := recover(); r != nil {
 					slog.Error("config callback panic recovered", "error", r)
@@ -234,6 +238,11 @@ func (sm *ConfigStateMachine) OnConfigApplied(fn func(*config.Config)) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	sm.onConfigApplied = fn
+}
+
+// WaitCallbacks blocks until all in-flight config callback goroutines finish.
+func (sm *ConfigStateMachine) WaitCallbacks() {
+	sm.wg.Wait()
 }
 
 // applySetConfig replaces the entire configuration.

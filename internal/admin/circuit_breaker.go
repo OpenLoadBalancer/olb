@@ -114,11 +114,13 @@ func (acb *adminCircuitBreaker) Execute(ctx context.Context, fn func(ctx context
 		// Function completed
 	case <-callCtx.Done():
 		err = fmt.Errorf("admin call timed out after %v", acb.timeout)
-		// Drain the goroutine so it doesn't leak. The fn should respect
-		// callCtx cancellation, but we wait in a background goroutine to
-		// avoid blocking the caller.
+		// Drain the goroutine so it doesn't leak. Bound the wait
+		// to prevent permanent leaks if fn ignores context cancellation.
 		go func() {
-			<-done
+			select {
+			case <-done:
+			case <-time.After(acb.timeout):
+			}
 		}()
 	}
 

@@ -478,12 +478,6 @@ func (b *SimpleBalancer) Next(ctx *backend.RequestContext, backends []*backend.B
 	return backends[idx]
 }
 
-// CopyResult contains the result of a copy operation.
-type CopyResult struct {
-	Bytes int64
-	Error error
-}
-
 // CopyBidirectional copies data bidirectionally between two connections.
 // It returns when both directions complete.
 func CopyBidirectional(conn1, conn2 net.Conn, idleTimeout time.Duration) (int64, int64, error) {
