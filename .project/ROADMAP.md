@@ -132,15 +132,11 @@
 ### ~~5.2 AbortController for API Calls~~ (FIXED)
 - **Status:** Added `AbortController` to `useQuery` and `useMutation` hooks. Signal passed through all 13 domain hooks and all `api.*` methods. In-flight requests cancelled on unmount. Retry sleep is abort-aware. `useMutation` aborts previous request on re-mutate.
 
-### 5.3 Remove Unused Dependencies
-- **Scope:** `internal/webui/package.json`
-- **Work:** Remove `react-hook-form` and `zod` if not used in any form component. If forms need validation, wire them up properly.
-- **Effort:** 2 hours
+### ~~5.3 Remove Unused Dependencies~~ (VERIFIED — NOT NEEDED)
+- **Status:** Both `react-hook-form` and `zod` are actively used in pools, listeners, certificates, and cluster pages.
 
-### 5.4 Error Boundaries
-- **Scope:** `internal/webui/src/`
-- **Work:** Add React error boundaries per page route. Show user-friendly error UI with retry button. Log errors to structured logger.
-- **Effort:** 1 day
+### ~~5.4 Error Boundaries~~ (FIXED)
+- **Status:** Added `PageErrorBoundary` class component wrapping all 11 routes in `main.tsx`. Shows error message, retry button, logs to console.
 
 ---
 
@@ -175,10 +171,8 @@
 
 **Priority: LOW** — Marketing claims should match reality.
 
-### 7.1 MCP README Alignment
-- **Scope:** `README.md`, `docs/mcp.md`
-- **Work:** README claims 17 tools including `olb_query_metrics`, `olb_diagnose`, etc. Actual tool names are `get_metrics`, `get_config`, etc. Align documentation with actual implementation. Document the 3 resource stubs as "coming soon" or implement them.
-- **Effort:** 1 day
+### ~~7.1 MCP README Alignment~~ (FIXED)
+- **Status:** Fixed phantom tool names in `docs/mcp.md`, `docs/configuration.md`, `docs/SPECIFICATION.md`. Aligned `olb_diagnose` params (`mode` not `type`), `olb_modify_route` params (`host`/`path` not `name`/`match`), `olb_get_logs` params (`count` not `limit`), resource URIs, and prompt template names with implementation.
 
 ### ~~7.2 JWT Algorithm Restriction~~ (FIXED)
 - **Status:** Added allowlist (HS256, HS384, HS512, EdDSA) at config time. Reject "none"/empty at validation time.

@@ -5,6 +5,7 @@ import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Layout } from '@/components/layout'
+import { PageErrorBoundary } from '@/components/error-boundary'
 import { ErrorBoundary } from '@/pages/error'
 import './index.css'
 
@@ -54,17 +55,17 @@ createRoot(document.getElementById('root')!).render(
 					<Layout>
 						<Suspense fallback={<PageLoader />}>
 							<Routes>
-								<Route path="/" element={<DashboardPage />} />
-								<Route path="/pools" element={<PoolsPage />} />
-								<Route path="/listeners" element={<ListenersPage />} />
-								<Route path="/middleware" element={<MiddlewarePage />} />
-								<Route path="/certificates" element={<CertificatesPage />} />
-								<Route path="/waf" element={<WAFPage />} />
-								<Route path="/metrics" element={<MetricsPage />} />
-								<Route path="/logs" element={<LogsPage />} />
-								<Route path="/cluster" element={<ClusterPage />} />
-								<Route path="/settings" element={<SettingsPage />} />
-								<Route path="/backup" element={<BackupRestorePage />} />
+								<Route path="/" element={<PageErrorBoundary><DashboardPage /></PageErrorBoundary>} />
+								<Route path="/pools" element={<PageErrorBoundary><PoolsPage /></PageErrorBoundary>} />
+								<Route path="/listeners" element={<PageErrorBoundary><ListenersPage /></PageErrorBoundary>} />
+								<Route path="/middleware" element={<PageErrorBoundary><MiddlewarePage /></PageErrorBoundary>} />
+								<Route path="/certificates" element={<PageErrorBoundary><CertificatesPage /></PageErrorBoundary>} />
+								<Route path="/waf" element={<PageErrorBoundary><WAFPage /></PageErrorBoundary>} />
+								<Route path="/metrics" element={<PageErrorBoundary><MetricsPage /></PageErrorBoundary>} />
+								<Route path="/logs" element={<PageErrorBoundary><LogsPage /></PageErrorBoundary>} />
+								<Route path="/cluster" element={<PageErrorBoundary><ClusterPage /></PageErrorBoundary>} />
+								<Route path="/settings" element={<PageErrorBoundary><SettingsPage /></PageErrorBoundary>} />
+								<Route path="/backup" element={<PageErrorBoundary><BackupRestorePage /></PageErrorBoundary>} />
 								<Route path="*" element={<ErrorBoundary />} />
 							</Routes>
 						</Suspense>

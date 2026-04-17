@@ -1723,17 +1723,23 @@ mcp:
   http:
     address: 127.0.0.1:9091
   tools:
-    - query_metrics
-    - list_backends
-    - backend_status
-    - modify_route
-    - add_backend
-    - remove_backend
-    - drain_backend
-    - get_config
-    - set_config
-    - diagnose
-    - get_logs
+    - olb_query_metrics
+    - olb_list_backends
+    - olb_modify_backend
+    - olb_modify_route
+    - olb_diagnose
+    - olb_get_config
+    - olb_get_logs
+    - olb_cluster_status
+    - waf_status
+    - waf_add_whitelist
+    - waf_add_blacklist
+    - waf_remove_whitelist
+    - waf_remove_blacklist
+    - waf_list_rules
+    - waf_get_stats
+    - waf_get_top_blocked_ips
+    - waf_get_attack_timeline
 ```
 
 ### 11.3 Environment Variable Overlay

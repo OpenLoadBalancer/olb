@@ -29,18 +29,23 @@ mcp:
 
   # Tools to expose (all enabled by default)
   tools:
-    - query_metrics
-    - list_backends
-    - backend_status
-    - modify_backend        # Requires write access
-    - modify_route          # Requires write access
-    - add_backend           # Requires write access
-    - remove_backend        # Requires write access
-    - drain_backend         # Requires write access
-    - get_config
-    - set_config            # Requires write access
-    - diagnose
-    - get_logs
+    - olb_query_metrics
+    - olb_list_backends
+    - olb_modify_backend     # Requires write access
+    - olb_modify_route       # Requires write access
+    - olb_diagnose
+    - olb_get_config
+    - olb_get_logs
+    - olb_cluster_status
+    - waf_status
+    - waf_add_whitelist
+    - waf_add_blacklist
+    - waf_remove_whitelist
+    - waf_remove_blacklist
+    - waf_list_rules
+    - waf_get_stats
+    - waf_get_top_blocked_ips
+    - waf_get_attack_timeline
 ```
 
 ### Transport Modes
@@ -248,26 +253,23 @@ Add, update, or remove routes. Supports traffic splitting for canary deployments
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `action` | string | Yes | `add`, `update`, `remove` |
-| `name` | string | Yes | Route name |
-| `match` | object | No | Match criteria (`host`, `path`, `methods`) |
+| `host` | string | No | Host match |
+| `path` | string | No | Path match |
 | `backend` | string | No | Target backend pool |
-| `split` | array | No | Traffic split for canary deployments |
 
 **Example interaction:**
 
 ```
-User: Set up a canary sending 10% of traffic to the new version.
+User: Add a new route for the API.
 
 AI calls: olb_modify_route(
-  action="update",
-  name="default",
-  split=[
-    {"backend": "web-backend", "weight": 90},
-    {"backend": "web-canary", "weight": 10}
-  ]
+  action="add",
+  host="api.example.com",
+  path="/v2",
+  backend="api-backend"
 )
 
-AI: Updated route "default" to split traffic: 90% to web-backend, 10% to web-canary.
+AI: Added route for api.example.com/v2 pointing to api-backend.
 ```
 
 ### olb_diagnose
@@ -278,16 +280,15 @@ Analyze error patterns, detect anomalies, check configuration for problems, and 
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `type` | string | No | `errors`, `latency`, `config`, `health`, `capacity`, `full` |
+| `mode` | string | No | `errors`, `latency`, `config`, `health`, `capacity`, `full` |
 | `target` | string | No | Route name, pool name, or `all` |
-| `range` | string | No | Time range to analyze |
 
 **Example interaction:**
 
 ```
 User: Why is latency high on the API route?
 
-AI calls: olb_diagnose(type="latency", target="api", range="30m")
+AI calls: olb_diagnose(mode="latency", target="api")
 
 Response: {
   "diagnosis": {
@@ -336,11 +337,9 @@ Search and retrieve access logs and error logs.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `type` | string | No | `access`, `error`, `all` |
-| `filter` | string | No | Search query |
-| `limit` | integer | No | Max entries to return |
-| `since` | string | No | Start time |
+| `count` | integer | No | Number of entries to return |
 | `level` | string | No | `trace`, `debug`, `info`, `warn`, `error` |
+| `filter` | string | No | Search query |
 
 ### olb_cluster_status
 
@@ -352,16 +351,16 @@ MCP resources provide read-only access to OLB state:
 
 | URI | Name | Description |
 |-----|------|-------------|
-| `olb://metrics/dashboard` | Live Dashboard Metrics | Real-time metrics for a dashboard view |
-| `olb://config/current` | Current Configuration | Full running config in YAML |
-| `olb://health/summary` | Health Summary | All backend health status |
-| `olb://logs/recent` | Recent Logs | Last 100 log entries |
+| `olb://metrics` | Live Dashboard Metrics | Real-time metrics for a dashboard view |
+| `olb://config` | Current Configuration | Full running config in YAML |
+| `olb://health` | Health Summary | All backend health status |
+| `olb://logs` | Recent Logs | Last 100 log entries |
 
 ## Prompt Templates
 
 Pre-built prompt templates for common operations:
 
-### diagnose_high_latency
+### diagnose
 
 Investigate high latency on a route or backend.
 
@@ -381,7 +380,7 @@ Arguments: pool (required) -- backend pool name
 
 Reviews request rates, connection utilization, response times, and trends to suggest scaling actions.
 
-### deploy_canary
+### canary_deploy
 
 Set up a canary deployment with traffic splitting.
 
@@ -426,7 +425,7 @@ All pools are healthy:
 
 You: The api-2 backend seems slow. Can you investigate?
 
-Claude: [calls olb_diagnose(type="latency", target="api-backend")]
+Claude: [calls olb_diagnose(mode="latency", target="api-backend")]
 
 Backend api-2 has elevated latency (p99 = 180ms vs api-1's 12ms). The connection
 pool is at 78% capacity. Recommendations:
@@ -455,7 +454,7 @@ while True:
     result = mcp.call("olb_query_metrics", metric="error_rate", scope="global")
     if result["value"] > 0.05:  # 5% error rate threshold
         # Diagnose the issue
-        diagnosis = mcp.call("olb_diagnose", type="errors", range="5m")
+        diagnosis = mcp.call("olb_diagnose", mode="errors")
 
         for finding in diagnosis["findings"]:
             if finding["severity"] == "critical":
@@ -468,7 +467,7 @@ while True:
                 alert(f"Auto-drained {finding['backend']}: {finding['description']}")
 
     # Check capacity
-    result = mcp.call("olb_diagnose", type="capacity")
+    result = mcp.call("olb_diagnose", mode="capacity")
     for finding in result["findings"]:
         if "utilization" in finding and finding["utilization"] > 80:
             alert(f"High utilization on {finding['pool']}: {finding['utilization']}%")
@@ -478,6 +477,6 @@ while True:
 
 ## Security Considerations
 
-- MCP tools that modify state (`modify_backend`, `modify_route`, `set_config`) should be restricted in production environments. Use the `tools` config to expose only read-only tools when appropriate.
+- MCP tools that modify state (`olb_modify_backend`, `olb_modify_route`, `waf_add_whitelist`, `waf_add_blacklist`) should be restricted in production environments. Use the `tools` config to expose only read-only tools when appropriate.
 - The stdio transport is inherently local (runs as a subprocess). The HTTP transport should be bound to localhost or secured with authentication.
 - All MCP actions are logged in the OLB audit log.
