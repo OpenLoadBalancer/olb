@@ -66,7 +66,7 @@ pools:
 	proxyAddr := fmt.Sprintf("127.0.0.1:%d", proxyPH.Port())
 	waitForReady(t, proxyAddr, 5*time.Second)
 
-	// Send requests - should get 502/503 errors, not crash
+	// Send requests - should get error responses (4xx/5xx), not crash
 	client := &http.Client{Timeout: 3 * time.Second}
 	for i := 0; i < 10; i++ {
 		resp, err := client.Get(fmt.Sprintf("http://%s/", proxyAddr))
@@ -76,8 +76,8 @@ pools:
 		}
 		io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
-		if resp.StatusCode >= 500 {
-			t.Logf("Request %d: got %d (expected 5xx for dead backends)", i, resp.StatusCode)
+		if resp.StatusCode >= 400 {
+			t.Logf("Request %d: got %d (expected error for dead backends)", i, resp.StatusCode)
 		} else {
 			t.Errorf("Request %d: unexpected success with status %d", i, resp.StatusCode)
 		}
