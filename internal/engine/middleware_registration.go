@@ -447,9 +447,13 @@ func registerJWTMiddleware(ctx *middlewareRegistrationContext) {
 			Audience: j.ClaimsValidation.Audience,
 		},
 	})
-	if err == nil {
-		ctx.chain.Use(jwtMW)
+	if err != nil {
+		ctx.logger.Error("Failed to initialize JWT middleware",
+			logging.Error(err),
+		)
+		return
 	}
+	ctx.chain.Use(jwtMW)
 }
 
 func registerOAuth2Middleware(ctx *middlewareRegistrationContext) {
