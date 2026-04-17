@@ -411,3 +411,98 @@ func TestPathTraversal_FullyEncodedDots(t *testing.T) {
 		})
 	}
 }
+
+func TestPathTraversal_MixedEncoding(t *testing.T) {
+	d := New()
+	tests := []struct {
+		name string
+		path string
+		rule string
+	}{
+		{"literal + encoded slash", "/..%2f..%2fsafe", "encoded_traversal"},
+		{"encoded dots + literal", "/%2e%2e/../safe", "encoded_traversal"},
+		{"case-insensitive encoding", "/%2E%2E%2Fsafe", "encoded_traversal"},
+		{"case-insensitive dots", "/..%2F..%2Fsafe", "encoded_traversal"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := newCtx(tt.path, "")
+			findings := d.Detect(ctx)
+			if len(findings) == 0 {
+				t.Fatalf("expected detection for %q", tt.path)
+			}
+			found := false
+			for _, f := range findings {
+				if f.Rule == tt.rule {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("expected rule %q for %q, got rules: %v", tt.rule, tt.path, findingsToRules(findings))
+			}
+		})
+	}
+}
+
+func TestPathTraversal_RepeatedEncodedTraversal(t *testing.T) {
+	d := New()
+	// Deep traversal with all encoded components
+	ctx := newCtx("/%2e%2e/%2e%2e/%2e%2e/safe", "")
+	findings := d.Detect(ctx)
+	if len(findings) == 0 {
+		t.Error("expected detection for repeated encoded traversal")
+	}
+}
+
+func TestPathTraversal_EncodedDotsInQuery(t *testing.T) {
+	d := New()
+	ctx := newCtx("/page", "file=%2e%2e/%2e%2e/safe")
+	findings := d.Detect(ctx)
+	if len(findings) == 0 {
+		t.Error("expected detection for encoded dots in query")
+	}
+	found := false
+	for _, f := range findings {
+		if f.Rule == "encoded_traversal" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected encoded_traversal rule in query, got: %v", findingsToRules(findings))
+	}
+}
+
+func TestPathTraversal_NullByteWithTraversal(t *testing.T) {
+	d := New()
+	ctx := newCtx("/../safe%00.jpg", "")
+	findings := d.Detect(ctx)
+	if len(findings) == 0 {
+		t.Error("expected detection for null byte with traversal")
+	}
+}
+
+func TestPathTraversal_BackslashTraversal(t *testing.T) {
+	d := New()
+	ctx := newCtx("/..\\..\\safe", "")
+	findings := d.Detect(ctx)
+	if len(findings) == 0 {
+		t.Error("expected detection for backslash traversal")
+	}
+}
+
+func TestPathTraversal_EncodedBackslashDots(t *testing.T) {
+	d := New()
+	ctx := newCtx("/%2e%2e%5c%2e%2e%5csafe", "")
+	findings := d.Detect(ctx)
+	if len(findings) == 0 {
+		t.Error("expected detection for encoded backslash traversal")
+	}
+}
+
+func findingsToRules(findings []detection.Finding) []string {
+	rules := make([]string, len(findings))
+	for i, f := range findings {
+		rules[i] = f.Rule
+	}
+	return rules
+}

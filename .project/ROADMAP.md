@@ -22,11 +22,8 @@
 
 **Priority: CRITICAL** — These affect any deployment exposed to untrusted traffic.
 
-### 1.1 WAF SSRF Detection
-- **File:** `internal/waf/detection/ssrf.go`
-- **Status:** MOSTLY DONE — IPv6 loopback/ULA, decimal/octal IP regex, cloud metadata hosts (AWS/GCP/Alibaba/AWS IPv6) already implemented. Minor edge cases may remain.
-- **Remaining:** Verify Azure/DigitalOcean metadata IPs, add additional edge case tests
-- **Effort:** 2-3 hours (reduced from 1 day)
+### ~~1.1 WAF SSRF Detection~~ (FIXED)
+- **Status:** Fixed IPv6 host extraction bug in `extractHost` (brackets prevented `net.ParseIP` from matching). Azure/DigitalOcean metadata already covered by `169.254.169.254`. Added edge case tests: IPv6 loopback, IPv6 ULA, AWS IPv6 metadata, mixed-case hostname, short IP forms, Alibaba metadata, GCP metadata, multiple URLs, 172.x boundary values, link-local, credential bypass to external, URL with port.
 
 ### ~~1.2 MCP SSE Transport CORS~~ (FALSE POSITIVE)
 - **Status:** ALREADY IMPLEMENTED — `sse_transport.go` has configurable `AllowedOrigins` list with `Vary: Origin` and `Access-Control-Allow-Credentials: true`. No wildcard CORS.
@@ -37,10 +34,8 @@
 ### ~~1.4 PROXY Protocol Trusted Upstreams~~ (FALSE POSITIVE)
 - **Status:** ALREADY IMPLEMENTED — `PROXYProtocolConfig.TrustedNetworks` CIDR list with `isTrustedSource()` method. Default: trust no one (empty list = reject all PROXY headers).
 
-### 1.5 Path Traversal Verification
-- **File:** `internal/router/match.go`
-- **Work:** Add comprehensive edge case tests for URL-encoded path traversal: `%2e%2e/%2e%2e`, `..%2f`, `%2e%2e%5c`, double encoding. Verify `normalizePath` handles all variants.
-- **Effort:** 3 hours
+### ~~1.5 Path Traversal Verification~~ (FIXED)
+- **Status:** Added edge case tests for mixed encoding (literal + encoded slash, encoded dots + literal, case-insensitive `%2E%2E%2F`), repeated encoded traversal, encoded dots in query params, null byte with traversal, backslash traversal, encoded backslash dots. All existing and new tests pass.
 
 ---
 

@@ -150,7 +150,7 @@ func TestSSRFDetector_ExtractHost(t *testing.T) {
 		{"http://example.com/path", "example.com"},
 		{"https://10.0.0.1:8080/api", "10.0.0.1"},
 		{"http://user@localhost/admin", "localhost"},
-		{"http://[::1]:80/path", "[::1]:80"},
+		{"http://[::1]:80/path", "::1"},
 		{"http://hostname", "hostname"},
 	}
 	d := New()
@@ -207,6 +207,7 @@ func TestSSRFDetector_IsInternalHost(t *testing.T) {
 		{"localhost", true},
 		{"127.0.0.1", true},
 		{"[::1]", true},
+		{"::1", true},
 		{"0.0.0.0", true},
 		{"10.0.0.1", true},
 		{"192.168.1.1", true},
@@ -287,5 +288,165 @@ func TestSSRFDetector_Truncate(t *testing.T) {
 	long := truncate(strings.Repeat("a", 100), 80)
 	if len(long) != 83 { // 80 + "..."
 		t.Errorf("expected length 83, got %d", len(long))
+	}
+}
+
+func TestSSRFDetector_IPv6Loopback(t *testing.T) {
+	d := New()
+	ctx := newCtx("url=http://[::1]/admin")
+	findings := d.Detect(ctx)
+	if len(findings) == 0 {
+		t.Error("expected SSRF detection for IPv6 loopback [::1]")
+	}
+}
+
+func TestSSRFDetector_IPv6ULA(t *testing.T) {
+	d := New()
+	ctx := newCtx("url=http://[fd00::1]/internal")
+	findings := d.Detect(ctx)
+	if len(findings) == 0 {
+		t.Error("expected SSRF detection for IPv6 ULA fd00::1")
+	}
+}
+
+func TestSSRFDetector_AWSIPv6Metadata(t *testing.T) {
+	d := New()
+	ctx := newCtx("url=http://[fd00:ec2::254]/latest/meta-data/")
+	findings := d.Detect(ctx)
+	if len(findings) == 0 {
+		t.Error("expected SSRF detection for AWS IPv6 metadata endpoint")
+	}
+}
+
+func TestSSRFDetector_MixedCaseHostname(t *testing.T) {
+	d := New()
+	ctx := newCtx("url=http://LoCaLhOsT/admin")
+	findings := d.Detect(ctx)
+	if len(findings) == 0 {
+		t.Error("expected SSRF detection for mixed-case localhost")
+	}
+}
+
+func TestSSRFDetector_ShortIPForms(t *testing.T) {
+	d := New()
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"zero ip", "url=http://0/"},
+		{"zero zero zero zero", "url=http://0.0.0.0/"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := newCtx(tt.input)
+			findings := d.Detect(ctx)
+			if len(findings) == 0 {
+				t.Errorf("expected SSRF detection for %q", tt.input)
+			}
+		})
+	}
+}
+
+func TestSSRFDetector_AlibabaMetadata(t *testing.T) {
+	d := New()
+	ctx := newCtx("url=http://100.100.100.200/latest/meta-data/")
+	findings := d.Detect(ctx)
+	if len(findings) == 0 {
+		t.Error("expected SSRF detection for Alibaba Cloud metadata 100.100.100.200")
+	}
+}
+
+func TestSSRFDetector_GCPMetadata(t *testing.T) {
+	d := New()
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"google.internal", "url=http://metadata.google.internal/computeMetadata/v1/"},
+		{"metadata.google", "url=http://metadata.google/computeMetadata/v1/"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := newCtx(tt.input)
+			findings := d.Detect(ctx)
+			if len(findings) == 0 {
+				t.Errorf("expected SSRF detection for GCP metadata %q", tt.input)
+			}
+			found := false
+			for _, f := range findings {
+				if f.Rule == "cloud_metadata" {
+					found = true
+					if f.Score < 90 {
+						t.Errorf("expected score >= 90 for cloud metadata, got %d", f.Score)
+					}
+				}
+			}
+			if !found {
+				t.Error("expected cloud_metadata rule")
+			}
+		})
+	}
+}
+
+func TestSSRFDetector_MultipleURLs(t *testing.T) {
+	d := New()
+	ctx := newCtx("url=http://example.com/safe callback=http://127.0.0.1/secret")
+	findings := d.Detect(ctx)
+	if len(findings) == 0 {
+		t.Error("expected SSRF detection when second URL targets localhost")
+	}
+}
+
+func TestSSRFDetector_Private172Range(t *testing.T) {
+	// Test boundary values of 172.16-31 range
+	tests := []struct {
+		ip      string
+		private bool
+	}{
+		{"172.16.0.1", true},
+		{"172.20.0.1", true},
+		{"172.31.255.255", true},
+		{"172.15.255.255", false},
+		{"172.32.0.1", false},
+	}
+	for _, tt := range tests {
+		ip := net.ParseIP(tt.ip)
+		got := isPrivateIP(ip)
+		if got != tt.private {
+			t.Errorf("isPrivateIP(%q) = %v, want %v", tt.ip, got, tt.private)
+		}
+	}
+}
+
+func TestSSRFDetector_LinkLocal(t *testing.T) {
+	d := New()
+	// 169.254.x.x is link-local (used for cloud metadata)
+	ctx := newCtx("url=http://169.254.0.1/")
+	findings := d.Detect(ctx)
+	if len(findings) == 0 {
+		t.Error("expected detection for link-local IP 169.254.0.1")
+	}
+}
+
+func TestSSRFDetector_CredentialBypassExternal(t *testing.T) {
+	d := New()
+	// Credential bypass to external host should not trigger
+	ctx := newCtx("url=http://user:pass@example.com/api")
+	findings := d.Detect(ctx)
+	totalScore := 0
+	for _, f := range findings {
+		totalScore += f.Score
+	}
+	if totalScore >= 50 {
+		t.Errorf("expected no significant SSRF for credential URL to external host, got score %d", totalScore)
+	}
+}
+
+func TestSSRFDetector_URLWithPort(t *testing.T) {
+	d := New()
+	ctx := newCtx("url=http://127.0.0.1:8080/admin")
+	findings := d.Detect(ctx)
+	if len(findings) == 0 {
+		t.Error("expected SSRF detection for localhost with port")
 	}
 }

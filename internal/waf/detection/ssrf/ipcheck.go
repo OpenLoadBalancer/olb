@@ -38,10 +38,13 @@ func isPrivateIP(ip net.IP) bool {
 // isInternalHost checks if a host string resolves to an internal/private address.
 func isInternalHost(host string) bool {
 	lower := strings.ToLower(host)
-	if lower == "localhost" || lower == "127.0.0.1" || lower == "[::1]" || lower == "0.0.0.0" {
+	// Strip IPv6 brackets if present
+	lower = strings.TrimPrefix(lower, "[")
+	lower = strings.TrimSuffix(lower, "]")
+	if lower == "localhost" || lower == "127.0.0.1" || lower == "::1" || lower == "0.0.0.0" {
 		return true
 	}
-	ip := net.ParseIP(host)
+	ip := net.ParseIP(lower)
 	if ip != nil {
 		return isPrivateIP(ip)
 	}
@@ -49,6 +52,7 @@ func isInternalHost(host string) bool {
 }
 
 // extractHost extracts the hostname from a URL string.
+// Strips brackets from IPv6 addresses so the result is parseable by net.ParseIP.
 func extractHost(u string) string {
 	s := u
 	if idx := strings.Index(s, "://"); idx >= 0 {
@@ -57,13 +61,18 @@ func extractHost(u string) string {
 	if idx := strings.IndexByte(s, '/'); idx >= 0 {
 		s = s[:idx]
 	}
-	if idx := strings.LastIndexByte(s, ':'); idx >= 0 {
-		if !strings.Contains(s, "[") {
-			s = s[:idx]
-		}
-	}
 	if idx := strings.IndexByte(s, '@'); idx >= 0 {
 		s = s[idx+1:]
+	}
+	// Strip IPv6 brackets: [::1]:80 -> ::1
+	if strings.Contains(s, "[") {
+		s = strings.TrimPrefix(s, "[")
+		if closeIdx := strings.IndexByte(s, ']'); closeIdx >= 0 {
+			s = s[:closeIdx]
+		}
+	} else if idx := strings.LastIndexByte(s, ':'); idx >= 0 {
+		// Strip port for non-IPv6 hosts
+		s = s[:idx]
 	}
 	return s
 }
