@@ -109,7 +109,8 @@ type Engine struct {
 	// Config rollback support
 	rollbackMu      sync.Mutex
 	prevConfig      *config.Config // previous config for rollback
-	rollbackTimer   *time.Timer    // grace period timer
+	rollbackTimer   *time.Timer    // grace period timer (15s check)
+	rollbackTimer2  *time.Timer    // grace period timer (30s final check)
 	errorCount      int64          // errors since last reload
 	reloadTimestamp time.Time      // when last reload happened
 

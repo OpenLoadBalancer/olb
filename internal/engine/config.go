@@ -319,6 +319,9 @@ func (e *Engine) startRollbackGracePeriod() {
 	if e.rollbackTimer != nil {
 		e.rollbackTimer.Stop()
 	}
+	if e.rollbackTimer2 != nil {
+		e.rollbackTimer2.Stop()
+	}
 
 	checkAndRollback := func() {
 		e.rollbackMu.Lock()
@@ -371,7 +374,7 @@ func (e *Engine) startRollbackGracePeriod() {
 
 	// Check at 15s and 30s after reload
 	e.rollbackTimer = time.AfterFunc(15*time.Second, checkAndRollback)
-	time.AfterFunc(30*time.Second, func() {
+	e.rollbackTimer2 = time.AfterFunc(30*time.Second, func() {
 		// Final check then clear prevConfig
 		checkAndRollback()
 		e.rollbackMu.Lock()
@@ -396,5 +399,9 @@ func (e *Engine) stopRollbackTimer() {
 	if e.rollbackTimer != nil {
 		e.rollbackTimer.Stop()
 		e.rollbackTimer = nil
+	}
+	if e.rollbackTimer2 != nil {
+		e.rollbackTimer2.Stop()
+		e.rollbackTimer2 = nil
 	}
 }

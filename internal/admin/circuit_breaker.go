@@ -117,9 +117,11 @@ func (acb *adminCircuitBreaker) Execute(ctx context.Context, fn func(ctx context
 		// Drain the goroutine so it doesn't leak. Bound the wait
 		// to prevent permanent leaks if fn ignores context cancellation.
 		go func() {
+			timer := time.NewTimer(acb.timeout)
+			defer timer.Stop()
 			select {
 			case <-done:
-			case <-time.After(acb.timeout):
+			case <-timer.C:
 			}
 		}()
 	}
