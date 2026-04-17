@@ -141,7 +141,7 @@ export function MiddlewarePage() {
           <CardContent className="p-6">
             <p className="text-destructive">Failed to load middleware: {error.message}</p>
             <Button variant="outline" size="sm" className="mt-2" onClick={() => refetch()}>
-              <RefreshCw className="mr-2 h-4 w-4" /> Retry
+              <RefreshCw className="mr-2 h-4 w-4"  aria-hidden="true" /> Retry
             </Button>
           </CardContent>
         </Card>
@@ -214,7 +214,7 @@ export function MiddlewarePage() {
                   className="w-full"
                   onClick={() => openConfigDialog(middleware)}
                 >
-                  <Settings2 className="mr-2 h-4 w-4" />
+                  <Settings2 className="mr-2 h-4 w-4"  aria-hidden="true" />
                   View Configuration
                 </Button>
               </CardContent>

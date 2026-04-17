@@ -87,7 +87,7 @@ export function CertificatesPage() {
         <Dialog open={certDialogOpen} onOpenChange={(open) => { setCertDialogOpen(open); if (!open) { certAcmeForm.reset(); certManualForm.reset() } }}>
           <DialogTrigger asChild>
             <Button>
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus className="mr-2 h-4 w-4"  aria-hidden="true" />
               Add Certificate
             </Button>
           </DialogTrigger>
@@ -161,7 +161,7 @@ export function CertificatesPage() {
                       Cancel
                     </Button>
                     <Button type="submit" disabled={!certAcmeForm.formState.isValid || certAcmeForm.formState.isSubmitting}>
-                      {certAcmeForm.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      {certAcmeForm.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"  aria-hidden="true" />}
                       Add Certificate
                     </Button>
                   </DialogFooter>
@@ -214,7 +214,7 @@ export function CertificatesPage() {
                       Cancel
                     </Button>
                     <Button type="submit" disabled={!certManualForm.formState.isValid || certManualForm.formState.isSubmitting}>
-                      {certManualForm.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      {certManualForm.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"  aria-hidden="true" />}
                       Add Certificate
                     </Button>
                   </DialogFooter>
@@ -229,7 +229,7 @@ export function CertificatesPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total Certificates</CardTitle>
-            <Shield className="h-4 w-4 text-muted-foreground" />
+            <Shield className="h-4 w-4 text-muted-foreground"  aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{certs?.length ?? 0}</div>
@@ -239,7 +239,7 @@ export function CertificatesPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Wildcards</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-500" />
+            <CheckCircle className="h-4 w-4 text-green-500"  aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -251,7 +251,7 @@ export function CertificatesPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Expiring Soon</CardTitle>
-            <AlertCircle className="h-4 w-4 text-amber-500" />
+            <AlertCircle className="h-4 w-4 text-amber-500"  aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -267,7 +267,7 @@ export function CertificatesPage() {
           <CardContent className="p-6">
             <p className="text-destructive">Failed to load certificates: {error.message}</p>
             <Button variant="outline" size="sm" className="mt-2" onClick={() => refetch()}>
-              <RefreshCw className="mr-2 h-4 w-4" /> Retry
+              <RefreshCw className="mr-2 h-4 w-4"  aria-hidden="true" /> Retry
             </Button>
           </CardContent>
         </Card>
@@ -282,7 +282,7 @@ export function CertificatesPage() {
               <CardHeader>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-3">
-                    <Shield className="h-5 w-5 text-primary" />
+                    <Shield className="h-5 w-5 text-primary"  aria-hidden="true" />
                     <div>
                       <CardTitle className="text-base truncate">{domainLabel}</CardTitle>
                       <CardDescription>{cert.is_wildcard ? "Wildcard" : "Standard"} Certificate</CardDescription>
@@ -297,7 +297,7 @@ export function CertificatesPage() {
                       size="icon"
                       onClick={() => handleRenewCert(cert.names)}
                     >
-                      <Upload className="h-4 w-4" />
+                      <Upload className="h-4 w-4"  aria-hidden="true" />
                     </Button>
                   </div>
                 </div>

@@ -16,7 +16,7 @@ export function ErrorBoundary() {
         <Card className="max-w-md w-full">
           <CardHeader className="text-center">
             <div className="mx-auto w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
-              <AlertTriangle className="h-6 w-6 text-destructive" />
+              <AlertTriangle className="h-6 w-6 text-destructive"  aria-hidden="true" />
             </div>
             <CardTitle className="text-2xl">Error {error.status}</CardTitle>
             <CardDescription>
@@ -31,12 +31,12 @@ export function ErrorBoundary() {
             )}
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1" onClick={() => window.history.back()}>
-                <ArrowLeft className="mr-2 h-4 w-4" />
+                <ArrowLeft className="mr-2 h-4 w-4"  aria-hidden="true" />
                 Go Back
               </Button>
               <Button className="flex-1" asChild>
                 <Link to="/">
-                  <Home className="mr-2 h-4 w-4" />
+                  <Home className="mr-2 h-4 w-4"  aria-hidden="true" />
                   Dashboard
                 </Link>
               </Button>
@@ -55,7 +55,7 @@ export function ErrorBoundary() {
       <Card className="max-w-md w-full">
         <CardHeader className="text-center">
           <div className="mx-auto w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
-            <AlertTriangle className="h-6 w-6 text-destructive" />
+            <AlertTriangle className="h-6 w-6 text-destructive"  aria-hidden="true" />
           </div>
           <CardTitle className="text-2xl">Unexpected Error</CardTitle>
           <CardDescription>
@@ -72,7 +72,7 @@ export function ErrorBoundary() {
             </Button>
             <Button className="flex-1" asChild>
               <Link to="/">
-                <Home className="mr-2 h-4 w-4" />
+                <Home className="mr-2 h-4 w-4"  aria-hidden="true" />
                 Dashboard
               </Link>
             </Button>
@@ -97,12 +97,12 @@ export function NotFoundPage() {
         <CardContent className="space-y-4">
           <div className="flex gap-2 justify-center">
             <Button variant="outline" onClick={() => window.history.back()}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
+              <ArrowLeft className="mr-2 h-4 w-4"  aria-hidden="true" />
               Go Back
             </Button>
             <Button asChild>
               <Link to="/">
-                <Home className="mr-2 h-4 w-4" />
+                <Home className="mr-2 h-4 w-4"  aria-hidden="true" />
                 Go Home
               </Link>
             </Button>

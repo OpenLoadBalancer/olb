@@ -48,7 +48,7 @@ export function WAFPage() {
               {error ? `Failed to load WAF status: ${error.message}` : "WAF is not enabled. Enable it in your configuration file."}
             </p>
             <Button variant="outline" size="sm" className="mt-2" onClick={() => refetch()}>
-              <RefreshCw className="mr-2 h-4 w-4" /> Retry
+              <RefreshCw className="mr-2 h-4 w-4"  aria-hidden="true" /> Retry
             </Button>
           </CardContent>
         </Card>
@@ -103,7 +103,7 @@ export function WAFPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Active Layers</CardTitle>
-            <Shield className="h-4 w-4 text-green-500" />
+            <Shield className="h-4 w-4 text-green-500"  aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{activeLayers}/{layerList.length}</div>
@@ -114,7 +114,7 @@ export function WAFPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Threats Blocked</CardTitle>
-            <Ban className="h-4 w-4 text-red-500" />
+            <Ban className="h-4 w-4 text-red-500"  aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">
@@ -127,7 +127,7 @@ export function WAFPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Bot Challenges</CardTitle>
-            <Bot className="h-4 w-4 text-amber-500" />
+            <Bot className="h-4 w-4 text-amber-500"  aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-amber-600">
@@ -140,7 +140,7 @@ export function WAFPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total Requests</CardTitle>
-            <Globe className="h-4 w-4 text-muted-foreground" />
+            <Globe className="h-4 w-4 text-muted-foreground"  aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -197,7 +197,7 @@ export function WAFPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-amber-500" />
+                <AlertTriangle className="h-5 w-5 text-amber-500"  aria-hidden="true" />
                 Detection Engines
               </CardTitle>
             </CardHeader>

@@ -123,7 +123,7 @@ export function BackupRestorePage() {
           <CardContent className="p-6">
             <p className="text-destructive">Failed to load configuration: {error.message}</p>
             <Button variant="outline" size="sm" className="mt-2" onClick={() => refetch()}>
-              <RefreshCw className="mr-2 h-4 w-4" /> Retry
+              <RefreshCw className="mr-2 h-4 w-4"  aria-hidden="true" /> Retry
             </Button>
           </CardContent>
         </Card>
@@ -147,7 +147,7 @@ export function BackupRestorePage() {
           <p className="text-muted-foreground">Export and import configuration</p>
         </div>
         <Button variant="outline" onClick={handleReload}>
-          <RotateCcw className="mr-2 h-4 w-4" />
+          <RotateCcw className="mr-2 h-4 w-4"  aria-hidden="true" />
           Reload Configuration
         </Button>
       </div>
@@ -163,7 +163,7 @@ export function BackupRestorePage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <FileJson className="h-5 w-5" />
+              <FileJson className="h-5 w-5"  aria-hidden="true" />
               Current Configuration
             </CardTitle>
             <CardDescription>Overview of the running configuration</CardDescription>
@@ -183,7 +183,7 @@ export function BackupRestorePage() {
             ))}
             <div className="pt-2">
               <Button onClick={handleExport} className="w-full">
-                <Download className="mr-2 h-4 w-4" />
+                <Download className="mr-2 h-4 w-4"  aria-hidden="true" />
                 Export Configuration as JSON
               </Button>
             </div>
@@ -193,7 +193,7 @@ export function BackupRestorePage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Upload className="h-5 w-5" />
+              <Upload className="h-5 w-5"  aria-hidden="true" />
               Import Configuration
             </CardTitle>
             <CardDescription>Load a configuration from a JSON file</CardDescription>
@@ -204,7 +204,7 @@ export function BackupRestorePage() {
               a reference for editing the config file on disk.
             </div>
             <Button variant="outline" className="w-full" onClick={() => setImportDialogOpen(true)}>
-              <Upload className="mr-2 h-4 w-4" />
+              <Upload className="mr-2 h-4 w-4"  aria-hidden="true" />
               Import Configuration File
             </Button>
           </CardContent>
@@ -261,7 +261,7 @@ export function BackupRestorePage() {
             {importPreview && (
               <div className="p-3 bg-muted rounded-lg space-y-2">
                 <div className="flex items-center gap-2 text-green-600">
-                  <CheckCircle className="h-4 w-4" />
+                  <CheckCircle className="h-4 w-4"  aria-hidden="true" />
                   <span className="text-sm font-medium">File parsed successfully</span>
                 </div>
                 <div className="text-xs text-muted-foreground">
@@ -277,7 +277,7 @@ export function BackupRestorePage() {
               </div>
             )}
             <div className="text-sm text-amber-600 flex items-start gap-2">
-              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0"  aria-hidden="true" />
               <p>
                 The imported configuration will be downloaded as a JSON file. Copy it to the config
                 file path and reload to apply.
@@ -289,7 +289,7 @@ export function BackupRestorePage() {
               Cancel
             </Button>
             <Button onClick={handleImport} disabled={!importPreview || importing}>
-              <Download className="mr-2 h-4 w-4" />
+              <Download className="mr-2 h-4 w-4"  aria-hidden="true" />
               {importing ? "Importing..." : "Download Imported Config"}
             </Button>
           </DialogFooter>

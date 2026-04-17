@@ -47,10 +47,10 @@ interface RawListener {
 }
 
 const protocolIcons: Record<string, React.ReactNode> = {
-  http: <Globe className="h-4 w-4" />,
-  https: <Shield className="h-4 w-4" />,
-  tcp: <Activity className="h-4 w-4" />,
-  udp: <Activity className="h-4 w-4" />,
+  http: <Globe className="h-4 w-4"  aria-hidden="true" />,
+  https: <Shield className="h-4 w-4"  aria-hidden="true" />,
+  tcp: <Activity className="h-4 w-4"  aria-hidden="true" />,
+  udp: <Activity className="h-4 w-4"  aria-hidden="true" />,
 }
 
 const protocolColors: Record<string, string> = {
@@ -165,7 +165,7 @@ export function ListenersPage() {
           <CardContent className="p-6">
             <p className="text-destructive">Failed to load configuration: {configError.message}</p>
             <Button variant="outline" size="sm" className="mt-2" onClick={() => refetchConfig()}>
-              <RefreshCw className="mr-2 h-4 w-4" /> Retry
+              <RefreshCw className="mr-2 h-4 w-4"  aria-hidden="true" /> Retry
             </Button>
           </CardContent>
         </Card>
@@ -183,7 +183,7 @@ export function ListenersPage() {
         <Dialog open={createDialogOpen} onOpenChange={(open) => { setCreateDialogOpen(open); if (!open) createListenerForm.reset() }}>
           <DialogTrigger asChild>
             <Button>
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus className="mr-2 h-4 w-4"  aria-hidden="true" />
               Create Listener
             </Button>
           </DialogTrigger>
@@ -250,7 +250,7 @@ export function ListenersPage() {
                     Cancel
                   </Button>
                   <Button type="submit" disabled={!createListenerForm.formState.isValid || createListenerForm.formState.isSubmitting}>
-                    {createListenerForm.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {createListenerForm.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"  aria-hidden="true" />}
                     Create Listener
                   </Button>
                 </DialogFooter>
@@ -288,6 +288,7 @@ export function ListenersPage() {
                     checked={listener.enabled}
                     onCheckedChange={() => toggleListener(listener.id)}
                     onClick={(e) => e.stopPropagation()}
+                    aria-label={`${listener.enabled ? 'Disable' : 'Enable'} ${listener.name}`}
                   />
                 </div>
               </CardHeader>
@@ -317,7 +318,7 @@ export function ListenersPage() {
                 </div>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => toast.info("Edit listener")}>
-                    <Edit className="mr-2 h-4 w-4" />
+                    <Edit className="mr-2 h-4 w-4"  aria-hidden="true" />
                     Edit
                   </Button>
 						<Button
@@ -325,7 +326,7 @@ export function ListenersPage() {
                     size="sm"
                     onClick={() => handleDeleteListener(selectedListener.id)}
                   >
-                    <Trash2 className="mr-2 h-4 w-4" />
+                    <Trash2 className="mr-2 h-4 w-4"  aria-hidden="true" />
                     Delete
                   </Button>
                 </div>
@@ -335,13 +336,13 @@ export function ListenersPage() {
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base flex items-center gap-2">
-                      <Route className="h-4 w-4" />
+                      <Route className="h-4 w-4"  aria-hidden="true" />
                       Routes
                     </CardTitle>
                     <Dialog open={routeDialogOpen} onOpenChange={(open) => { setRouteDialogOpen(open); if (!open) addRouteForm.reset() }}>
                       <DialogTrigger asChild>
                         <Button size="sm">
-                          <Plus className="mr-2 h-4 w-4" />
+                          <Plus className="mr-2 h-4 w-4"  aria-hidden="true" />
                           Add Route
                         </Button>
                       </DialogTrigger>
@@ -403,12 +404,25 @@ export function ListenersPage() {
                                         key={method}
                                         variant={addRouteForm.getValues("methods").includes(method) ? "default" : "outline"}
                                         className="cursor-pointer"
+                                        role="button"
+                                        tabIndex={0}
+                                        aria-pressed={addRouteForm.getValues("methods").includes(method)}
                                         onClick={() => {
                                           const current = addRouteForm.getValues("methods")
                                           const next = current.includes(method)
                                             ? current.filter((m: string) => m !== method)
                                             : [...current, method]
                                           addRouteForm.setValue("methods", next, { shouldValidate: true })
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault()
+                                            const current = addRouteForm.getValues("methods")
+                                            const next = current.includes(method)
+                                              ? current.filter((m: string) => m !== method)
+                                              : [...current, method]
+                                            addRouteForm.setValue("methods", next, { shouldValidate: true })
+                                          }
                                         }}
                                       >
                                         {method}
@@ -449,7 +463,7 @@ export function ListenersPage() {
                                 Cancel
                               </Button>
                               <Button type="submit" disabled={!addRouteForm.formState.isValid || addRouteForm.formState.isSubmitting}>
-                                {addRouteForm.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                {addRouteForm.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"  aria-hidden="true" />}
                                 Add Route
                               </Button>
                             </DialogFooter>
@@ -493,7 +507,7 @@ export function ListenersPage() {
                             <Badge variant="outline" className="text-xs">Strip Prefix</Badge>
                           )}
                           <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" aria-label="Edit route">
-                            <Edit className="h-4 w-4" />
+                            <Edit className="h-4 w-4"  aria-hidden="true" />
                           </Button>
 									<Button
                             variant="ghost"
@@ -501,7 +515,7 @@ export function ListenersPage() {
                             className="h-9 w-9 shrink-0 text-destructive" aria-label="Delete route"
                             onClick={() => handleDeleteRoute(route.id)}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-4 w-4"  aria-hidden="true" />
                           </Button>
                         </div>
                       </div>

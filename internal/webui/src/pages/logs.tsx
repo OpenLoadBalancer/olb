@@ -93,10 +93,10 @@ export function LogsPage() {
 
   const getLevelIcon = (level: string) => {
     switch (level) {
-      case 'debug': return <Info className="h-4 w-4 text-muted-foreground" />
-      case 'info': return <CheckCircle className="h-4 w-4 text-blue-500" />
-      case 'warn': return <AlertTriangle className="h-4 w-4 text-amber-500" />
-      case 'error': return <AlertCircle className="h-4 w-4 text-red-500" />
+      case 'debug': return <Info className="h-4 w-4 text-muted-foreground"  aria-hidden="true" />
+      case 'info': return <CheckCircle className="h-4 w-4 text-blue-500"  aria-hidden="true" />
+      case 'warn': return <AlertTriangle className="h-4 w-4 text-amber-500"  aria-hidden="true" />
+      case 'error': return <AlertCircle className="h-4 w-4 text-red-500"  aria-hidden="true" />
       default: return null
     }
   }
@@ -143,7 +143,7 @@ export function LogsPage() {
           <CardContent className="p-6">
             <p className="text-destructive">Failed to load events: {error.message}</p>
             <Button variant="outline" size="sm" className="mt-2" onClick={() => refetch()}>
-              <RefreshCw className="mr-2 h-4 w-4" /> Retry
+              <RefreshCw className="mr-2 h-4 w-4"  aria-hidden="true" /> Retry
             </Button>
           </CardContent>
         </Card>
@@ -159,16 +159,16 @@ export function LogsPage() {
           <p className="text-muted-foreground">View backend health events and system activity</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 mr-4">
-            <div className={cn("h-2 w-2 rounded-full", isLive ? "bg-success animate-pulse" : "bg-muted-foreground")} />
+          <div className="flex items-center gap-2 mr-4" role="status" aria-live="polite" aria-label={isLive ? "Live streaming" : "Streaming paused"}>
+            <div className={cn("h-2 w-2 rounded-full", isLive ? "bg-success animate-pulse" : "bg-muted-foreground")} aria-hidden="true" />
             <span className="text-sm text-muted-foreground">{isLive ? "Live" : "Paused"}</span>
           </div>
           <Button variant="outline" size="sm" onClick={() => setIsLive(!isLive)}>
-            {isLive ? <Pause className="h-4 w-4 mr-2" /> : <Play className="h-4 w-4 mr-2" />}
+            {isLive ? <Pause className="h-4 w-4 mr-2"  aria-hidden="true" /> : <Play className="h-4 w-4 mr-2"  aria-hidden="true" />}
             {isLive ? "Pause" : "Resume"}
           </Button>
           <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="h-4 w-4 mr-2" />
+            <Download className="h-4 w-4 mr-2"  aria-hidden="true" />
             Export
           </Button>
         </div>
@@ -182,7 +182,7 @@ export function LogsPage() {
         <CardContent>
           <div className="grid gap-4 md:grid-cols-3">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"  aria-hidden="true" />
               <Input
                 placeholder="Search events..." aria-label="Search events"
                 value={search}

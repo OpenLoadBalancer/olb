@@ -158,7 +158,7 @@ export function MetricsPage() {
           <CardContent className="p-6">
             <p className="text-destructive">Failed to load metrics: {error.message}</p>
             <Button variant="outline" size="sm" className="mt-2" onClick={() => refetch()}>
-              <RefreshCw className="mr-2 h-4 w-4" /> Retry
+              <RefreshCw className="mr-2 h-4 w-4"  aria-hidden="true" /> Retry
             </Button>
           </CardContent>
         </Card>
@@ -179,7 +179,7 @@ export function MetricsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total Requests</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
+            <Activity className="h-4 w-4 text-muted-foreground"  aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -197,7 +197,7 @@ export function MetricsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Backends</CardTitle>
-            <Server className="h-4 w-4 text-muted-foreground" />
+            <Server className="h-4 w-4 text-muted-foreground"  aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalBackends}</div>
@@ -211,7 +211,7 @@ export function MetricsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Error Rate</CardTitle>
-            <Activity className="h-4 w-4 text-red-500" />
+            <Activity className="h-4 w-4 text-red-500"  aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{errorRate}%</div>
@@ -223,7 +223,7 @@ export function MetricsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Pools</CardTitle>
-            <Zap className="h-4 w-4 text-muted-foreground" />
+            <Zap className="h-4 w-4 text-muted-foreground"  aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{pools?.length ?? 0}</div>

@@ -86,8 +86,8 @@ export function ClusterPage() {
   }
 
   const getRoleIcon = (isLeader: boolean) => {
-    if (isLeader) return <Zap className="h-4 w-4 text-amber-500" />
-    return <Server className="h-4 w-4 text-blue-500" />
+    if (isLeader) return <Zap className="h-4 w-4 text-amber-500"  aria-hidden="true" />
+    return <Server className="h-4 w-4 text-blue-500"  aria-hidden="true" />
   }
 
   const getRoleBadge = (isLeader: boolean) => {
@@ -144,11 +144,11 @@ export function ClusterPage() {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={handleRefresh}>
-            <RefreshCw className="mr-2 h-4 w-4" />
+            <RefreshCw className="mr-2 h-4 w-4"  aria-hidden="true" />
             Refresh
           </Button>
           <Button size="sm" onClick={() => setAddNodeDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="mr-2 h-4 w-4"  aria-hidden="true" />
             Add Node
           </Button>
         </div>
@@ -173,7 +173,7 @@ export function ClusterPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Members</CardTitle>
-            <Server className="h-4 w-4 text-muted-foreground" />
+            <Server className="h-4 w-4 text-muted-foreground"  aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{members?.length ?? 0}</div>
@@ -186,7 +186,7 @@ export function ClusterPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Current Term</CardTitle>
-            <Shield className="h-4 w-4 text-muted-foreground" />
+            <Shield className="h-4 w-4 text-muted-foreground"  aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{clusterStatus.term}</div>
@@ -197,7 +197,7 @@ export function ClusterPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Raft Index</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
+            <Activity className="h-4 w-4 text-muted-foreground"  aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{clusterStatus.commit_index.toLocaleString()}</div>
@@ -255,7 +255,7 @@ export function ClusterPage() {
                             setRemoveNodeDialogOpen(true)
                           }}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-4 w-4"  aria-hidden="true" />
                         </Button>
                       </div>
                     </div>
@@ -411,8 +411,8 @@ export function ClusterPage() {
                   Cancel
                 </Button>
                 <Button type="submit" disabled={!addNodeForm.formState.isValid || addNodeForm.formState.isSubmitting}>
-                  {addNodeForm.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  <Plus className="mr-2 h-4 w-4" />
+                  {addNodeForm.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"  aria-hidden="true" />}
+                  <Plus className="mr-2 h-4 w-4"  aria-hidden="true" />
                   Add Node
                 </Button>
               </DialogFooter>
@@ -439,14 +439,14 @@ export function ClusterPage() {
           )}
           {selectedMember?.id === clusterStatus?.leader && (
             <div className="flex items-start gap-2 text-sm text-amber-600">
-              <AlertCircle className="h-4 w-4 mt-0.5" />
+              <AlertCircle className="h-4 w-4 mt-0.5"  aria-hidden="true" />
               <p>This is the current leader. Removing it will trigger a leader election.</p>
             </div>
           )}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleRemoveNode} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              <Trash2 className="mr-2 h-4 w-4" />
+              <Trash2 className="mr-2 h-4 w-4"  aria-hidden="true" />
               Remove
             </AlertDialogAction>
           </AlertDialogFooter>

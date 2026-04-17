@@ -29,7 +29,7 @@ export class PageErrorBoundary extends Component<Props, State> {
 		if (this.state.hasError) {
 			return (
 				<div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 p-8">
-					<AlertTriangle className="h-12 w-12 text-destructive" />
+					<AlertTriangle className="h-12 w-12 text-destructive"  aria-hidden="true" />
 					<h2 className="text-xl font-semibold">Something went wrong</h2>
 					<p className="text-muted-foreground text-center max-w-md">
 						This page encountered an unexpected error. You can try again or navigate to a different page.
@@ -43,7 +43,7 @@ export class PageErrorBoundary extends Component<Props, State> {
 						onClick={this.handleRetry}
 						className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
 					>
-						<RefreshCw className="h-4 w-4" />
+						<RefreshCw className="h-4 w-4"  aria-hidden="true" />
 						Retry
 					</button>
 				</div>

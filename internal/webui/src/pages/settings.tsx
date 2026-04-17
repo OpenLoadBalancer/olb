@@ -64,7 +64,7 @@ export function SettingsPage() {
           <CardContent className="p-6">
             <p className="text-destructive">Failed to load configuration: {error.message}</p>
             <Button variant="outline" size="sm" className="mt-2" onClick={() => refetch()}>
-              <RefreshCw className="mr-2 h-4 w-4" /> Retry
+              <RefreshCw className="mr-2 h-4 w-4"  aria-hidden="true" /> Retry
             </Button>
           </CardContent>
         </Card>
@@ -88,19 +88,19 @@ export function SettingsPage() {
       <Tabs defaultValue="general" className="space-y-4">
         <TabsList>
           <TabsTrigger value="general" className="flex items-center gap-2">
-            <Settings className="h-4 w-4" />
+            <Settings className="h-4 w-4"  aria-hidden="true" />
             General
           </TabsTrigger>
           <TabsTrigger value="admin" className="flex items-center gap-2">
-            <Server className="h-4 w-4" />
+            <Server className="h-4 w-4"  aria-hidden="true" />
             Admin
           </TabsTrigger>
           <TabsTrigger value="network" className="flex items-center gap-2">
-            <Globe className="h-4 w-4" />
+            <Globe className="h-4 w-4"  aria-hidden="true" />
             Network
           </TabsTrigger>
           <TabsTrigger value="security" className="flex items-center gap-2">
-            <Shield className="h-4 w-4" />
+            <Shield className="h-4 w-4"  aria-hidden="true" />
             Security
           </TabsTrigger>
         </TabsList>
@@ -291,7 +291,7 @@ export function SettingsPage() {
 
       <div className="flex justify-end">
         <Button onClick={handleReload}>
-          <RotateCcw className="mr-2 h-4 w-4" />
+          <RotateCcw className="mr-2 h-4 w-4"  aria-hidden="true" />
           Reload Configuration
         </Button>
       </div>

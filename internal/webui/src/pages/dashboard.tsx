@@ -73,11 +73,11 @@ export function DashboardPage() {
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" disabled>
-              <RefreshCw className="mr-2 h-4 w-4" />
+              <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
               Refresh
             </Button>
             <Button variant="outline" size="sm" disabled>
-              <Download className="mr-2 h-4 w-4" />
+              <Download className="mr-2 h-4 w-4" aria-hidden="true" />
               Export
             </Button>
           </div>
@@ -104,7 +104,7 @@ export function DashboardPage() {
           <p className="text-muted-foreground">Overview of your OpenLoadBalancer instance</p>
         </div>
         <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
+          <AlertCircle className="h-4 w-4"  aria-hidden="true" />
           <AlertTitle>Error</AlertTitle>
           <AlertDescription>
             Failed to load dashboard data. Please check your connection and try again.
@@ -201,7 +201,7 @@ export function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Health Status</CardTitle>
-            <Activity className="h-4 w-4 text-blue-500" />
+            <Activity className="h-4 w-4 text-blue-500"  aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -218,11 +218,11 @@ export function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Uptime</CardTitle>
-            <Clock className="h-4 w-4 text-purple-500" />
+            <Clock className="h-4 w-4 text-purple-500"  aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold flex items-center gap-1">
-              <Clock className="h-5 w-5" />
+              <Clock className="h-5 w-5"  aria-hidden="true" />
               {systemInfo?.uptime || 'unknown'}
             </div>
             <p className="text-xs text-muted-foreground">v{systemInfo?.version || 'unknown'}</p>
@@ -232,7 +232,7 @@ export function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Go Version</CardTitle>
-            <Activity className="h-4 w-4 text-amber-500" />
+            <Activity className="h-4 w-4 text-amber-500"  aria-hidden="true" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{systemInfo?.go_version || 'unknown'}</div>
@@ -255,9 +255,9 @@ export function DashboardPage() {
                 className="flex items-center gap-1"
               >
                 {health?.status === 'healthy' ? (
-                  <CheckCircle className="h-3 w-3" />
+                  <CheckCircle className="h-3 w-3"  aria-hidden="true" />
                 ) : (
-                  <AlertCircle className="h-3 w-3" />
+                  <AlertCircle className="h-3 w-3"  aria-hidden="true" />
                 )}
                 {health?.status || 'Unknown'}
               </Badge>
@@ -269,7 +269,7 @@ export function DashboardPage() {
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Uptime</span>
               <span className="font-medium flex items-center gap-1">
-                <Clock className="h-3 w-3" />
+                <Clock className="h-3 w-3"  aria-hidden="true" />
                 {systemInfo?.uptime || 'unknown'}
               </span>
             </div>

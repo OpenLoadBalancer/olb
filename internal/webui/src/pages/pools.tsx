@@ -204,7 +204,7 @@ export function PoolsPage() {
           <CardContent className="p-6">
             <p className="text-destructive">Failed to load pools: {error.message}</p>
             <Button variant="outline" size="sm" className="mt-2" onClick={() => refetch()}>
-              <RefreshCw className="mr-2 h-4 w-4" />
+              <RefreshCw className="mr-2 h-4 w-4"  aria-hidden="true" />
               Retry
             </Button>
           </CardContent>
@@ -223,7 +223,7 @@ export function PoolsPage() {
         <Dialog open={createDialogOpen} onOpenChange={(open) => { setCreateDialogOpen(open); if (!open) createPoolForm.reset() }}>
           <DialogTrigger asChild>
             <Button>
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus className="mr-2 h-4 w-4"  aria-hidden="true" />
               Create Pool
             </Button>
           </DialogTrigger>
@@ -352,7 +352,7 @@ export function PoolsPage() {
                     Cancel
                   </Button>
                   <Button type="submit" disabled={createPoolForm.formState.isSubmitting}>
-                    {createPoolForm.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {createPoolForm.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"  aria-hidden="true" />}
                     Create Pool
                   </Button>
                 </DialogFooter>
@@ -364,7 +364,7 @@ export function PoolsPage() {
 
       <div className="flex gap-4">
         <div className="relative flex-1 sm:max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"  aria-hidden="true" />
           <Input 
             placeholder="Search pools..." aria-label="Search pools"
             value={search}
@@ -391,7 +391,7 @@ export function PoolsPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-primary/10">
-                      <Layers className="h-5 w-5 text-primary" />
+                      <Layers className="h-5 w-5 text-primary"  aria-hidden="true" />
                     </div>
                     <div>
                       <CardTitle className="text-base">{pool.name}</CardTitle>
@@ -433,7 +433,7 @@ export function PoolsPage() {
                   <Dialog open={backendDialogOpen} onOpenChange={(open) => { setBackendDialogOpen(open); if (!open) addBackendForm.reset() }}>
                     <DialogTrigger asChild>
                       <Button size="sm">
-                        <Plus className="mr-2 h-4 w-4" />
+                        <Plus className="mr-2 h-4 w-4"  aria-hidden="true" />
                         Add Backend
                       </Button>
                     </DialogTrigger>
@@ -477,7 +477,7 @@ export function PoolsPage() {
                               Cancel
                             </Button>
                             <Button type="submit" disabled={!addBackendForm.formState.isValid || addBackendForm.formState.isSubmitting}>
-                              {addBackendForm.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                              {addBackendForm.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"  aria-hidden="true" />}
                               Add Backend
                             </Button>
                           </DialogFooter>
@@ -505,11 +505,11 @@ export function PoolsPage() {
                             {getHealthBadge(backend.healthy)}
                             <div className="text-right text-sm">
                               <div className="flex items-center gap-1 text-muted-foreground">
-                                <Activity className="h-3 w-3" />
+                                <Activity className="h-3 w-3"  aria-hidden="true" />
                                 {backend.requests.toLocaleString()} req
                               </div>
                               <div className="flex items-center gap-1 text-muted-foreground">
-                                <Clock className="h-3 w-3" />
+                                <Clock className="h-3 w-3"  aria-hidden="true" />
                                 {backend.errors} err
                               </div>
                             </div>
@@ -519,7 +519,7 @@ export function PoolsPage() {
                               className="h-9 w-9 shrink-0 text-destructive" aria-label="Delete backend"
                               onClick={() => setDeleteBackendId(backend.id)}
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Trash2 className="h-4 w-4"  aria-hidden="true" />
                             </Button>
                           </div>
                         </div>
@@ -623,7 +623,7 @@ export function PoolsPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => deleteBackendId && handleDeleteBackend(deleteBackendId)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              <Trash2 className="mr-2 h-4 w-4" />
+              <Trash2 className="mr-2 h-4 w-4"  aria-hidden="true" />
               Remove
             </AlertDialogAction>
           </AlertDialogFooter>
