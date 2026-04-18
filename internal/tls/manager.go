@@ -39,9 +39,10 @@ type Manager struct {
 	defaultCert *Certificate
 
 	// expiry monitoring
-	expiryStop  chan struct{}
-	expiryWg    sync.WaitGroup
-	expiryAlert ExpiryAlertFunc
+	expiryStop     chan struct{}
+	expiryStopOnce sync.Once
+	expiryWg       sync.WaitGroup
+	expiryAlert    ExpiryAlertFunc
 }
 
 // NewManager creates a new TLS certificate manager.
@@ -124,7 +125,9 @@ func (m *Manager) checkExpiry() {
 
 // StopExpiryMonitor stops the certificate expiry monitoring goroutine.
 func (m *Manager) StopExpiryMonitor() {
-	close(m.expiryStop)
+	m.expiryStopOnce.Do(func() {
+		close(m.expiryStop)
+	})
 	m.expiryWg.Wait()
 }
 

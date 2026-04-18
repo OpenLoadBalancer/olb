@@ -51,15 +51,17 @@ func (h *Histogram) Help() string {
 // Observe records a value in the histogram.
 func (h *Histogram) Observe(v float64) {
 	// Find the bucket
+	matched := false
 	for i, bound := range h.bounds {
 		if v <= bound {
 			h.buckets[i].Add(1)
+			matched = true
 			break
 		}
-		if i == len(h.bounds)-1 {
-			// +Inf bucket
-			h.buckets[len(h.bounds)].Add(1)
-		}
+	}
+	if !matched {
+		// Value exceeds all bounds (or bounds is empty) — +Inf bucket
+		h.buckets[len(h.bounds)].Add(1)
 	}
 
 	// Update sum and count

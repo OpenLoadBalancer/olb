@@ -82,7 +82,7 @@ func New(cfg Config) *GeoDNS {
 // Route determines the appropriate backend pool for a request based on client location.
 func (g *GeoDNS) Route(r *http.Request) (pool string, location *Location, err error) {
 	if g == nil {
-		return g.defaultPool, nil, nil
+		return "", nil, nil
 	}
 
 	// Extract client IP

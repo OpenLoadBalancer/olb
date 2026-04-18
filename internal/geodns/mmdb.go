@@ -294,6 +294,9 @@ func (r *mmdbReader) decodeField(offset uint32) (result, uint32) {
 
 	// Extended type
 	if typeNum == 0 {
+		if offset+1 >= uint32(len(r.data)) {
+			return result{}, 0
+		}
 		typeNum = r.data[offset+1] + 7
 		offset++
 		control = r.data[offset]

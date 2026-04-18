@@ -365,10 +365,10 @@ func (o *RotatingFileOutput) Write(level Level, msg string, fields []Field) {
 	}
 
 	o.writer.WriteByte('\n')
-	o.writer.Flush()
 
-	// Update size
+	// Track bytes written before Flush clears the buffer
 	o.size += int64(o.writer.Buffered())
+	o.writer.Flush()
 }
 
 // rotate performs log rotation.
