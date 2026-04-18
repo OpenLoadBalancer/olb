@@ -298,7 +298,8 @@ func (p *UDPProxy) receiveLoop() {
 			if p.ctx.Err() != nil {
 				return
 			}
-			continue
+			slog.Error("backend read error", "error", err)
+			return
 		}
 
 		if n == 0 {

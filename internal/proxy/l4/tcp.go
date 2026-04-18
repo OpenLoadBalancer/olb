@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"strings"
 	"sync"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/openloadbalancer/olb/internal/backend"
 	olbErrors "github.com/openloadbalancer/olb/pkg/errors"
-	"log"
 )
 
 // TCPProxyConfig configures TCP proxy behavior.
@@ -120,7 +120,9 @@ func (p *TCPProxy) Stop(ctx context.Context) error {
 // HandleConnection handles a single TCP connection.
 func (p *TCPProxy) HandleConnection(clientConn net.Conn) {
 	defer func() {
-		recover() // prevent a single connection panic from crashing the process
+		if r := recover(); r != nil {
+			log.Printf("[tcp-proxy] panic recovered in HandleConnection: %v", r)
+		}
 	}()
 	defer clientConn.Close()
 

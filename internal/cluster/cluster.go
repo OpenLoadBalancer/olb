@@ -652,7 +652,22 @@ func (c *Cluster) handleCommand(cmd *Command) {
 		go replicatePeer(p)
 	}
 
-	// Wait for quorum with timeout
+	// Wait for quorum, step-down, or timeout
+	lostLeadership := make(chan struct{}, 1)
+	go func() {
+		ticker := time.NewTicker(50 * time.Millisecond)
+		defer ticker.Stop()
+		for range ticker.C {
+			if c.GetState() != StateLeader {
+				select {
+				case lostLeadership <- struct{}{}:
+				default:
+				}
+				return
+			}
+		}
+	}()
+
 	select {
 	case <-replicateDone:
 		// Majority replicated — commit and apply
@@ -665,6 +680,12 @@ func (c *Cluster) handleCommand(cmd *Command) {
 			Error:  err,
 			Index:  entry.Index,
 			Term:   entry.Term,
+		}
+	case <-lostLeadership:
+		cmd.Result <- &CommandResult{
+			Error: errors.New("lost leadership during replication"),
+			Index: entry.Index,
+			Term:  entry.Term,
 		}
 	case <-time.After(5 * time.Second):
 		cmd.Result <- &CommandResult{
@@ -708,17 +729,51 @@ func (c *Cluster) maybeCompactLog() {
 }
 
 // getLastLogTermForIndex returns the term of the log entry at the given index.
-// Returns 0 if index is 0 or out of range.
+// Returns 0 if index is 0 or not found (e.g., compacted away).
 func (c *Cluster) getLastLogTermForIndex(index uint64) uint64 {
 	if index == 0 {
 		return 0
 	}
 	c.logMu.RLock()
 	defer c.logMu.RUnlock()
-	if index > uint64(len(c.log)) {
-		return 0
+	return c.getLogTermByIndexLocked(index)
+}
+
+// getLogTermByIndexLocked returns the term for a log entry by its Index field.
+// Uses binary search since entries are sorted by Index. Returns 0 if not found.
+// Caller must hold logMu.
+func (c *Cluster) getLogTermByIndexLocked(index uint64) uint64 {
+	lo, hi := 0, len(c.log)
+	for lo < hi {
+		mid := lo + (hi-lo)/2
+		if c.log[mid].Index < index {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
 	}
-	return c.log[index-1].Term
+	if lo < len(c.log) && c.log[lo].Index == index {
+		return c.log[lo].Term
+	}
+	return 0
+}
+
+// findLogSlotLocked returns the slice position of the log entry with the given Index.
+// Returns -1 if not found. Caller must hold logMu.
+func (c *Cluster) findLogSlotLocked(index uint64) int {
+	lo, hi := 0, len(c.log)
+	for lo < hi {
+		mid := lo + (hi-lo)/2
+		if c.log[mid].Index < index {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	if lo < len(c.log) && c.log[lo].Index == index {
+		return lo
+	}
+	return -1
 }
 
 // Propose proposes a command to be applied to the state machine.
@@ -939,8 +994,9 @@ func (c *Cluster) HandleAppendEntries(req *AppendEntries) *AppendEntriesResponse
 				ConflictIndex: uint64(len(c.log)),
 			}
 		}
-		if req.PrevLogIndex <= uint64(len(c.log)) {
-			prevEntry := c.log[req.PrevLogIndex-1]
+		slot := c.findLogSlotLocked(req.PrevLogIndex)
+		if slot >= 0 {
+			prevEntry := c.log[slot]
 			if prevEntry.Term != req.PrevLogTerm {
 				// Term mismatch at PrevLogIndex — report conflict
 				conflictTerm := prevEntry.Term
@@ -960,11 +1016,11 @@ func (c *Cluster) HandleAppendEntries(req *AppendEntries) *AppendEntriesResponse
 	if len(req.Entries) > 0 {
 		c.logMu.Lock()
 		for _, entry := range req.Entries {
-			idx := entry.Index
-			if idx <= uint64(len(c.log)) {
+			slot := c.findLogSlotLocked(entry.Index)
+			if slot >= 0 {
 				// Overwrite existing entry if term differs
-				if c.log[idx-1].Term != entry.Term {
-					c.log = c.log[:idx-1] // Truncate from conflict point
+				if c.log[slot].Term != entry.Term {
+					c.log = c.log[:slot] // Truncate from conflict point
 					c.log = append(c.log, entry)
 				}
 			} else {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"strings"
 	"sync"
@@ -508,9 +509,7 @@ func (p *SNIBasedProxy) acceptLoop() {
 			defer p.wg.Done()
 			defer func() {
 				if r := recover(); r != nil {
-					// Prevent a single malformed connection from crashing the
-					// entire process. The connection is already closed by
-					// handleConnection or the runtime on panic.
+					log.Printf("[sni-proxy] panic recovered in connection handler: %v", r)
 				}
 			}()
 			p.handleConnection(conn)
