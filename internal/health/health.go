@@ -472,7 +472,10 @@ func (c *Checker) checkExec(b *backend.Backend, config *Check) Result {
 	ctx, cancel := context.WithTimeout(context.Background(), config.Timeout)
 	defer cancel()
 
-	host, port, _ := net.SplitHostPort(b.Address)
+	host, port, err := net.SplitHostPort(b.Address)
+	if err != nil {
+		return Result{Healthy: false, Error: fmt.Errorf("exec health check: invalid backend address %q: %w", b.Address, err)}
+	}
 	args := make([]string, len(config.Args))
 	for i, arg := range config.Args {
 		args[i] = resolveExecTemplate(arg, b.Address, host, port)
