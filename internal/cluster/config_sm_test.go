@@ -38,11 +38,17 @@ func newTestConfig() *config.Config {
 
 func makeCommand(t *testing.T, cmd ConfigCommand) []byte {
 	t.Helper()
-	data, err := json.Marshal(cmd)
+	data, err := marshalCommand(cmd)
 	if err != nil {
 		t.Fatalf("Failed to marshal command: %v", err)
 	}
 	return data
+}
+
+// marshalCommand is the non-fatal version of makeCommand.
+// Use this from goroutines where t.Fatalf would panic.
+func marshalCommand(cmd ConfigCommand) ([]byte, error) {
+	return json.Marshal(cmd)
 }
 
 func TestNewConfigStateMachine(t *testing.T) {
@@ -498,7 +504,12 @@ func TestConfigStateMachine_ConcurrentAccess(t *testing.T) {
 				errCh <- err
 				return
 			}
-			_, err = sm.Apply(makeCommand(t, cmd))
+			data, merr := marshalCommand(cmd)
+			if merr != nil {
+				errCh <- merr
+				return
+			}
+			_, err = sm.Apply(data)
 			if err != nil {
 				errCh <- err
 			}

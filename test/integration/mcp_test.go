@@ -199,11 +199,21 @@ type rpcResponseErr struct {
 
 func parseResponse(t *testing.T, data []byte) rpcResponse {
 	t.Helper()
-	var resp rpcResponse
-	if err := json.Unmarshal(data, &resp); err != nil {
+	resp, err := parseResponseBytes(data)
+	if err != nil {
 		t.Fatalf("unmarshal response: %v\nraw: %s", err, string(data))
 	}
-	return resp
+	return *resp
+}
+
+// parseResponseBytes is the non-fatal version of parseResponse.
+// Use this from goroutines where t.Fatalf would panic.
+func parseResponseBytes(data []byte) (*rpcResponse, error) {
+	var resp rpcResponse
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -914,7 +924,11 @@ func TestMCPHTTPConcurrent(t *testing.T) {
 					continue
 				}
 
-				rpcResp := parseResponse(t, respBody)
+				rpcResp, err := parseResponseBytes(respBody)
+				if err != nil {
+					errCh <- fmt.Errorf("goroutine %d request %d: parse: %w", gID, r, err)
+					continue
+				}
 				if rpcResp.Error != nil {
 					errCh <- fmt.Errorf("goroutine %d request %d: rpc error: %s", gID, r, rpcResp.Error.Message)
 				}

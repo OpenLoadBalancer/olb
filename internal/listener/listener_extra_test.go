@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"runtime"
 	"testing"
 	"time"
 
@@ -104,9 +105,9 @@ func TestHTTPListenerStopDoubleCheckRace(t *testing.T) {
 		done <- err
 	}()
 
-	// Wait for goroutine to be running (it will hit the lock and block)
+	// Wait for goroutine to be running and reach the lock (it will block)
 	<-goroutineReady
-	time.Sleep(50 * time.Millisecond)
+	runtime.Gosched() // yield so the goroutine reaches l.mu.Lock()
 
 	// Now: goroutine is blocked on l.mu.Lock(). Set running=false so when
 	// it acquires the lock, the double-check at line 139 catches it.
