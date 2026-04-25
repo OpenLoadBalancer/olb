@@ -143,7 +143,7 @@ func (s *Server) addBackend(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "INVALID_ARGUMENT", "weight exceeds maximum value")
 			return
 		}
-		b.Weight = int32(req.Weight)
+		b.SetWeight(int32(req.Weight))
 	}
 
 	if err := pool.AddBackend(b); err != nil {
@@ -258,7 +258,7 @@ func (s *Server) updateBackend(w http.ResponseWriter, r *http.Request) {
 		backendJSON, err := json.Marshal(map[string]any{
 			"id":      backendID,
 			"address": b.Address,
-			"weight":  b.Weight,
+			"weight":  b.GetWeight(),
 		})
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "MARSHAL_ERROR", "failed to marshal backend data")
@@ -290,14 +290,14 @@ func (s *Server) updateBackend(w http.ResponseWriter, r *http.Request) {
 
 	// Standalone mode: direct update
 	if req.Weight != nil {
-		b.Weight = *req.Weight
+		b.SetWeight(*req.Weight)
 	}
 	if req.MaxConns != nil {
 		if *req.MaxConns < 0 {
 			writeError(w, http.StatusBadRequest, "INVALID_MAX_CONNS", "max connections must be non-negative")
 			return
 		}
-		b.MaxConns = *req.MaxConns
+		b.SetMaxConns(*req.MaxConns)
 	}
 
 	writeSuccess(w, backendToInfo(b))

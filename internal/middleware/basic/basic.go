@@ -75,6 +75,10 @@ func New(config Config) (*Middleware, error) {
 		}
 	}
 
+	if config.Hash == "sha256" {
+		log.Println("WARNING: basic auth: SHA256 hash mode is not suitable for production — use bcrypt instead")
+	}
+
 	return m, nil
 }
 
@@ -115,7 +119,7 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check excluded paths
 		for _, path := range m.config.ExcludePaths {
-			if strings.HasPrefix(r.URL.Path, path) {
+			if strings.HasPrefix(r.URL.Path, path) && (len(r.URL.Path) == len(path) || r.URL.Path[len(path)] == '/' || path[len(path)-1] == '/') {
 				next.ServeHTTP(w, r)
 				return
 			}

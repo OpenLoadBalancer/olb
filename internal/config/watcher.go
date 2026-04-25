@@ -31,6 +31,10 @@ type Watcher struct {
 	stopCh  chan struct{}
 	stopped bool
 	wg      sync.WaitGroup // tracks the watch goroutine for graceful shutdown
+
+	// debounce: require the same hash on consecutive checks before firing
+	lastSeenHash string
+	stableCount  int
 }
 
 // NewWatcher creates a new file watcher.
@@ -109,7 +113,9 @@ func (w *Watcher) watch(ctx context.Context) {
 	}
 }
 
-// check reads the file and compares hashes.
+// check reads the file and compares hashes. Uses a stability counter to
+// debounce rapid file modifications: a new hash must appear on 2 consecutive
+// checks before the callback fires.
 func (w *Watcher) check() {
 	data, err := os.ReadFile(w.path)
 	if err != nil {
@@ -120,6 +126,18 @@ func (w *Watcher) check() {
 	}
 
 	newHash := hashBytes(data)
+
+	// Debounce: require the same new hash on consecutive polls
+	if newHash == w.lastSeenHash {
+		w.stableCount++
+	} else {
+		w.lastSeenHash = newHash
+		w.stableCount = 1
+	}
+
+	if w.stableCount < 2 {
+		return
+	}
 
 	w.mu.Lock()
 	if newHash != w.hash {

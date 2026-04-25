@@ -144,7 +144,7 @@ func NewChecker() *Checker {
 	grpcClient := &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig:   &tls.Config{InsecureSkipVerify: true}, //nolint:gosec — health check to internal backends
+			TLSClientConfig:   &tls.Config{InsecureSkipVerify: false},
 			ForceAttemptHTTP2: true,
 		},
 	}
@@ -167,9 +167,9 @@ func NewChecker() *Checker {
 }
 
 // SetGRPCTLSSkipVerify configures whether the gRPC health check client
-// skips TLS certificate verification. Default is true for backward compatibility
-// with self-signed internal certificates. Set to false in production environments
-// where backends use trusted certificates.
+// skips TLS certificate verification. Default is false (verify certificates).
+// Set to true for backends using self-signed or internal certificates.
+// Configurable via grpc_tls_skip_verify in pool health_check.
 func (c *Checker) SetGRPCTLSSkipVerify(skip bool) {
 	c.grpcClient = &http.Client{
 		Timeout: 10 * time.Second,
@@ -589,16 +589,28 @@ func (c *Checker) CountUnhealthy() int {
 // be health check destinations.
 // Note: localhost/RFC1918 are NOT blocked since legitimate backends commonly
 // run on internal addresses. Health check addresses are admin-controlled.
+//
+// TODO: DNS rebinding attacks are not yet handled. A health check target could
+// resolve to an internal address at check time even if the hostname itself is
+// not blocked. Future improvement should resolve the hostname and validate the
+// resulting IP addresses.
 func isInternalAddress(host string) bool {
 	switch host {
 	case "169.254.169.254", "metadata.google.internal", "metadata.google",
-		"100.100.100.200", "fd00:ec2::254":
+		"100.100.100.200", "fd00:ec2::254", "0.0.0.0":
 		return true
 	}
 
 	// Block all 169.254.x.x link-local addresses
 	if strings.HasPrefix(host, "169.254.") {
 		return true
+	}
+
+	// Block IPv6 link-local range (fe80::/10) using net.ParseIP for correctness
+	if ip := net.ParseIP(host); ip != nil {
+		if len(ip) == 16 && ip[0] == 0xfe && (ip[1]&0xc0) == 0x80 {
+			return true
+		}
 	}
 
 	return false

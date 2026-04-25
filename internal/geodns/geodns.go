@@ -43,15 +43,17 @@ type GeoDNS struct {
 	mmdbPath string               // path for hot-reload
 
 	// Pool health status
-	poolHealth map[string]bool
+	poolHealth     map[string]bool
+	trustedProxies []*net.IPNet // parsed CIDR networks
 }
 
 // Config configures GeoDNS.
 type Config struct {
-	Enabled     bool
-	DefaultPool string
-	Rules       []GeoRule
-	DBPath      string // Path to MaxMind GeoLite2-Country MMDB file
+	Enabled        bool
+	DefaultPool    string
+	Rules          []GeoRule
+	DBPath         string   // Path to MaxMind GeoLite2-Country MMDB file
+	TrustedProxies []string // CIDR ranges of trusted proxies; when set, forwarding headers are only trusted from these IPs
 }
 
 // New creates a new GeoDNS router.
@@ -62,6 +64,14 @@ func New(cfg Config) *GeoDNS {
 		geoDB:       make(map[string]*Location),
 		poolHealth:  make(map[string]bool),
 		mmdbPath:    cfg.DBPath,
+	}
+
+	// Parse trusted proxy CIDRs
+	for _, cidr := range cfg.TrustedProxies {
+		_, network, err := net.ParseCIDR(cidr)
+		if err == nil {
+			g.trustedProxies = append(g.trustedProxies, network)
+		}
 	}
 
 	// Load built-in geo data (fallback)
@@ -221,17 +231,35 @@ func (g *GeoDNS) ReloadDB() error {
 }
 
 // extractClientIP extracts the real client IP from the request.
-// Only trusts X-Forwarded-For / X-Real-IP headers when the direct peer
-// is a private/loopback address (i.e., a trusted internal proxy).
+// Only trusts X-Forwarded-For / X-Real-IP headers from explicitly configured
+// trusted proxies (CIDR-based). Falls back to private/loopback heuristic when
+// no trusted proxies are configured.
 func (g *GeoDNS) extractClientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
 	}
 
-	// Only trust forwarding headers from private/loopback addresses
 	ip := net.ParseIP(host)
-	if ip != nil && (ip.IsPrivate() || ip.IsLoopback()) {
+	if ip == nil {
+		return host
+	}
+
+	// Check if request is from a trusted proxy
+	trusted := false
+	if len(g.trustedProxies) > 0 {
+		for _, network := range g.trustedProxies {
+			if network.Contains(ip) {
+				trusted = true
+				break
+			}
+		}
+	} else {
+		// Legacy behavior: trust private/loopback addresses
+		trusted = ip.IsPrivate() || ip.IsLoopback()
+	}
+
+	if trusted {
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 			ips := strings.Split(xff, ",")
 			if len(ips) > 0 {

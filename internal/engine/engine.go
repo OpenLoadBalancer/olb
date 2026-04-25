@@ -201,6 +201,14 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 	// Create health checker
 	healthChecker := health.NewChecker()
 
+	// Allow gRPC TLS skip verify if any pool's health check requests it
+	for _, pool := range cfg.Pools {
+		if pool.HealthCheck != nil && pool.HealthCheck.GRPCTLSSkipVerify {
+			healthChecker.SetGRPCTLSSkipVerify(true)
+			break
+		}
+	}
+
 	// Create passive health checker for real-traffic based health detection
 	passiveChecker := health.NewPassiveChecker(nil)
 	passiveChecker.OnBackendUnhealthy = func(addr string) {
@@ -437,20 +445,27 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 		}
 	}
 
-	// Initialize MCP server with provider adapters
-	mcpCfg := mcp.ServerConfig{
-		Metrics:  &engineMetricsProvider{registry: metricsRegistry},
-		Backends: &engineBackendProvider{poolMgr: poolMgr},
-		Config:   &engineConfigProvider{engine: e},
-		Routes:   &engineRouteProvider{rtr: rtr},
-	}
-	e.mcpServer = mcp.NewServer(mcpCfg)
-
-	// Register WAF MCP tools if WAF is enabled
-	if e.mcpServer != nil && e.middlewareChain != nil {
-		if wafMW, ok := e.middlewareChain.Get("waf").(*waf.WAFMiddleware); ok {
-			wafmcp.RegisterTools(e.mcpServer, wafMW)
+	// Initialize MCP server with provider adapters.
+	// Only create the server when a bearer token is configured;
+	// without a token the SSE/HTTP transports reject creation,
+	// so the server object would be unusable and wasteful.
+	if cfg.Admin != nil && cfg.Admin.MCPToken != "" {
+		mcpCfg := mcp.ServerConfig{
+			Metrics:  &engineMetricsProvider{registry: metricsRegistry},
+			Backends: &engineBackendProvider{poolMgr: poolMgr},
+			Config:   &engineConfigProvider{engine: e},
+			Routes:   &engineRouteProvider{rtr: rtr},
 		}
+		e.mcpServer = mcp.NewServer(mcpCfg)
+
+		// Register WAF MCP tools if WAF is enabled
+		if e.mcpServer != nil && e.middlewareChain != nil {
+			if wafMW, ok := e.middlewareChain.Get("waf").(*waf.WAFMiddleware); ok {
+				wafmcp.RegisterTools(e.mcpServer, wafMW)
+			}
+		}
+	} else {
+		e.logger.Warn("MCP server disabled: no admin.mcp_token configured")
 	}
 
 	// Set up admin server reload callback before creating the server
@@ -503,6 +518,7 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 			MutexProfileFraction: cfg.Profiling.MutexProfileFraction,
 			EnablePprof:          true,
 			PprofAddr:            cfg.Profiling.PprofAddr,
+			Token:                cfg.Profiling.Token,
 		}
 		if profCfg.PprofAddr == "" {
 			profCfg.PprofAddr = "localhost:6060"

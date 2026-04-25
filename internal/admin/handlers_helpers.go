@@ -153,8 +153,8 @@ func backendToInfo(b *backend.Backend) BackendInfo {
 	return BackendInfo{
 		ID:            b.ID,
 		Address:       b.Address,
-		Weight:        b.Weight,
-		MaxConns:      b.MaxConns,
+		Weight:        b.GetWeight(),
+		MaxConns:      b.GetMaxConns(),
 		State:         b.State().String(),
 		Healthy:       b.IsHealthy(),
 		ActiveConns:   b.ActiveConns(),

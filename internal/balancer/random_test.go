@@ -115,14 +115,14 @@ func TestRandomUpdate(t *testing.T) {
 	r := NewRandom()
 
 	b1 := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	b1.Weight = 5
+	b1.SetWeight(5)
 
 	// Update is a no-op for Random, but should not panic
 	r.Update(b1)
 
 	// Also test with a backend that was previously added
 	r.Add(b1)
-	b1.Weight = 10
+	b1.SetWeight(10)
 	r.Update(b1)
 
 	// Balancer should still function after Update
@@ -178,13 +178,13 @@ func TestWeightedRandomDistribution(t *testing.T) {
 
 	// Create backends with different weights
 	b1 := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	b1.Weight = 1
+	b1.SetWeight(1)
 
 	b2 := backend.NewBackend("backend-2", "10.0.0.2:8080")
-	b2.Weight = 2
+	b2.SetWeight(2)
 
 	b3 := backend.NewBackend("backend-3", "10.0.0.3:8080")
-	b3.Weight = 3
+	b3.SetWeight(3)
 
 	backends := []*backend.Backend{b1, b2, b3}
 
@@ -215,12 +215,12 @@ func TestWeightedRandomDistribution(t *testing.T) {
 
 	for _, b := range backends {
 		count := counts[b.ID]
-		expectedRatio := float64(b.Weight) / float64(totalWeight)
+		expectedRatio := float64(b.GetWeight()) / float64(totalWeight)
 		actualRatio := float64(count) / float64(iterations)
 		deviation := math.Abs(actualRatio - expectedRatio)
 
 		t.Logf("Backend %s (weight %d): %d selections (%.2f%% vs expected %.2f%%)",
-			b.ID, b.Weight, count, actualRatio*100, expectedRatio*100)
+			b.ID, b.GetWeight(), count, actualRatio*100, expectedRatio*100)
 
 		if deviation > tolerance {
 			t.Errorf("backend %s distribution off: got %.2f%%, expected %.2f%% (deviation %.2f%%)",
@@ -257,7 +257,7 @@ func TestWeightedRandomAdd(t *testing.T) {
 	wr := NewWeightedRandom()
 
 	b1 := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	b1.Weight = 5
+	b1.SetWeight(5)
 
 	wr.Add(b1)
 
@@ -276,10 +276,10 @@ func TestWeightedRandomRemove(t *testing.T) {
 	wr := NewWeightedRandom()
 
 	b1 := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	b1.Weight = 5
+	b1.SetWeight(5)
 
 	b2 := backend.NewBackend("backend-2", "10.0.0.2:8080")
-	b2.Weight = 3
+	b2.SetWeight(3)
 
 	wr.Add(b1)
 	wr.Add(b2)
@@ -295,12 +295,12 @@ func TestWeightedRandomUpdate(t *testing.T) {
 	wr := NewWeightedRandom()
 
 	b1 := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	b1.Weight = 5
+	b1.SetWeight(5)
 
 	wr.Add(b1)
 
 	// Update weight
-	b1.Weight = 10
+	b1.SetWeight(10)
 	wr.Update(b1)
 
 	// Update non-existent backend (should not panic)
@@ -313,10 +313,10 @@ func TestWeightedRandomZeroWeight(t *testing.T) {
 	wr := NewWeightedRandom()
 
 	b1 := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	b1.Weight = 0 // Zero weight
+	b1.SetWeight(0) // Zero weight
 
 	b2 := backend.NewBackend("backend-2", "10.0.0.2:8080")
-	b2.Weight = -1 // Negative weight
+	b2.SetWeight(-1) // Negative weight
 
 	backends := []*backend.Backend{b1, b2}
 
@@ -334,11 +334,11 @@ func TestWeightedRandomConcurrent(t *testing.T) {
 	wr := NewWeightedRandom()
 
 	b1 := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	b1.Weight = 1
+	b1.SetWeight(1)
 	b2 := backend.NewBackend("backend-2", "10.0.0.2:8080")
-	b2.Weight = 2
+	b2.SetWeight(2)
 	b3 := backend.NewBackend("backend-3", "10.0.0.3:8080")
-	b3.Weight = 3
+	b3.SetWeight(3)
 
 	backends := []*backend.Backend{b1, b2, b3}
 
@@ -367,7 +367,7 @@ func TestWeightedRandomSingleBackend(t *testing.T) {
 	wr := NewWeightedRandom()
 
 	b1 := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	b1.Weight = 5
+	b1.SetWeight(5)
 
 	backends := []*backend.Backend{b1}
 
@@ -406,13 +406,13 @@ func BenchmarkWeightedRandom(b *testing.B) {
 	wr := NewWeightedRandom()
 
 	b1 := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	b1.Weight = 1
+	b1.SetWeight(1)
 	b2 := backend.NewBackend("backend-2", "10.0.0.2:8080")
-	b2.Weight = 2
+	b2.SetWeight(2)
 	b3 := backend.NewBackend("backend-3", "10.0.0.3:8080")
-	b3.Weight = 3
+	b3.SetWeight(3)
 	b4 := backend.NewBackend("backend-4", "10.0.0.4:8080")
-	b4.Weight = 4
+	b4.SetWeight(4)
 
 	backends := []*backend.Backend{b1, b2, b3, b4}
 
@@ -483,7 +483,7 @@ func TestWeightedRandom_Update_Nonexistent(t *testing.T) {
 	wr := NewWeightedRandom()
 
 	b1 := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	b1.Weight = 5
+	b1.SetWeight(5)
 
 	// Update should not panic on unknown backend
 	wr.Update(b1)
@@ -493,7 +493,7 @@ func TestWeightedRandom_Add_ZeroWeight(t *testing.T) {
 	wr := NewWeightedRandom()
 
 	b1 := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	b1.Weight = 0
+	b1.SetWeight(0)
 
 	wr.Add(b1)
 
@@ -512,7 +512,7 @@ func TestWeightedRandom_Remove_SingleBackend(t *testing.T) {
 	wr := NewWeightedRandom()
 
 	b1 := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	b1.Weight = 5
+	b1.SetWeight(5)
 	wr.Add(b1)
 	wr.Remove("backend-1")
 
@@ -527,7 +527,7 @@ func TestWeightedRandom_Add_Duplicate(t *testing.T) {
 	wr := NewWeightedRandom()
 
 	b1 := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	b1.Weight = 5
+	b1.SetWeight(5)
 	wr.Add(b1)
 	wr.Add(b1) // duplicate
 
@@ -553,7 +553,7 @@ func BenchmarkWeightedRandomManyBackends(b *testing.B) {
 			string(rune('a'+i%26))+string(rune('0'+i/26)),
 			"10.0.0.1:8080",
 		)
-		backends[i].Weight = int32(i%10 + 1)
+		backends[i].SetWeight(int32(i%10 + 1))
 	}
 
 	b.ResetTimer()

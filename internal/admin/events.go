@@ -5,11 +5,18 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 )
 
 // maxEventSubscribers limits the number of concurrent SSE subscribers
 // to prevent unbounded resource exhaustion.
 const maxEventSubscribers = 100
+
+// sseKeepAliveInterval is the idle timeout for SSE connections.
+// If no events are sent within this period, a keepalive comment is sent
+// to detect dead connections and prevent intermediate proxies from closing
+// the connection.
+const sseKeepAliveInterval = 5 * time.Minute
 
 // eventBus broadcasts EventItems to connected SSE subscribers.
 type eventBus struct {
@@ -121,6 +128,10 @@ func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "event: connected\ndata: {}\n\n")
 	flusher.Flush()
 
+	// Set up keepalive ticker to detect dead connections
+	keepalive := time.NewTicker(sseKeepAliveInterval)
+	defer keepalive.Stop()
+
 	// Stream events until client disconnects
 	for {
 		select {
@@ -133,6 +144,12 @@ func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			fmt.Fprintf(w, "event: event\ndata: %s\n\n", data)
+			flusher.Flush()
+		case <-keepalive.C:
+			// Send SSE keepalive comment; if the write fails the client has disconnected.
+			if _, err := fmt.Fprintf(w, ": keepalive\n\n"); err != nil {
+				return
+			}
 			flusher.Flush()
 		case <-r.Context().Done():
 			return

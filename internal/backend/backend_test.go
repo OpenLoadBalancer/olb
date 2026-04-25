@@ -17,8 +17,8 @@ func TestNewBackend(t *testing.T) {
 	if b.Address != "127.0.0.1:8080" {
 		t.Errorf("Backend.Address = %v, want %v", b.Address, "127.0.0.1:8080")
 	}
-	if b.Weight != 1 {
-		t.Errorf("Backend.Weight = %v, want %v", b.Weight, 1)
+	if b.GetWeight() != 1 {
+		t.Errorf("Backend.Weight = %v, want %v", b.GetWeight(), 1)
 	}
 	if b.State() != StateStarting {
 		t.Errorf("Backend.State() = %v, want %v", b.State(), StateStarting)
@@ -138,7 +138,7 @@ func TestBackendConnectionTracking(t *testing.T) {
 
 func TestBackendMaxConns(t *testing.T) {
 	b := NewBackend("b1", "127.0.0.1:8080")
-	b.MaxConns = 2
+	b.SetMaxConns(2)
 
 	if !b.AcquireConn() {
 		t.Error("First AcquireConn should succeed")

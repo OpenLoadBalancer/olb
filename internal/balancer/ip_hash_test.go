@@ -353,13 +353,13 @@ func TestIPHash_Update(t *testing.T) {
 	ih := NewIPHash()
 
 	b1 := backend.NewBackend("b1", "127.0.0.1:8080")
-	b1.Weight = 1
+	b1.SetWeight(1)
 
 	ih.Add(b1)
 
 	// Update the backend
 	b1Updated := backend.NewBackend("b1", "127.0.0.1:8080")
-	b1Updated.Weight = 5
+	b1Updated.SetWeight(5)
 
 	ih.Update(b1Updated)
 
@@ -368,8 +368,8 @@ func TestIPHash_Update(t *testing.T) {
 		t.Fatalf("Expected 1 backend, got %d", len(backends))
 	}
 
-	if backends[0].Weight != 5 {
-		t.Errorf("Expected weight 5, got %d", backends[0].Weight)
+	if backends[0].GetWeight() != 5 {
+		t.Errorf("Expected weight 5, got %d", backends[0].GetWeight())
 	}
 }
 

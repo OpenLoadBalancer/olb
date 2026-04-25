@@ -54,16 +54,10 @@ func (s *Server) getHealthStatus(w http.ResponseWriter, r *http.Request) {
 	statuses := hc.ListStatuses()
 	response := make([]HealthStatusInfo, 0, len(statuses))
 
-	// Check if request is authenticated to decide on topology exposure
-	hasAuth := r.Header.Get("Authorization") != ""
-
 	for backendID, status := range statuses {
 		hcs := HealthStatusInfo{
-			Status: status.String(),
-		}
-		// Only expose backend IDs to authenticated requests
-		if hasAuth {
-			hcs.BackendID = backendID
+			BackendID: backendID,
+			Status:    status.String(),
 		}
 
 		// Get last result if available

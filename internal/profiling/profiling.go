@@ -5,6 +5,7 @@
 package profiling
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"log"
 	"net"
@@ -53,6 +54,12 @@ type ProfileConfig struct {
 	// PprofAddr is the listen address for the pprof HTTP server
 	// (e.g. "localhost:6060"). Only used when EnablePprof is true.
 	PprofAddr string
+
+	// Token, when set, requires requests to the pprof server to carry a
+	// valid Bearer token in the Authorization header.  This protects the
+	// profiling endpoints from unauthenticated access.  When empty (default)
+	// no authentication is required (backward compatible).
+	Token string
 }
 
 // DefaultConfig returns a ProfileConfig with sensible defaults.
@@ -238,6 +245,29 @@ func ReportMemStats() map[string]any {
 }
 
 // ---------------------------------------------------------------------------
+// Bearer token middleware for pprof
+// ---------------------------------------------------------------------------
+
+// pprofTokenMiddleware returns an http.Handler that requires a valid Bearer
+// token in the Authorization header before forwarding requests to the inner
+// handler.  Token comparison is performed in constant time.
+func pprofTokenMiddleware(next http.Handler, token string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if !stringsEqualConstTime(auth, "Bearer "+token) {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// stringsEqualConstTime compares two strings in constant time.
+func stringsEqualConstTime(a, b string) bool {
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+// ---------------------------------------------------------------------------
 // Convenience: apply a full ProfileConfig
 // ---------------------------------------------------------------------------
 
@@ -280,19 +310,29 @@ func Apply(cfg ProfileConfig) (cleanup func(), err error) {
 		if addr == "" {
 			addr = "localhost:6060"
 		}
+		// Warn that pprof has no authentication unless a token is set.
+		if cfg.Token == "" {
+			log.Printf("WARNING: pprof server has no authentication and should not be exposed to untrusted networks. Set profiling.token to enable Bearer token auth.")
+		}
 		// Warn if pprof binds to a non-localhost address
 		if addr != "" {
 			host, _, _ := net.SplitHostPort(addr)
 			if host != "" && host != "localhost" && host != "127.0.0.1" && host != "::1" {
-				log.Printf("WARNING: profiling server bound to %s � exposes runtime state (goroutine dumps, heap profiles) to the network", addr)
+				log.Printf("WARNING: profiling server bound to %s exposes runtime state (goroutine dumps, heap profiles) to the network", addr)
 			}
 		}
 		mux := http.NewServeMux()
 		RegisterPprofHandlers(mux)
 
+		var handler http.Handler = mux
+		// Wrap with Bearer token middleware when a token is configured.
+		if cfg.Token != "" {
+			handler = pprofTokenMiddleware(handler, cfg.Token)
+		}
+
 		srv := &http.Server{
 			Addr:    addr,
-			Handler: mux,
+			Handler: handler,
 		}
 		go func() {
 			defer func() {

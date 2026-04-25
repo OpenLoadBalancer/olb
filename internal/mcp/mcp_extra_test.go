@@ -93,7 +93,10 @@ func TestResourcesRead_ResourceWithUnmarshallableData(t *testing.T) {
 
 func TestSSETransport_HandleSSE_MessagesChannelClosed(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := transport.Start(); err != nil {
 		t.Fatalf("Start failed: %v", err)
@@ -103,7 +106,9 @@ func TestSSETransport_HandleSSE_MessagesChannelClosed(t *testing.T) {
 	addr := transport.Addr()
 
 	// Connect SSE client
-	resp, err := http.Get("http://" + addr + "/sse")
+	sseReq, _ := http.NewRequest("GET", "http://"+addr+"/sse", nil)
+	sseReq.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(sseReq)
 	if err != nil {
 		t.Fatalf("SSE connect failed: %v", err)
 	}
@@ -167,11 +172,15 @@ func TestHTTPTransport_ServeHTTP_InvalidJSONBody(t *testing.T) {
 
 func TestSSETransport_HandleMessage_MalformedJSONRPC(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Send invalid JSON through /message - this exercises the JSON-RPC parse path
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/message", strings.NewReader("{invalid"))
+	req.Header.Set("Authorization", "Bearer test-token")
 	transport.handleMessage(w, req)
 
 	// HandleJSONRPC handles parse errors internally, returns 200 with error response
@@ -186,10 +195,14 @@ func TestSSETransport_HandleMessage_MalformedJSONRPC(t *testing.T) {
 
 func TestSSETransport_HandleLegacy_MalformedJSONRPC(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/mcp", strings.NewReader("{invalid"))
+	req.Header.Set("Authorization", "Bearer test-token")
 	transport.handleLegacy(w, req)
 
 	// HandleJSONRPC handles parse errors internally
@@ -205,14 +218,18 @@ func TestSSETransport_HandleLegacy_MalformedJSONRPC(t *testing.T) {
 
 func TestSSETransport_AuthError_WWWAuthenticate(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{
+	transport, err := NewSSETransport(s, SSETransportConfig{
 		Addr:        "127.0.0.1:0",
 		BearerToken: "secret",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Test /message auth failure sets WWW-Authenticate
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/message", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
 	transport.handleMessage(w, req)
 
 	if w.Code != http.StatusUnauthorized {
@@ -229,10 +246,14 @@ func TestSSETransport_AuthError_WWWAuthenticate(t *testing.T) {
 
 func TestSSETransport_HandleLegacy_OptionsWithCORS(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{
+	transport, err := NewSSETransport(s, SSETransportConfig{
 		Addr:           "127.0.0.1:0",
 		AllowedOrigins: []string{"https://openloadbalancer.dev"},
+		BearerToken:    "test-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("OPTIONS", "/mcp", nil)
@@ -259,7 +280,10 @@ func TestSSETransport_HandleLegacy_OptionsWithCORS(t *testing.T) {
 
 func TestSSETransport_FullIntegration_POSTMessage(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := transport.Start(); err != nil {
 		t.Fatalf("Start failed: %v", err)
@@ -270,7 +294,10 @@ func TestSSETransport_FullIntegration_POSTMessage(t *testing.T) {
 
 	// POST a tools/list request to /message endpoint
 	body := makeRequest("tools/list", nil)
-	resp, err := http.Post("http://"+addr+"/message", "application/json", bytes.NewReader(body))
+	httpReq, _ := http.NewRequest("POST", "http://"+addr+"/message", bytes.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
 		t.Fatalf("POST /message failed: %v", err)
 	}
@@ -300,7 +327,10 @@ func TestSSETransport_FullIntegration_POSTMessage(t *testing.T) {
 
 func TestSSETransport_FullIntegration_LegacyPOST(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := transport.Start(); err != nil {
 		t.Fatalf("Start failed: %v", err)
@@ -310,7 +340,10 @@ func TestSSETransport_FullIntegration_LegacyPOST(t *testing.T) {
 	addr := transport.Addr()
 
 	body := makeRequest("initialize", nil)
-	resp, err := http.Post("http://"+addr+"/mcp", "application/json", bytes.NewReader(body))
+	httpReq, _ := http.NewRequest("POST", "http://"+addr+"/mcp", bytes.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
 		t.Fatalf("POST /mcp failed: %v", err)
 	}
@@ -335,10 +368,13 @@ func TestSSETransport_FullIntegration_LegacyPOST(t *testing.T) {
 
 func TestSSETransport_MessageEndpoint_WithAuth(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{
+	transport, err := NewSSETransport(s, SSETransportConfig{
 		Addr:        "127.0.0.1:0",
 		BearerToken: "valid-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := transport.Start(); err != nil {
 		t.Fatalf("Start failed: %v", err)
@@ -349,7 +385,10 @@ func TestSSETransport_MessageEndpoint_WithAuth(t *testing.T) {
 
 	// Without auth
 	body := makeRequest("initialize", nil)
-	resp, err := http.Post("http://"+addr+"/message", "application/json", bytes.NewReader(body))
+	httpReq, _ := http.NewRequest("POST", "http://"+addr+"/message", bytes.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
 		t.Fatalf("POST failed: %v", err)
 	}
@@ -378,10 +417,13 @@ func TestSSETransport_MessageEndpoint_WithAuth(t *testing.T) {
 
 func TestSSETransport_SSEEndpoint_WithAuth(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{
+	transport, err := NewSSETransport(s, SSETransportConfig{
 		Addr:        "127.0.0.1:0",
 		BearerToken: "my-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := transport.Start(); err != nil {
 		t.Fatalf("Start failed: %v", err)
@@ -391,7 +433,9 @@ func TestSSETransport_SSEEndpoint_WithAuth(t *testing.T) {
 	addr := transport.Addr()
 
 	// Without auth - should fail
-	resp, err := http.Get("http://" + addr + "/sse")
+	sseReq, _ := http.NewRequest("GET", "http://"+addr+"/sse", nil)
+	sseReq.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(sseReq)
 	if err != nil {
 		t.Fatalf("GET /sse failed: %v", err)
 	}
@@ -419,10 +463,13 @@ func TestSSETransport_SSEEndpoint_WithAuth(t *testing.T) {
 
 func TestSSETransport_LegacyEndpoint_WithAuth(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{
+	transport, err := NewSSETransport(s, SSETransportConfig{
 		Addr:        "127.0.0.1:0",
 		BearerToken: "legacy-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := transport.Start(); err != nil {
 		t.Fatalf("Start failed: %v", err)
@@ -433,7 +480,10 @@ func TestSSETransport_LegacyEndpoint_WithAuth(t *testing.T) {
 
 	// Without auth
 	body := makeRequest("initialize", nil)
-	resp, err := http.Post("http://"+addr+"/mcp", "application/json", bytes.NewReader(body))
+	httpReq, _ := http.NewRequest("POST", "http://"+addr+"/mcp", bytes.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
 		t.Fatalf("POST /mcp failed: %v", err)
 	}
@@ -462,7 +512,10 @@ func TestSSETransport_LegacyEndpoint_WithAuth(t *testing.T) {
 
 func TestSSETransport_HandleSSE_Keepalive(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := transport.Start(); err != nil {
 		t.Fatalf("Start failed: %v", err)
@@ -472,7 +525,9 @@ func TestSSETransport_HandleSSE_Keepalive(t *testing.T) {
 	addr := transport.Addr()
 
 	// Connect SSE client
-	resp, err := http.Get("http://" + addr + "/sse")
+	sseReq, _ := http.NewRequest("GET", "http://"+addr+"/sse", nil)
+	sseReq.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(sseReq)
 	if err != nil {
 		t.Fatalf("SSE connect failed: %v", err)
 	}
@@ -632,10 +687,14 @@ func (r *errorAfterDataReader) Read(p []byte) (n int, err error) {
 
 func TestSSETransport_HandleLegacy_BodyReadError_Explicit(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/mcp", &errorReader{})
+	req.Header.Set("Authorization", "Bearer test-token")
 	transport.handleLegacy(w, req)
 
 	if w.Code != http.StatusBadRequest {
@@ -649,10 +708,14 @@ func TestSSETransport_HandleLegacy_BodyReadError_Explicit(t *testing.T) {
 
 func TestSSETransport_HandleMessage_BodyReadError_Explicit(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/message", &errorReader{})
+	req.Header.Set("Authorization", "Bearer test-token")
 	transport.handleMessage(w, req)
 
 	if w.Code != http.StatusBadRequest {
@@ -891,14 +954,19 @@ func TestDiagnose_Health_AllHealthy(t *testing.T) {
 
 func TestSSETransport_Message_CORSWithAllowedOrigin(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{
+	transport, err := NewSSETransport(s, SSETransportConfig{
 		Addr:           "127.0.0.1:0",
 		AllowedOrigins: []string{"https://openloadbalancer.dev"},
+		BearerToken:    "test-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	body := makeRequest("initialize", nil)
 	req := httptest.NewRequest("POST", "/message", bytes.NewReader(body))
 	req.Header.Set("Origin", "https://openloadbalancer.dev")
+	req.Header.Set("Authorization", "Bearer test-token")
 	w := httptest.NewRecorder()
 	transport.handleMessage(w, req)
 
@@ -919,14 +987,19 @@ func TestSSETransport_Message_CORSWithAllowedOrigin(t *testing.T) {
 
 func TestSSETransport_Legacy_CORSWithAllowedOrigin(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{
+	transport, err := NewSSETransport(s, SSETransportConfig{
 		Addr:           "127.0.0.1:0",
 		AllowedOrigins: []string{"https://openloadbalancer.dev"},
+		BearerToken:    "test-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	body := makeRequest("initialize", nil)
 	req := httptest.NewRequest("POST", "/mcp", bytes.NewReader(body))
 	req.Header.Set("Origin", "https://openloadbalancer.dev")
+	req.Header.Set("Authorization", "Bearer test-token")
 	w := httptest.NewRecorder()
 	transport.handleLegacy(w, req)
 
@@ -944,7 +1017,10 @@ func TestSSETransport_Legacy_CORSWithAllowedOrigin(t *testing.T) {
 
 func TestSSETransport_SetCORSHeaders_NoOrigins(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/message", nil)
@@ -964,18 +1040,23 @@ func TestSSETransport_SetCORSHeaders_NoOrigins(t *testing.T) {
 func TestSSETransport_HandleMessage_AuditEnabledButNonTool(t *testing.T) {
 	s := newTestServer()
 	auditCalled := false
-	transport := NewSSETransport(s, SSETransportConfig{
+	transport, err := NewSSETransport(s, SSETransportConfig{
 		Addr:     "127.0.0.1:0",
 		AuditLog: true,
 		AuditFunc: func(tool, params, clientAddr string, dur time.Duration, err error) {
 			auditCalled = true
 		},
+		BearerToken: "test-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Non-tool-call: "initialize" method
 	body := makeRequest("initialize", nil)
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/message", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-token")
 	transport.handleMessage(w, req)
 
 	if auditCalled {
@@ -989,11 +1070,15 @@ func TestSSETransport_HandleMessage_AuditEnabledButNonTool(t *testing.T) {
 
 func TestSSETransport_HandleLegacy_AuditLogNoFunc(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{
-		Addr:      "127.0.0.1:0",
-		AuditLog:  true,
-		AuditFunc: nil, // no audit func
+	transport, err := NewSSETransport(s, SSETransportConfig{
+		Addr:        "127.0.0.1:0",
+		AuditLog:    true,
+		AuditFunc:   nil, // no audit func
+		BearerToken: "test-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	body := makeRequest("tools/call", map[string]any{
 		"name":      "olb_cluster_status",
@@ -1002,6 +1087,7 @@ func TestSSETransport_HandleLegacy_AuditLogNoFunc(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/mcp", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-token")
 	transport.handleLegacy(w, req)
 
 	if w.Code != http.StatusOK {
@@ -1015,11 +1101,15 @@ func TestSSETransport_HandleLegacy_AuditLogNoFunc(t *testing.T) {
 
 func TestSSETransport_HandleMessage_AuditLogNoFunc(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{
-		Addr:      "127.0.0.1:0",
-		AuditLog:  true,
-		AuditFunc: nil,
+	transport, err := NewSSETransport(s, SSETransportConfig{
+		Addr:        "127.0.0.1:0",
+		AuditLog:    true,
+		AuditFunc:   nil,
+		BearerToken: "test-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	body := makeRequest("tools/call", map[string]any{
 		"name":      "olb_cluster_status",
@@ -1028,6 +1118,7 @@ func TestSSETransport_HandleMessage_AuditLogNoFunc(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/message", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-token")
 	transport.handleMessage(w, req)
 
 	if w.Code != http.StatusOK {
@@ -1041,7 +1132,10 @@ func TestSSETransport_HandleMessage_AuditLogNoFunc(t *testing.T) {
 
 func TestSSETransport_BroadcastAndReceive(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := transport.Start(); err != nil {
 		t.Fatalf("Start failed: %v", err)
@@ -1051,7 +1145,9 @@ func TestSSETransport_BroadcastAndReceive(t *testing.T) {
 	addr := transport.Addr()
 
 	// Connect SSE client
-	resp, err := http.Get("http://" + addr + "/sse")
+	sseReq, _ := http.NewRequest("GET", "http://"+addr+"/sse", nil)
+	sseReq.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(sseReq)
 	if err != nil {
 		t.Fatalf("SSE connect failed: %v", err)
 	}
@@ -1085,6 +1181,7 @@ func TestSSETransport_BroadcastAndReceive(t *testing.T) {
 	// Send a message via /message with session ID
 	msgBody := makeRequest("resources/list", nil)
 	msgReq, _ := http.NewRequest("POST", "http://"+addr+"/message?sessionId="+sessionID, bytes.NewReader(msgBody))
+	msgReq.Header.Set("Authorization", "Bearer test-token")
 	msgReq.Header.Set("Content-Type", "application/json")
 	msgResp, err := http.DefaultClient.Do(msgReq)
 	if err != nil {

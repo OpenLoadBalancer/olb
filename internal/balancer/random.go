@@ -118,7 +118,7 @@ func (wr *WeightedRandom) Next(ctx *RequestContext, backends []*backend.Backend)
 	// Calculate total weight and select in a single pass
 	var total int64
 	for _, b := range backends {
-		w := b.Weight
+		w := b.GetWeight()
 		if w <= 0 {
 			w = 1
 		}
@@ -134,7 +134,7 @@ func (wr *WeightedRandom) Next(ctx *RequestContext, backends []*backend.Backend)
 
 	// Walk through backends, subtracting weight until random < 0
 	for _, b := range backends {
-		w := b.Weight
+		w := b.GetWeight()
 		if w <= 0 {
 			w = 1
 		}
@@ -160,7 +160,7 @@ func (wr *WeightedRandom) Add(b *backend.Backend) {
 		}
 	}
 
-	weight := b.Weight
+	weight := b.GetWeight()
 	if weight <= 0 {
 		weight = 1
 	}
@@ -198,7 +198,7 @@ func (wr *WeightedRandom) Update(b *backend.Backend) {
 			// Adjust total
 			wr.total -= int64(wb.weight)
 			// Update weight
-			newWeight := b.Weight
+			newWeight := b.GetWeight()
 			if newWeight <= 0 {
 				newWeight = 1
 			}

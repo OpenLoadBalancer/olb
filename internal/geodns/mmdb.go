@@ -282,9 +282,18 @@ func (r *mmdbReader) readNode(nodeNum uint32, bit int) uint32 {
 	return 0
 }
 
+const maxDecodeDepth = 32
+
 // decodeField decodes a data field at the given offset.
 // Returns the result and the total bytes consumed.
 func (r *mmdbReader) decodeField(offset uint32) (result, uint32) {
+	return r.decodeFieldDepth(offset, 0)
+}
+
+func (r *mmdbReader) decodeFieldDepth(offset, depth uint32) (result, uint32) {
+	if depth > maxDecodeDepth {
+		return result{}, 0
+	}
 	if offset >= uint32(len(r.data)) {
 		return result{}, 0
 	}
@@ -316,7 +325,7 @@ func (r *mmdbReader) decodeField(offset uint32) (result, uint32) {
 		ptr, ptrBytes := r.decodePointer(r.data[offset-sizeBytes:], control)
 		// Follow pointer: decode at the target offset
 		if ptr < uint32(len(r.data)) {
-			res, _ := r.decodeField(ptr)
+			res, _ := r.decodeFieldDepth(ptr, depth+1)
 			return res, consumed + ptrBytes
 		}
 		return result{}, consumed
@@ -343,6 +352,9 @@ func (r *mmdbReader) decodeField(offset uint32) (result, uint32) {
 		return result{typ: mmdbTypeBytes, str: string(r.data[offset:end])}, consumed + payloadSize
 
 	case mmdbTypeUint16, mmdbTypeUint32, mmdbTypeUint64, mmdbTypeUint128, mmdbTypeInt32:
+		if offset+payloadSize > uint32(len(r.data)) {
+			return result{}, consumed
+		}
 		var val uint64
 		for i := uint32(0); i < payloadSize; i++ {
 			val = (val << 8) | uint64(r.data[offset+i])
@@ -350,13 +362,16 @@ func (r *mmdbReader) decodeField(offset uint32) (result, uint32) {
 		return result{typ: typeNum, num: val}, consumed + payloadSize
 
 	case mmdbTypeMap:
+		if payloadSize > 10000 {
+			return result{}, consumed
+		}
 		mp := make(map[string]result, payloadSize)
 		totalConsumed := consumed
 		fieldOffset := offset
 		for i := uint32(0); i < payloadSize; i++ {
-			key, keyBytes := r.decodeField(fieldOffset)
+			key, keyBytes := r.decodeFieldDepth(fieldOffset, depth+1)
 			fieldOffset += keyBytes
-			val, valBytes := r.decodeField(fieldOffset)
+			val, valBytes := r.decodeFieldDepth(fieldOffset, depth+1)
 			fieldOffset += valBytes
 			totalConsumed += keyBytes + valBytes
 			mp[key.str] = val
@@ -364,11 +379,14 @@ func (r *mmdbReader) decodeField(offset uint32) (result, uint32) {
 		return result{typ: mmdbTypeMap, mp: mp}, totalConsumed
 
 	case mmdbTypeArray:
+		if payloadSize > 10000 {
+			return result{}, consumed
+		}
 		arr := make([]result, 0, payloadSize)
 		totalConsumed := consumed
 		fieldOffset := offset
 		for i := uint32(0); i < payloadSize; i++ {
-			val, valBytes := r.decodeField(fieldOffset)
+			val, valBytes := r.decodeFieldDepth(fieldOffset, depth+1)
 			fieldOffset += valBytes
 			totalConsumed += valBytes
 			arr = append(arr, val)

@@ -1717,9 +1717,13 @@ func TestHTTPTransport_BearerAuth_InvalidScheme(t *testing.T) {
 
 func TestSSETransport_New(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{
-		Addr: ":0",
+	transport, err := NewSSETransport(s, SSETransportConfig{
+		Addr:        ":0",
+		BearerToken: "test-token",
 	})
+	if err != nil {
+		t.Fatalf("NewSSETransport failed: %v", err)
+	}
 	if transport == nil {
 		t.Fatal("NewSSETransport returned nil")
 	}
@@ -1727,9 +1731,13 @@ func TestSSETransport_New(t *testing.T) {
 
 func TestSSETransport_StartStop(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{
-		Addr: "127.0.0.1:0",
+	transport, err := NewSSETransport(s, SSETransportConfig{
+		Addr:        "127.0.0.1:0",
+		BearerToken: "test-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := transport.Start(); err != nil {
 		t.Fatalf("Start failed: %v", err)
@@ -1753,9 +1761,13 @@ func TestSSETransport_StartStop(t *testing.T) {
 
 func TestSSETransport_AddrBeforeStart(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{
-		Addr: ":9999",
+	transport, err := NewSSETransport(s, SSETransportConfig{
+		Addr:        ":9999",
+		BearerToken: "test-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	addr := transport.Addr()
 	if addr != ":9999" {
@@ -1765,7 +1777,10 @@ func TestSSETransport_AddrBeforeStart(t *testing.T) {
 
 func TestSSETransport_SSE_MethodNotAllowed(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	req := httptest.NewRequest(http.MethodPost, "/sse", nil)
 	w := httptest.NewRecorder()
@@ -1778,10 +1793,13 @@ func TestSSETransport_SSE_MethodNotAllowed(t *testing.T) {
 
 func TestSSETransport_SSE_AuthRequired(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{
+	transport, err := NewSSETransport(s, SSETransportConfig{
 		Addr:        "127.0.0.1:0",
 		BearerToken: "test-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/sse", nil)
 	w := httptest.NewRecorder()
@@ -1794,7 +1812,10 @@ func TestSSETransport_SSE_AuthRequired(t *testing.T) {
 
 func TestSSETransport_SSE_ConnectAndDisconnect(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := transport.Start(); err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
@@ -1803,6 +1824,7 @@ func TestSSETransport_SSE_ConnectAndDisconnect(t *testing.T) {
 	// Connect SSE client
 	url := fmt.Sprintf("http://%s/sse", transport.Addr())
 	req, _ := http.NewRequest(http.MethodGet, url, nil)
+	req.Header.Set("Authorization", "Bearer test-token")
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -1828,10 +1850,14 @@ func TestSSETransport_SSE_ConnectAndDisconnect(t *testing.T) {
 
 func TestSSETransport_Message_Handler(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	reqBody := makeRequest("initialize", nil)
 	req := httptest.NewRequest(http.MethodPost, "/message", bytes.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer test-token")
 	w := httptest.NewRecorder()
 	transport.handleMessage(w, req)
 
@@ -1852,7 +1878,10 @@ func TestSSETransport_Message_Handler(t *testing.T) {
 
 func TestSSETransport_Message_MethodNotAllowed(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/message", nil)
 	w := httptest.NewRecorder()
@@ -1865,10 +1894,13 @@ func TestSSETransport_Message_MethodNotAllowed(t *testing.T) {
 
 func TestSSETransport_Message_AuthRequired(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{
+	transport, err := NewSSETransport(s, SSETransportConfig{
 		Addr:        "127.0.0.1:0",
 		BearerToken: "test-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	reqBody := makeRequest("initialize", nil)
 	req := httptest.NewRequest(http.MethodPost, "/message", bytes.NewReader(reqBody))
@@ -1885,7 +1917,7 @@ func TestSSETransport_Message_AuditLog(t *testing.T) {
 
 	var auditTool, auditAddr string
 	var auditDur time.Duration
-	transport := NewSSETransport(s, SSETransportConfig{
+	transport, err := NewSSETransport(s, SSETransportConfig{
 		Addr:     "127.0.0.1:0",
 		AuditLog: true,
 		AuditFunc: func(tool, params, clientAddr string, dur time.Duration, err error) {
@@ -1893,13 +1925,18 @@ func TestSSETransport_Message_AuditLog(t *testing.T) {
 			auditAddr = clientAddr
 			auditDur = dur
 		},
+		BearerToken: "test-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	reqBody := makeRequest("tools/call", map[string]any{
 		"name":      "olb_query_metrics",
 		"arguments": map[string]any{"metric": "test"},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/message", bytes.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer test-token")
 	req.RemoteAddr = "1.2.3.4:5678"
 	w := httptest.NewRecorder()
 	transport.handleMessage(w, req)
@@ -1917,7 +1954,10 @@ func TestSSETransport_Message_AuditLog(t *testing.T) {
 
 func TestSSETransport_LegacyHandler_Post(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	reqBody := makeRequest("initialize", nil)
 	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(reqBody))
@@ -1932,10 +1972,14 @@ func TestSSETransport_LegacyHandler_Post(t *testing.T) {
 
 func TestSSETransport_LegacyHandler_Options(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{
+	transport, err := NewSSETransport(s, SSETransportConfig{
 		Addr:           "127.0.0.1:0",
 		AllowedOrigins: []string{"http://example.com"},
+		BearerToken:    "test-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	req := httptest.NewRequest(http.MethodOptions, "/mcp", nil)
 	req.Header.Set("Origin", "http://example.com")
@@ -1952,7 +1996,10 @@ func TestSSETransport_LegacyHandler_Options(t *testing.T) {
 
 func TestSSETransport_LegacyHandler_MethodNotAllowed(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
 	w := httptest.NewRecorder()
@@ -1965,10 +2012,13 @@ func TestSSETransport_LegacyHandler_MethodNotAllowed(t *testing.T) {
 
 func TestSSETransport_LegacyHandler_AuthRequired(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{
+	transport, err := NewSSETransport(s, SSETransportConfig{
 		Addr:        "127.0.0.1:0",
 		BearerToken: "test-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	reqBody := makeRequest("initialize", nil)
 	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(reqBody))
@@ -1983,14 +2033,19 @@ func TestSSETransport_LegacyHandler_AuthRequired(t *testing.T) {
 
 func TestSSETransport_CORS_AllowedOrigin(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{
+	transport, err := NewSSETransport(s, SSETransportConfig{
 		Addr:           "127.0.0.1:0",
 		AllowedOrigins: []string{"http://localhost:3000", "https://example.com"},
+		BearerToken:    "test-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	reqBody := makeRequest("initialize", nil)
 	req := httptest.NewRequest(http.MethodPost, "/message", bytes.NewReader(reqBody))
 	req.Header.Set("Origin", "http://localhost:3000")
+	req.Header.Set("Authorization", "Bearer test-token")
 	w := httptest.NewRecorder()
 	transport.handleMessage(w, req)
 
@@ -2001,10 +2056,14 @@ func TestSSETransport_CORS_AllowedOrigin(t *testing.T) {
 
 func TestSSETransport_CORS_BlockedOrigin(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{
+	transport, err := NewSSETransport(s, SSETransportConfig{
 		Addr:           "127.0.0.1:0",
 		AllowedOrigins: []string{"http://localhost:3000"},
+		BearerToken:    "test-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	reqBody := makeRequest("initialize", nil)
 	req := httptest.NewRequest(http.MethodPost, "/message", bytes.NewReader(reqBody))
@@ -2019,7 +2078,10 @@ func TestSSETransport_CORS_BlockedOrigin(t *testing.T) {
 
 func TestSSETransport_CORS_NoOriginsConfigured(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	reqBody := makeRequest("initialize", nil)
 	req := httptest.NewRequest(http.MethodPost, "/message", bytes.NewReader(reqBody))
@@ -2034,7 +2096,10 @@ func TestSSETransport_CORS_NoOriginsConfigured(t *testing.T) {
 
 func TestSSETransport_BroadcastToClient(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Manually register a fake client
 	client := &sseClient{
@@ -2061,7 +2126,10 @@ func TestSSETransport_BroadcastToClient(t *testing.T) {
 
 func TestSSETransport_BroadcastToClient_BufferFull(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Create a client with a tiny buffer
 	client := &sseClient{
@@ -2083,7 +2151,10 @@ func TestSSETransport_BroadcastToClient_BufferFull(t *testing.T) {
 
 func TestSSETransport_BroadcastToClient_UnknownSession(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Should not panic for unknown session
 	transport.broadcastToClient("nonexistent", []byte("test"))
@@ -2091,7 +2162,10 @@ func TestSSETransport_BroadcastToClient_UnknownSession(t *testing.T) {
 
 func TestSSETransport_Message_WithSessionID(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Register a fake client to receive the broadcast
 	client := &sseClient{
@@ -2106,6 +2180,7 @@ func TestSSETransport_Message_WithSessionID(t *testing.T) {
 
 	reqBody := makeRequest("initialize", nil)
 	req := httptest.NewRequest(http.MethodPost, "/message?sessionId=test-session-id", bytes.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer test-token")
 	w := httptest.NewRecorder()
 	transport.handleMessage(w, req)
 
@@ -2172,7 +2247,10 @@ func TestExtractToolInfo(t *testing.T) {
 
 func TestSSETransport_ClientCount(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if count := transport.ClientCount(); count != 0 {
 		t.Errorf("ClientCount = %d, want 0", count)
@@ -2797,7 +2875,10 @@ func TestHTTPTransport_ServeHTTP_HandleJSONRPCError(t *testing.T) {
 // TestSSETransport_Stop_NilHTTPServer tests Stop when httpSrv is nil (line 121).
 func TestSSETransport_Stop_NilHTTPServer(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Stop without starting - httpSrv is nil, should return nil
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -2810,7 +2891,10 @@ func TestSSETransport_Stop_NilHTTPServer(t *testing.T) {
 // TestSSETransport_Stop_WithClients tests Stop when there are active clients (lines 112-113).
 func TestSSETransport_Stop_WithClients(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := transport.Start(); err != nil {
 		t.Fatalf("Start failed: %v", err)
@@ -2819,6 +2903,7 @@ func TestSSETransport_Stop_WithClients(t *testing.T) {
 	// Connect an SSE client
 	url := fmt.Sprintf("http://%s/sse", transport.Addr())
 	req, _ := http.NewRequest(http.MethodGet, url, nil)
+	req.Header.Set("Authorization", "Bearer test-token")
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -2849,7 +2934,10 @@ func TestSSETransport_Start_ListenError(t *testing.T) {
 	s := newTestServer()
 
 	// Start one transport
-	transport1 := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport1, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := transport1.Start(); err != nil {
 		t.Fatalf("First Start failed: %v", err)
 	}
@@ -2858,8 +2946,11 @@ func TestSSETransport_Start_ListenError(t *testing.T) {
 	addr := transport1.Addr()
 
 	// Try to start another on the same address
-	transport2 := NewSSETransport(s, SSETransportConfig{Addr: addr})
-	err := transport2.Start()
+	transport2, err := NewSSETransport(s, SSETransportConfig{Addr: addr, BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = transport2.Start()
 	if err == nil {
 		t.Error("Expected error when starting on already-bound address")
 		transport2.Stop(context.Background())
@@ -2872,7 +2963,10 @@ func TestSSETransport_Start_ListenError(t *testing.T) {
 // through the client.messages channel (line 213-217).
 func TestSSETransport_HandleSSE_ReceiveMessage(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := transport.Start(); err != nil {
 		t.Fatalf("Start failed: %v", err)
@@ -2882,7 +2976,9 @@ func TestSSETransport_HandleSSE_ReceiveMessage(t *testing.T) {
 	addr := transport.Addr()
 
 	// Connect SSE client
-	resp, err := http.Get("http://" + addr + "/sse")
+	sseReq, _ := http.NewRequest("GET", "http://"+addr+"/sse", nil)
+	sseReq.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(sseReq)
 	if err != nil {
 		t.Fatalf("SSE connect failed: %v", err)
 	}
@@ -2895,6 +2991,7 @@ func TestSSETransport_HandleSSE_ReceiveMessage(t *testing.T) {
 	// to broadcast it to the SSE client
 	reqBody := makeRequest("tools/list", nil)
 	msgReq, _ := http.NewRequest("POST", "http://"+addr+"/message", bytes.NewReader(reqBody))
+	msgReq.Header.Set("Authorization", "Bearer test-token")
 	msgReq.Header.Set("Content-Type", "application/json")
 
 	// We need to get the session ID from the SSE endpoint event
@@ -2919,6 +3016,7 @@ func TestSSETransport_HandleSSE_ReceiveMessage(t *testing.T) {
 
 	// Send message with session ID to trigger broadcast
 	msgReq, _ = http.NewRequest("POST", "http://"+addr+"/message?sessionId="+sessionID, bytes.NewReader(reqBody))
+	msgReq.Header.Set("Authorization", "Bearer test-token")
 	msgReq.Header.Set("Content-Type", "application/json")
 	msgResp, err := http.DefaultClient.Do(msgReq)
 	if err != nil {
@@ -2937,7 +3035,10 @@ func TestSSETransport_HandleSSE_ReceiveMessage(t *testing.T) {
 // TestSSETransport_HandleSSE_ClientDone tests SSE cleanup when client.done is closed (line 223).
 func TestSSETransport_HandleSSE_ClientDone(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := transport.Start(); err != nil {
 		t.Fatalf("Start failed: %v", err)
@@ -2946,7 +3047,9 @@ func TestSSETransport_HandleSSE_ClientDone(t *testing.T) {
 	addr := transport.Addr()
 
 	// Connect SSE client
-	resp, err := http.Get("http://" + addr + "/sse")
+	sseReq, _ := http.NewRequest("GET", "http://"+addr+"/sse", nil)
+	sseReq.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(sseReq)
 	if err != nil {
 		t.Fatalf("SSE connect failed: %v", err)
 	}
@@ -2966,7 +3069,10 @@ func TestSSETransport_HandleSSE_ClientDone(t *testing.T) {
 // TestSSETransport_HandleSSE_ContextDone tests SSE cleanup when request context is cancelled (line 229).
 func TestSSETransport_HandleSSE_ContextDone(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := transport.Start(); err != nil {
 		t.Fatalf("Start failed: %v", err)
@@ -2997,11 +3103,15 @@ func TestSSETransport_HandleSSE_ContextDone(t *testing.T) {
 // TestSSETransport_HandleSSE_NoFlusher tests SSE when ResponseWriter doesn't support flushing (line 165-167).
 func TestSSETransport_HandleSSE_NoFlusher(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0"})
+	transport, err := NewSSETransport(s, SSETransportConfig{Addr: "127.0.0.1:0", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Create a custom ResponseWriter that does NOT implement http.Flusher
 	w := &noFlushResponseWriter{header: make(http.Header)}
 	req := httptest.NewRequest(http.MethodGet, "/sse", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
 
 	transport.handleSSE(w, req)
 
@@ -3024,10 +3134,14 @@ func (w *noFlushResponseWriter) WriteHeader(code int)        { w.statusCode = co
 // TestSSETransport_HandleSSE_CORSWithOrigin tests SSE with CORS headers set.
 func TestSSETransport_HandleSSE_CORSWithOrigin(t *testing.T) {
 	s := newTestServer()
-	transport := NewSSETransport(s, SSETransportConfig{
+	transport, err := NewSSETransport(s, SSETransportConfig{
 		Addr:           "127.0.0.1:0",
 		AllowedOrigins: []string{"http://localhost:3000"},
+		BearerToken:    "test-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := transport.Start(); err != nil {
 		t.Fatalf("Start failed: %v", err)
@@ -3038,6 +3152,7 @@ func TestSSETransport_HandleSSE_CORSWithOrigin(t *testing.T) {
 
 	req, _ := http.NewRequest(http.MethodGet, "http://"+addr+"/sse", nil)
 	req.Header.Set("Origin", "http://localhost:3000")
+	req.Header.Set("Authorization", "Bearer test-token")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("SSE connect failed: %v", err)
@@ -3129,7 +3244,7 @@ func TestSSETransport_HandleMessage_AuditWithToolCall(t *testing.T) {
 
 	var auditTool, auditParams, auditClientAddr string
 	var auditDur time.Duration
-	transport := NewSSETransport(s, SSETransportConfig{
+	transport, err := NewSSETransport(s, SSETransportConfig{
 		Addr:     "127.0.0.1:0",
 		AuditLog: true,
 		AuditFunc: func(tool, params, clientAddr string, dur time.Duration, err error) {
@@ -3138,13 +3253,18 @@ func TestSSETransport_HandleMessage_AuditWithToolCall(t *testing.T) {
 			auditClientAddr = clientAddr
 			auditDur = dur
 		},
+		BearerToken: "test-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	reqBody := makeRequest("tools/call", map[string]any{
 		"name":      "olb_query_metrics",
 		"arguments": map[string]any{"metric": "latency_p99"},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/message", bytes.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer test-token")
 	req.RemoteAddr = "10.0.0.1:12345"
 	w := httptest.NewRecorder()
 	transport.handleMessage(w, req)
@@ -3172,14 +3292,18 @@ func TestSSETransport_HandleLegacy_WithAuditToolCall(t *testing.T) {
 	s := newTestServer()
 
 	var auditTool, auditParams string
-	transport := NewSSETransport(s, SSETransportConfig{
+	transport, err := NewSSETransport(s, SSETransportConfig{
 		Addr:     "127.0.0.1:0",
 		AuditLog: true,
 		AuditFunc: func(tool, params, clientAddr string, dur time.Duration, err error) {
 			auditTool = tool
 			auditParams = params
 		},
+		BearerToken: "test-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	reqBody := makeRequest("tools/call", map[string]any{
 		"name":      "olb_get_logs",
@@ -3209,13 +3333,17 @@ func TestSSETransport_HandleLegacy_AuditNonToolCall(t *testing.T) {
 	s := newTestServer()
 
 	auditCalled := false
-	transport := NewSSETransport(s, SSETransportConfig{
+	transport, err := NewSSETransport(s, SSETransportConfig{
 		Addr:     "127.0.0.1:0",
 		AuditLog: true,
 		AuditFunc: func(tool, params, clientAddr string, dur time.Duration, err error) {
 			auditCalled = true
 		},
+		BearerToken: "test-token",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	reqBody := makeRequest("resources/list", nil)
 	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(reqBody))

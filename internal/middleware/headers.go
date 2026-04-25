@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+
+	"github.com/openloadbalancer/olb/internal/security"
 )
 
 // Security preset constants.
@@ -139,12 +141,12 @@ func (hw *headerResponseWriter) WriteHeader(status int) {
 
 	// Set headers (replace existing)
 	for header, value := range hw.middleware.config.ResponseSet {
-		hw.ResponseWriter.Header().Set(header, value)
+		hw.ResponseWriter.Header().Set(header, security.SanitizeHeaderValue(value))
 	}
 
 	// Add headers
 	for header, value := range hw.middleware.config.ResponseAdd {
-		hw.ResponseWriter.Header().Add(header, value)
+		hw.ResponseWriter.Header().Add(header, security.SanitizeHeaderValue(value))
 	}
 
 	hw.ResponseWriter.WriteHeader(status)

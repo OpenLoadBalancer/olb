@@ -53,15 +53,15 @@ func TestWeightedRoundRobin_WeightedDistribution(t *testing.T) {
 
 	// Create backends with weights: 1, 2, 3
 	b1 := backend.NewBackend("b1", "127.0.0.1:8080")
-	b1.Weight = 1
+	b1.SetWeight(1)
 	b1.SetState(backend.StateUp)
 
 	b2 := backend.NewBackend("b2", "127.0.0.1:8081")
-	b2.Weight = 2
+	b2.SetWeight(2)
 	b2.SetState(backend.StateUp)
 
 	b3 := backend.NewBackend("b3", "127.0.0.1:8082")
-	b3.Weight = 3
+	b3.SetWeight(3)
 	b3.SetState(backend.StateUp)
 
 	wrr.Add(b1)
@@ -112,11 +112,11 @@ func TestWeightedRoundRobin_SmoothDistribution(t *testing.T) {
 
 	// Create backends with weights 5 and 1
 	b1 := backend.NewBackend("b1", "127.0.0.1:8080")
-	b1.Weight = 5
+	b1.SetWeight(5)
 	b1.SetState(backend.StateUp)
 
 	b2 := backend.NewBackend("b2", "127.0.0.1:8081")
-	b2.Weight = 1
+	b2.SetWeight(1)
 	b2.SetState(backend.StateUp)
 
 	wrr.Add(b1)
@@ -164,7 +164,7 @@ func TestWeightedRoundRobin_Add(t *testing.T) {
 	wrr := NewWeightedRoundRobin()
 
 	b1 := backend.NewBackend("b1", "127.0.0.1:8080")
-	b1.Weight = 10
+	b1.SetWeight(10)
 
 	wrr.Add(b1)
 
@@ -200,12 +200,12 @@ func TestWeightedRoundRobin_Update(t *testing.T) {
 	wrr := NewWeightedRoundRobin()
 
 	b1 := backend.NewBackend("b1", "127.0.0.1:8080")
-	b1.Weight = 1
+	b1.SetWeight(1)
 
 	wrr.Add(b1)
 
 	// Update weight
-	b1.Weight = 10
+	b1.SetWeight(10)
 	wrr.Update(b1)
 
 	// The weight should be updated
@@ -221,7 +221,7 @@ func TestWeightedRoundRobin_BackendNotInState(t *testing.T) {
 	wrr := NewWeightedRoundRobin()
 
 	b1 := backend.NewBackend("b1", "127.0.0.1:8080")
-	b1.Weight = 1
+	b1.SetWeight(1)
 	// Don't add to wrr state explicitly
 
 	backends := []*backend.Backend{b1}
@@ -237,9 +237,9 @@ func TestWeightedRoundRobin_Concurrent(t *testing.T) {
 	wrr := NewWeightedRoundRobin()
 
 	b1 := backend.NewBackend("b1", "127.0.0.1:8080")
-	b1.Weight = 1
+	b1.SetWeight(1)
 	b2 := backend.NewBackend("b2", "127.0.0.1:8081")
-	b2.Weight = 1
+	b2.SetWeight(1)
 
 	wrr.Add(b1)
 	wrr.Add(b2)
@@ -266,7 +266,7 @@ func TestWeightedRoundRobin_Reset(t *testing.T) {
 	wrr := NewWeightedRoundRobin()
 
 	b1 := backend.NewBackend("b1", "127.0.0.1:8080")
-	b1.Weight = 5
+	b1.SetWeight(5)
 
 	wrr.Add(b1)
 
@@ -290,11 +290,11 @@ func BenchmarkWeightedRoundRobin_Next(b *testing.B) {
 	wrr := NewWeightedRoundRobin()
 
 	be1 := backend.NewBackend("b1", "127.0.0.1:8080")
-	be1.Weight = 1
+	be1.SetWeight(1)
 	be2 := backend.NewBackend("b2", "127.0.0.1:8081")
-	be2.Weight = 2
+	be2.SetWeight(2)
 	be3 := backend.NewBackend("b3", "127.0.0.1:8082")
-	be3.Weight = 3
+	be3.SetWeight(3)
 
 	wrr.Add(be1)
 	wrr.Add(be2)
@@ -312,10 +312,10 @@ func TestWeightedRoundRobin_Next_DynamicBackend(t *testing.T) {
 	wrr := NewWeightedRoundRobin()
 
 	b1 := backend.NewBackend("b1", "127.0.0.1:8080")
-	b1.Weight = 1
+	b1.SetWeight(1)
 
 	b2 := backend.NewBackend("b2", "127.0.0.1:8081")
-	b2.Weight = 2
+	b2.SetWeight(2)
 
 	// Do NOT call wrr.Add - backends will be added dynamically in Next
 	backends := []*backend.Backend{b1, b2}
@@ -339,7 +339,7 @@ func TestWeightedRoundRobin_Next_ZeroWeight(t *testing.T) {
 	wrr := NewWeightedRoundRobin()
 
 	b1 := backend.NewBackend("b1", "127.0.0.1:8080")
-	b1.Weight = 0
+	b1.SetWeight(0)
 
 	backends := []*backend.Backend{b1}
 
@@ -354,7 +354,7 @@ func TestWeightedRoundRobin_Update_Nonexistent(t *testing.T) {
 	wrr := NewWeightedRoundRobin()
 
 	b := backend.NewBackend("nonexistent", "127.0.0.1:8080")
-	b.Weight = 5
+	b.SetWeight(5)
 
 	// Update on nonexistent backend should not panic
 	wrr.Update(b)
@@ -370,7 +370,7 @@ func TestWeightedRoundRobin_Add_Duplicate(t *testing.T) {
 	wrr := NewWeightedRoundRobin()
 
 	b1 := backend.NewBackend("b1", "127.0.0.1:8080")
-	b1.Weight = 5
+	b1.SetWeight(5)
 
 	wrr.Add(b1)
 	wrr.Add(b1) // duplicate
@@ -387,7 +387,7 @@ func TestWeightedRoundRobin_Next_NormalizesWeights(t *testing.T) {
 	wrr := NewWeightedRoundRobin()
 
 	b1 := backend.NewBackend("b1", "127.0.0.1:8080")
-	b1.Weight = 1
+	b1.SetWeight(1)
 	wrr.Add(b1)
 
 	backends := []*backend.Backend{b1}
@@ -419,7 +419,7 @@ func BenchmarkWeightedRoundRobin_Next_SingleBackend(b *testing.B) {
 	wrr := NewWeightedRoundRobin()
 
 	be1 := backend.NewBackend("b1", "127.0.0.1:8080")
-	be1.Weight = 1
+	be1.SetWeight(1)
 
 	wrr.Add(be1)
 

@@ -428,10 +428,19 @@ func TestUDPProxy_MaxSessionsLimit(t *testing.T) {
 		t.Errorf("ActiveSessions = %d, should not exceed MaxSessions=%d", active, config.MaxSessions)
 	}
 
-	// Check that packets were dropped
+	// With LRU eviction, no packets should be dropped — the oldest session
+	// is evicted to make room for the new one.
 	stats := proxy.Stats()
-	if stats.DroppedPackets == 0 {
-		t.Error("Expected dropped packets when max sessions reached")
+	if stats.ActiveSessions > int64(config.MaxSessions) {
+		t.Errorf("ActiveSessions = %d, should not exceed MaxSessions=%d", stats.ActiveSessions, config.MaxSessions)
+	}
+	if stats.DroppedPackets > 0 {
+		t.Errorf("DroppedPackets = %d, expected 0 with LRU eviction", stats.DroppedPackets)
+	}
+	// Total sessions should be 3 (all three clients created a session, even
+	// though the oldest was evicted to make room for the third).
+	if stats.TotalSessions != 3 {
+		t.Errorf("TotalSessions = %d, want 3", stats.TotalSessions)
 	}
 }
 

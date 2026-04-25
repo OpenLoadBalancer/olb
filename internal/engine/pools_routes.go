@@ -34,7 +34,7 @@ func (e *Engine) initializePools() error {
 			if backendCfg.Weight > math.MaxInt32 {
 				return fmt.Errorf("backend %s weight %d exceeds maximum %d", backendCfg.Address, backendCfg.Weight, math.MaxInt32)
 			}
-			b.Weight = int32(backendCfg.Weight)
+			b.SetWeight(int32(backendCfg.Weight))
 			if backendCfg.Scheme != "" {
 				b.Scheme = backendCfg.Scheme
 			}

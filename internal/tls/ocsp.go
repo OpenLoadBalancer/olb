@@ -361,9 +361,24 @@ func (m *OCSPManager) ClearCache() {
 	m.cache = make(map[string]*OCSPResponse)
 }
 
-// ParseOCSPResponse parses an OCSP response without verification.
+// ParseOCSPResponse parses an OCSP response without verifying the signature.
+// Deprecated: Callers should prefer ParseAndVerifyOCSPResponse, which also
+// checks the response signature against the issuer certificate. Use this
+// function only when verification is performed separately.
 func ParseOCSPResponse(data []byte) (*ocsp.Response, error) {
 	return ocsp.ParseResponse(data, nil)
+}
+
+// ParseAndVerifyOCSPResponse parses an OCSP response and verifies its
+// signature against the provided issuer certificate. This should be the
+// default choice for callers that need a verified response; using
+// ParseOCSPResponse alone risks accepting spoofed responses if the caller
+// forgets to verify separately.
+func ParseAndVerifyOCSPResponse(data []byte, issuer *x509.Certificate) (*ocsp.Response, error) {
+	if issuer == nil {
+		return nil, errors.New("issuer certificate is required for OCSP response verification")
+	}
+	return ocsp.ParseResponse(data, issuer)
 }
 
 // CreateOCSPRequest creates an OCSP request for a certificate.

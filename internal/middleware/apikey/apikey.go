@@ -63,8 +63,8 @@ func New(config Config) (*Middleware, error) {
 	for keyID, key := range config.Keys {
 		switch config.Hash {
 		case "sha256":
-			mac := hmac.New(sha256.New, []byte(keyID))
-			mac.Write([]byte(key))
+			mac := hmac.New(sha256.New, []byte(key))
+			mac.Write([]byte(keyID))
 			m.hashes[keyID] = mac.Sum(nil)
 		case "plain":
 			m.hashes[keyID] = []byte(key)
@@ -112,7 +112,7 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check excluded paths
 		for _, path := range m.config.ExcludePaths {
-			if strings.HasPrefix(r.URL.Path, path) {
+			if strings.HasPrefix(r.URL.Path, path) && (len(r.URL.Path) == len(path) || r.URL.Path[len(path)] == '/' || path[len(path)-1] == '/') {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -161,8 +161,8 @@ func (m *Middleware) validateKey(apiKey string) (string, bool) {
 	switch m.config.Hash {
 	case "sha256":
 		for keyID, expectedHash := range m.hashes {
-			mac := hmac.New(sha256.New, []byte(keyID))
-			mac.Write([]byte(apiKey))
+			mac := hmac.New(sha256.New, []byte(apiKey))
+			mac.Write([]byte(keyID))
 			if subtle.ConstantTimeCompare(mac.Sum(nil), expectedHash) == 1 {
 				return keyID, true
 			}

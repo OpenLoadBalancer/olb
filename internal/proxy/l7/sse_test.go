@@ -184,7 +184,7 @@ func TestSSEHandler_BackendMaxConnections(t *testing.T) {
 
 	be := backend.NewBackend("backend-1", "127.0.0.1:8080")
 	be.SetState(backend.StateUp)
-	be.MaxConns = 1
+	be.SetMaxConns(1)
 
 	// First connection should acquire
 	if !be.AcquireConn() {

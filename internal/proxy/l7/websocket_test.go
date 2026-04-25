@@ -523,7 +523,7 @@ func TestHandleWebSocket_MissingWSKey(t *testing.T) {
 func TestHandleWebSocket_BackendAtMaxConns(t *testing.T) {
 	wh := NewWebSocketHandler(&WebSocketConfig{EnableWebSocket: true})
 	b := backend.NewBackend("b1", "10.0.0.1:8080")
-	b.MaxConns = 1
+	b.SetMaxConns(1)
 	b.AcquireConn() // Saturate
 
 	req := httptest.NewRequest("GET", "/ws", nil)

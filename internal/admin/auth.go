@@ -1,9 +1,11 @@
 package admin
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -14,6 +16,25 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// Role constants for RBAC.
+const (
+	RoleAdmin    = "admin"
+	RoleReadOnly = "readonly"
+)
+
+// roleContextKey is the context key for storing the authenticated user's role.
+type roleContextKey struct{}
+
+// RoleFromContext extracts the role string from the request context.
+// Returns RoleAdmin if no role is set (backward compatible default).
+func RoleFromContext(ctx context.Context) string {
+	role, _ := ctx.Value(roleContextKey{}).(string)
+	if role == "" {
+		return RoleAdmin
+	}
+	return role
+}
+
 // AuthConfig holds authentication configuration.
 type AuthConfig struct {
 	// Basic auth
@@ -23,11 +44,19 @@ type AuthConfig struct {
 	// Bearer token auth
 	BearerTokens []string // API keys
 
+	// BearerRoles maps bearer tokens to their RBAC role.
+	// Tokens not in this map default to RoleAdmin for backward compatibility.
+	// When nil or empty, all authenticated users have the admin role.
+	BearerRoles map[string]string
+
 	// Options
 	RequireAuthForRead bool
 
 	// Auth failure rate limiter (initialized lazily)
 	failureLimiter *authFailureLimiter
+
+	// tokenMu protects BearerTokens and BearerRoles for safe rotation at runtime.
+	tokenMu sync.RWMutex
 }
 
 // authFailureLimiter tracks per-IP authentication failures and locks out
@@ -43,11 +72,13 @@ const (
 	authFailureMaxAttempts = 5               // failures before lockout
 	authFailureLockout     = 5 * time.Minute // lockout duration
 	authFailureCleanup     = 1 * time.Minute // cleanup interval
+	maxAuthEntries         = 100_000         // cap on tracked IPs to prevent memory exhaustion
 )
 
 type authFailureEntry struct {
 	count       int
 	lockedUntil time.Time
+	lastAccess  time.Time
 }
 
 func newAuthFailureLimiter() *authFailureLimiter {
@@ -85,14 +116,71 @@ func (l *authFailureLimiter) isLocked(ip string) bool {
 	return false
 }
 
+// getClientIP extracts the real client IP from the request, respecting
+// X-Real-Ip and X-Forwarded-For headers when the admin server is behind
+// a reverse proxy. Falls back to r.RemoteAddr.
+func getClientIP(r *http.Request) string {
+	// Check X-Real-Ip first (set by nginx and similar proxies)
+	if realIP := r.Header.Get("X-Real-Ip"); realIP != "" {
+		if ip := net.ParseIP(realIP); ip != nil {
+			return realIP
+		}
+	}
+	// Check X-Forwarded-For (set by many proxies; first entry is the client)
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if idx := strings.Index(xff, ","); idx != -1 {
+			return strings.TrimSpace(xff[:idx])
+		}
+		return strings.TrimSpace(xff)
+	}
+	// Fallback to RemoteAddr (host:port — strip port)
+	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+	if ip != "" {
+		return ip
+	}
+	return r.RemoteAddr
+}
+
 func (l *authFailureLimiter) recordFailure(ip string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	e, ok := l.entries[ip]
 	if !ok {
-		e = &authFailureEntry{}
+		if len(l.entries) >= maxAuthEntries {
+			now := time.Now()
+			// First pass: evict expired (lockout elapsed) entries
+			for k, v := range l.entries {
+				if !v.lockedUntil.IsZero() && now.After(v.lockedUntil) {
+					delete(l.entries, k)
+				}
+			}
+			// Second pass: if still full, evict the oldest non-locked entry (LRU-style)
+			if len(l.entries) >= maxAuthEntries {
+				var oldestIP string
+				var oldestTime time.Time
+				for k, v := range l.entries {
+					// Skip currently locked entries — they must remain tracked
+					if !v.lockedUntil.IsZero() && now.Before(v.lockedUntil) {
+						continue
+					}
+					if oldestIP == "" || v.lastAccess.Before(oldestTime) {
+						oldestIP = k
+						oldestTime = v.lastAccess
+					}
+				}
+				if oldestIP != "" {
+					delete(l.entries, oldestIP)
+				}
+				// If all entries are locked, we cannot evict safely;
+				// still allow the new entry so the IP is tracked.
+			}
+		}
+		e = &authFailureEntry{
+			lastAccess: time.Now(),
+		}
 		l.entries[ip] = e
 	}
+	e.lastAccess = time.Now()
 	e.count++
 	if e.count >= authFailureMaxAttempts {
 		e.lockedUntil = time.Now().Add(authFailureLockout)
@@ -141,6 +229,18 @@ func (c *AuthConfig) Close() {
 	}
 }
 
+// ZeroSecrets clears sensitive fields (bearer tokens) from memory.
+// Note: Go strings are immutable and may be copied by the runtime, so
+// this provides best-effort scrubbing for the slice-backed data only.
+func (c *AuthConfig) ZeroSecrets() {
+	for i := range c.BearerTokens {
+		// Strings in Go are immutable and their backing memory is shared;
+		// we cannot reliably zero them. Clear the slice reference instead.
+		c.BearerTokens[i] = ""
+	}
+	c.BearerTokens = nil
+}
+
 // AuthMiddleware creates authentication middleware.
 // By default, all endpoints require authentication. When RequireAuthForRead
 // is explicitly false, GET requests to public health endpoints are allowed
@@ -161,7 +261,7 @@ func AuthMiddleware(config *AuthConfig) func(http.Handler) http.Handler {
 			}
 
 			// Extract client IP for rate limiting
-			ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+			ip := getClientIP(r)
 
 			// Check if IP is locked out due to too many failures
 			if config.failureLimiter.isLocked(ip) {
@@ -186,7 +286,9 @@ func AuthMiddleware(config *AuthConfig) func(http.Handler) http.Handler {
 			if token, ok := strings.CutPrefix(authHeader, "Bearer "); ok {
 				if config.validateBearerToken(token) {
 					config.failureLimiter.recordSuccess(ip)
-					next.ServeHTTP(w, r)
+					role := config.bearerRole(token)
+					ctx := context.WithValue(r.Context(), roleContextKey{}, role)
+					next.ServeHTTP(w, r.WithContext(ctx))
 					return
 				}
 				config.failureLimiter.recordFailure(ip)
@@ -213,7 +315,9 @@ func AuthMiddleware(config *AuthConfig) func(http.Handler) http.Handler {
 				username, password := parts[0], parts[1]
 				if config.validateBasicAuth(username, password) {
 					config.failureLimiter.recordSuccess(ip)
-					next.ServeHTTP(w, r)
+					// Basic auth users always get admin role (backward compatible)
+					ctx := context.WithValue(r.Context(), roleContextKey{}, RoleAdmin)
+					next.ServeHTTP(w, r.WithContext(ctx))
 					return
 				}
 				config.failureLimiter.recordFailure(ip)
@@ -241,6 +345,8 @@ func (c *AuthConfig) validateBasicAuth(username, password string) bool {
 
 // validateBearerToken validates a bearer token against configured tokens.
 func (c *AuthConfig) validateBearerToken(token string) bool {
+	c.tokenMu.RLock()
+	defer c.tokenMu.RUnlock()
 	for _, validToken := range c.BearerTokens {
 		// Constant-time comparison to prevent timing attacks
 		if subtle.ConstantTimeCompare([]byte(token), []byte(validToken)) == 1 {
@@ -248,6 +354,57 @@ func (c *AuthConfig) validateBearerToken(token string) bool {
 		}
 	}
 	return false
+}
+
+// bearerRole returns the RBAC role for the given bearer token.
+// If the token has an explicit role in BearerRoles, that role is returned.
+// Otherwise, RoleAdmin is returned for backward compatibility.
+func (c *AuthConfig) bearerRole(token string) string {
+	c.tokenMu.RLock()
+	defer c.tokenMu.RUnlock()
+	if c.BearerRoles != nil {
+		if role, ok := c.BearerRoles[token]; ok {
+			return role
+		}
+	}
+	return RoleAdmin
+}
+
+// RotateBearerToken replaces an existing bearer token with a new one.
+// It validates that oldToken exists in the current token list, then replaces
+// it with newToken. This is thread-safe and can be called at runtime without
+// restarting the server. Returns an error if oldToken is not found.
+func (c *AuthConfig) RotateBearerToken(oldToken, newToken string) error {
+	if oldToken == "" || newToken == "" {
+		return fmt.Errorf("old and new tokens must not be empty")
+	}
+
+	c.tokenMu.Lock()
+	defer c.tokenMu.Unlock()
+
+	// Find and replace the old token
+	found := false
+	for i, t := range c.BearerTokens {
+		if subtle.ConstantTimeCompare([]byte(t), []byte(oldToken)) == 1 {
+			// Preserve any role mapping for the old token
+			if c.BearerRoles != nil {
+				if role, ok := c.BearerRoles[oldToken]; ok {
+					delete(c.BearerRoles, oldToken)
+					c.BearerRoles[newToken] = role
+				}
+			}
+			c.BearerTokens[i] = newToken
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("old token not found in bearer token list")
+	}
+
+	log.Printf("[auth] bearer token rotated successfully")
+	return nil
 }
 
 // writeUnauthorized writes a 401 Unauthorized response.
@@ -276,11 +433,8 @@ func CheckPasswordHash(password, hash string) bool {
 
 // isPublicHealthEndpoint returns true for endpoints that are safe to expose
 // without authentication (used for load balancer health probes).
+// Only the simple /health up/down probe is public; the /api/v1/... variants
+// expose detailed operational state and always require authentication.
 func isPublicHealthEndpoint(path string) bool {
-	switch path {
-	case "/health", "/api/v1/system/health", "/api/v1/health":
-		return true
-	default:
-		return false
-	}
+	return path == "/health"
 }

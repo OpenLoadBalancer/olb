@@ -10,13 +10,14 @@ import (
 
 // Config configures HTTPS enforcement.
 type Config struct {
-	Enabled      bool     // Enable HTTPS enforcement
-	Permanent    bool     // Use 301 (permanent) instead of 307 (temporary)
-	ExcludePaths []string // Paths to exclude (e.g., health checks)
-	ExcludeHosts []string // Hosts to exclude from redirect
-	Port         int      // HTTPS port (default: 443)
-	HeaderKey    string   // Header to check for TLS termination (e.g., X-Forwarded-Proto)
-	HeaderValue  string   // Expected header value for TLS (e.g., https)
+	Enabled        bool     // Enable HTTPS enforcement
+	Permanent      bool     // Use 301 (permanent) instead of 307 (temporary)
+	ExcludePaths   []string // Paths to exclude (e.g., health checks)
+	ExcludeHosts   []string // Hosts to exclude from redirect
+	Port           int      // HTTPS port (default: 443)
+	HeaderKey      string   // Header to check for TLS termination (e.g., X-Forwarded-Proto)
+	HeaderValue    string   // Expected header value for TLS (e.g., https)
+	TrustedProxies []string // CIDR ranges of trusted proxies; when set, forwarded headers are only trusted from these IPs
 }
 
 // DefaultConfig returns default HTTPS enforcement configuration.
@@ -65,7 +66,7 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check excluded paths
 		for _, path := range m.config.ExcludePaths {
-			if strings.HasPrefix(r.URL.Path, path) {
+			if strings.HasPrefix(r.URL.Path, path) && (len(r.URL.Path) == len(path) || r.URL.Path[len(path)] == '/' || path[len(path)-1] == '/') {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -104,22 +105,50 @@ func (m *Middleware) isHTTPS(r *http.Request) bool {
 		return true
 	}
 
-	// Check header (for TLS termination at load balancer)
-	if m.config.HeaderKey != "" {
-		value := r.Header.Get(m.config.HeaderKey)
-		if strings.EqualFold(value, m.config.HeaderValue) {
+	// Forwarded headers are only meaningful from trusted proxies.
+	// When TrustedProxies is configured, reject headers from untrusted sources.
+	trusted := len(m.config.TrustedProxies) == 0 || m.isFromTrustedProxy(r)
+
+	if trusted {
+		// Check header (for TLS termination at load balancer)
+		if m.config.HeaderKey != "" {
+			value := r.Header.Get(m.config.HeaderKey)
+			if strings.EqualFold(value, m.config.HeaderValue) {
+				return true
+			}
+		}
+
+		// Check common forwarded proto headers
+		if proto := r.Header.Get("X-Forwarded-Proto"); proto == "https" {
+			return true
+		}
+		if scheme := r.Header.Get("X-Scheme"); scheme == "https" {
 			return true
 		}
 	}
 
-	// Check common forwarded proto headers
-	if proto := r.Header.Get("X-Forwarded-Proto"); proto == "https" {
-		return true
-	}
-	if scheme := r.Header.Get("X-Scheme"); scheme == "https" {
-		return true
-	}
+	return false
+}
 
+// isFromTrustedProxy checks if the request comes from a trusted proxy IP.
+func (m *Middleware) isFromTrustedProxy(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	for _, cidr := range m.config.TrustedProxies {
+		_, network, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+		if network.Contains(ip) {
+			return true
+		}
+	}
 	return false
 }
 

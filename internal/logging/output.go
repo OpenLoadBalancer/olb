@@ -315,8 +315,8 @@ func (o *RotatingFileOutput) open() error {
 		}
 	}
 
-	// Open file
-	file, err := os.OpenFile(o.filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	// Open file with owner-only write permissions
+	file, err := os.OpenFile(o.filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}

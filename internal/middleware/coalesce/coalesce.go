@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"time"
 )
@@ -114,7 +115,7 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check excluded paths
 		for _, path := range m.config.ExcludePaths {
-			if len(r.URL.Path) >= len(path) && r.URL.Path[:len(path)] == path {
+			if strings.HasPrefix(r.URL.Path, path) && (len(r.URL.Path) == len(path) || r.URL.Path[len(path)] == '/' || path[len(path)-1] == '/') {
 				next.ServeHTTP(w, r)
 				return
 			}

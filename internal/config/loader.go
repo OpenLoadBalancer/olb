@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,12 @@ type Loader struct {
 	// ExpandEnv enables environment variable expansion.
 	// Default: true
 	ExpandEnv bool
+
+	// AllowedEnvPrefixes restricts which environment variables can be expanded.
+	// When non-empty, only variables whose names start with one of the listed
+	// prefixes (e.g. "OLB_") will be substituted; others are left as-is.
+	// When empty (default), all environment variables are expanded (backward compatible).
+	AllowedEnvPrefixes []string
 }
 
 // NewLoader creates a new configuration loader.
@@ -36,7 +43,10 @@ func (l *Loader) Load(path string) (*Config, error) {
 	// Expand environment variables
 	configData := string(data)
 	if l.ExpandEnv {
-		configData = ExpandEnv(configData)
+		if len(l.AllowedEnvPrefixes) == 0 {
+			log.Println("WARNING: env var expansion is unrestricted — any host environment variable can be read. Set allowed_env_prefixes (e.g. [\"OLB_\"]) to limit exposure.")
+		}
+		configData = ExpandEnvWithPrefixes(configData, l.AllowedEnvPrefixes)
 	}
 
 	// Parse based on file extension

@@ -72,14 +72,15 @@ type sseClient struct {
 }
 
 // NewSSETransport creates a new SSE-capable MCP transport.
-func NewSSETransport(server *Server, config SSETransportConfig) *SSETransport {
+// The BearerToken must be non-empty; otherwise, the MCP endpoint would be unauthenticated.
+func NewSSETransport(server *Server, config SSETransportConfig) (*SSETransport, error) {
 	// Default MaxClients to 100 if not set to prevent unbounded goroutine/connection growth.
 	if config.MaxClients <= 0 {
 		config.MaxClients = 100
 	}
 
 	if config.BearerToken == "" {
-		log.Printf("WARNING: MCP SSE transport at %s has no bearer token configured — endpoints are unauthenticated", config.Addr)
+		return nil, fmt.Errorf("MCP SSE transport requires a non-empty bearer token")
 	}
 
 	return &SSETransport{
@@ -87,7 +88,7 @@ func NewSSETransport(server *Server, config SSETransportConfig) *SSETransport {
 		config:  config,
 		clients: make(map[string]*sseClient),
 		done:    make(chan struct{}),
-	}
+	}, nil
 }
 
 // Start starts the SSE transport.

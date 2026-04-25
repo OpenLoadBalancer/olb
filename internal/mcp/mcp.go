@@ -202,6 +202,18 @@ type RouteProvider interface {
 	ModifyRoute(action, host, path, backend string) error
 }
 
+// --- Tool permission levels ---
+
+// ToolPermission represents the permission level required to invoke a tool.
+type ToolPermission int
+
+const (
+	// PermissionRead allows read-only operations (querying metrics, listing backends, etc.).
+	PermissionRead ToolPermission = iota
+	// PermissionWrite allows destructive/mutating operations (modifying backends, routes, etc.).
+	PermissionWrite
+)
+
 // --- Tool handler type ---
 
 // ToolHandler is a function that handles a tool call.
@@ -219,6 +231,13 @@ type Server struct {
 
 	toolHandlers map[string]ToolHandler
 
+	// toolMeta maps tool name to required permission level.
+	toolMeta map[string]ToolPermission
+
+	// tokenPermissions maps bearer token to its granted permission level.
+	// If nil or empty, all tools are accessible (backward compatible).
+	tokenPermissions map[string]ToolPermission
+
 	metrics  MetricsProvider
 	backends BackendProvider
 	config   ConfigProvider
@@ -235,21 +254,28 @@ type ServerConfig struct {
 	Logs     LogProvider
 	Cluster  ClusterProvider
 	Routes   RouteProvider
+
+	// TokenPermissions maps bearer token to its granted permission level.
+	// If nil or empty, all tools are accessible by any authenticated token
+	// (backward compatible behavior).
+	TokenPermissions map[string]ToolPermission
 }
 
 // NewServer creates a new MCP server with the given providers.
 func NewServer(cfg ServerConfig) *Server {
 	s := &Server{
-		tools:        make(map[string]Tool),
-		resources:    make(map[string]Resource),
-		prompts:      make(map[string]Prompt),
-		toolHandlers: make(map[string]ToolHandler),
-		metrics:      cfg.Metrics,
-		backends:     cfg.Backends,
-		config:       cfg.Config,
-		logs:         cfg.Logs,
-		cluster:      cfg.Cluster,
-		routes:       cfg.Routes,
+		tools:            make(map[string]Tool),
+		resources:        make(map[string]Resource),
+		prompts:          make(map[string]Prompt),
+		toolHandlers:     make(map[string]ToolHandler),
+		toolMeta:         make(map[string]ToolPermission),
+		tokenPermissions: cfg.TokenPermissions,
+		metrics:          cfg.Metrics,
+		backends:         cfg.Backends,
+		config:           cfg.Config,
+		logs:             cfg.Logs,
+		cluster:          cfg.Cluster,
+		routes:           cfg.Routes,
 	}
 
 	s.registerDefaultTools()
@@ -290,8 +316,8 @@ func (s *Server) registerDefaultTools() {
 		},
 	}, s.handleListBackends)
 
-	// olb_modify_backend
-	s.RegisterTool(Tool{
+	// olb_modify_backend (requires write permission)
+	s.RegisterToolWithPermission(Tool{
 		Name:        "olb_modify_backend",
 		Description: "Add, remove, drain, enable, or disable a backend in a pool.",
 		InputSchema: InputSchema{
@@ -303,10 +329,10 @@ func (s *Server) registerDefaultTools() {
 			},
 			Required: []string{"action", "pool", "address"},
 		},
-	}, s.handleModifyBackend)
+	}, s.handleModifyBackend, PermissionWrite)
 
-	// olb_modify_route
-	s.RegisterTool(Tool{
+	// olb_modify_route (requires write permission)
+	s.RegisterToolWithPermission(Tool{
 		Name:        "olb_modify_route",
 		Description: "Add, update, or remove a route. Supports traffic splitting for canary deployments.",
 		InputSchema: InputSchema{
@@ -319,7 +345,7 @@ func (s *Server) registerDefaultTools() {
 			},
 			Required: []string{"action"},
 		},
-	}, s.handleModifyRoute)
+	}, s.handleModifyRoute, PermissionWrite)
 
 	// olb_diagnose
 	s.RegisterTool(Tool{
@@ -439,6 +465,49 @@ func (s *Server) RegisterTool(tool Tool, handler ToolHandler) {
 	s.toolHandlers[tool.Name] = handler
 }
 
+// RegisterToolWithPermission registers a tool with its handler and required permission level.
+func (s *Server) RegisterToolWithPermission(tool Tool, handler ToolHandler, perm ToolPermission) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tools[tool.Name] = tool
+	s.toolHandlers[tool.Name] = handler
+	s.toolMeta[tool.Name] = perm
+}
+
+// checkPermission verifies that the given token has the required permission for a tool.
+// If tokenPermissions is nil/empty (no auth config), all tools are accessible (backward compatible).
+// Returns true if access is allowed, false otherwise.
+func (s *Server) checkPermission(toolName, token string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// No permission config set: allow all access (backward compatible)
+	if len(s.tokenPermissions) == 0 {
+		return true
+	}
+
+	// No token provided but permissions are configured
+	if token == "" {
+		return false
+	}
+
+	// Look up the token's permission level
+	tokenPerm, ok := s.tokenPermissions[token]
+	if !ok {
+		return false
+	}
+
+	// Look up the tool's required permission
+	requiredPerm, ok := s.toolMeta[toolName]
+	if !ok {
+		// Tool has no explicit permission requirement: default to read
+		requiredPerm = PermissionRead
+	}
+
+	// Write permission implies read permission
+	return tokenPerm >= requiredPerm
+}
+
 // RegisterResource registers a resource.
 func (s *Server) RegisterResource(resource Resource) {
 	s.mu.Lock()
@@ -454,7 +523,15 @@ func (s *Server) RegisterPrompt(prompt Prompt) {
 }
 
 // HandleJSONRPC processes a JSON-RPC 2.0 request and returns the response.
+// No token is provided, so permission checks use the default (full access
+// when tokenPermissions is not configured, denied when it is configured).
 func (s *Server) HandleJSONRPC(request []byte) ([]byte, error) {
+	return s.HandleJSONRPCWithToken(request, "")
+}
+
+// HandleJSONRPCWithToken processes a JSON-RPC 2.0 request with an optional
+// bearer token for tool-level permission checking.
+func (s *Server) HandleJSONRPCWithToken(request []byte, token string) ([]byte, error) {
 	var req Request
 	if err := json.Unmarshal(request, &req); err != nil {
 		resp := Response{
@@ -479,7 +556,7 @@ func (s *Server) HandleJSONRPC(request []byte) ([]byte, error) {
 		return json.Marshal(resp)
 	}
 
-	result, rpcErr := s.dispatch(req.Method, req.Params)
+	result, rpcErr := s.dispatchWithToken(req.Method, req.Params, token)
 	resp := Response{
 		JSONRPC: jsonRPCVersion,
 		ID:      req.ID,
@@ -495,13 +572,18 @@ func (s *Server) HandleJSONRPC(request []byte) ([]byte, error) {
 
 // dispatch routes a method call to the appropriate handler.
 func (s *Server) dispatch(method string, params json.RawMessage) (any, *ResponseError) {
+	return s.dispatchWithToken(method, params, "")
+}
+
+// dispatchWithToken routes a method call to the appropriate handler with token-based permission checking.
+func (s *Server) dispatchWithToken(method string, params json.RawMessage, token string) (any, *ResponseError) {
 	switch method {
 	case "initialize":
 		return s.handleInitialize(params)
 	case "tools/list":
 		return s.handleToolsList(params)
 	case "tools/call":
-		return s.handleToolsCall(params)
+		return s.handleToolsCallWithPerm(params, token)
 	case "resources/list":
 		return s.handleResourcesList(params)
 	case "resources/read":
@@ -583,7 +665,81 @@ func (s *Server) handleToolsList(_ json.RawMessage) (any, *ResponseError) {
 	}, nil
 }
 
-// handleToolsCall handles the "tools/call" method.
+// handleToolsCallWithPerm handles the "tools/call" method with permission checking.
+func (s *Server) handleToolsCallWithPerm(params json.RawMessage, token string) (any, *ResponseError) {
+	if params == nil {
+		return nil, &ResponseError{
+			Code:    errCodeInvalidParams,
+			Message: "Missing params",
+		}
+	}
+
+	var callParams struct {
+		Name      string         `json:"name"`
+		Arguments map[string]any `json:"arguments"`
+	}
+	if err := json.Unmarshal(params, &callParams); err != nil {
+		return nil, &ResponseError{
+			Code:    errCodeInvalidParams,
+			Message: "Invalid params",
+		}
+	}
+
+	if callParams.Name == "" {
+		return nil, &ResponseError{
+			Code:    errCodeInvalidParams,
+			Message: "Missing tool name",
+		}
+	}
+
+	// Check tool-level permission
+	if !s.checkPermission(callParams.Name, token) {
+		return nil, &ResponseError{
+			Code:    errCodeInternal,
+			Message: "permission denied: token does not have required permission for this tool",
+		}
+	}
+
+	s.mu.RLock()
+	handler, ok := s.toolHandlers[callParams.Name]
+	s.mu.RUnlock()
+
+	if !ok {
+		return nil, &ResponseError{
+			Code:    errCodeInvalidParams,
+			Message: "Unknown tool",
+		}
+	}
+
+	if callParams.Arguments == nil {
+		callParams.Arguments = make(map[string]any)
+	}
+
+	result, err := handler(callParams.Arguments)
+	if err != nil {
+		// Map internal errors to generic messages for MCP clients
+		errMsg := sanitizeMCPError(err)
+		return ToolResult{
+			Content: []ToolContent{{Type: "text", Text: "error: " + errMsg}},
+			IsError: true,
+		}, nil
+	}
+
+	// Marshal result to JSON text for the tool content
+	resultJSON, marshalErr := json.Marshal(result)
+	if marshalErr != nil {
+		return ToolResult{
+			Content: []ToolContent{{Type: "text", Text: "Failed to marshal response"}},
+			IsError: true,
+		}, nil
+	}
+
+	return ToolResult{
+		Content: []ToolContent{{Type: "text", Text: string(resultJSON)}},
+	}, nil
+}
+
+// handleToolsCall handles the "tools/call" method (no token, used internally).
 func (s *Server) handleToolsCall(params json.RawMessage) (any, *ResponseError) {
 	if params == nil {
 		return nil, &ResponseError{
@@ -1296,6 +1452,7 @@ func (t *HTTPTransport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Authenticate
+	token := ""
 	if t.bearerToken != "" {
 		auth := r.Header.Get("Authorization")
 		if len(auth) < 7 || auth[:7] != "Bearer " {
@@ -1303,7 +1460,7 @@ func (t *HTTPTransport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		token := auth[7:]
+		token = auth[7:]
 		if subtle.ConstantTimeCompare([]byte(token), []byte(t.bearerToken)) != 1 {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="mcp"`)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -1318,7 +1475,7 @@ func (t *HTTPTransport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := t.server.HandleJSONRPC(body)
+	resp, err := t.server.HandleJSONRPCWithToken(body, token)
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return

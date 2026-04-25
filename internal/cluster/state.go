@@ -7,11 +7,17 @@
 package cluster
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"log"
 	"sync"
 	"time"
 )
+
+// ErrInvalidHMAC is returned when a state message fails HMAC verification.
+var ErrInvalidHMAC = errors.New("cluster: state message HMAC verification failed")
 
 // HealthStatus represents the health status of a backend as seen by the cluster.
 type HealthStatus struct {
@@ -79,6 +85,11 @@ type StateMessage struct {
 
 	// Timestamp is when the message was created.
 	Timestamp time.Time `json:"timestamp"`
+
+	// HMAC is the HMAC-SHA256 of the message payload for integrity verification.
+	// When present, it is computed over the serialized message with this field set to nil.
+	// If HMACKey is configured on the receiver, messages without a valid HMAC are dropped.
+	HMAC []byte `json:"hmac,omitempty"`
 }
 
 // StateSync is the interface for broadcasting state updates to other nodes.
@@ -104,6 +115,12 @@ type DistributedStateConfig struct {
 
 	// MaxSessionEntries limits the number of session entries stored. Zero means unlimited.
 	MaxSessionEntries int
+
+	// HMACKey is the shared secret key used for HMAC-SHA256 verification of state
+	// messages. When set, all outgoing messages carry an HMAC and all incoming
+	// messages are verified before processing. When empty, HMAC is skipped
+	// (backward compatible).
+	HMACKey []byte
 }
 
 // DefaultDistributedStateConfig returns a default configuration.
@@ -153,6 +170,47 @@ func NewDistributedState(config *DistributedStateConfig) *DistributedState {
 		sessionState: make(map[string]*SessionEntry),
 		stopCh:       make(chan struct{}),
 	}
+}
+
+// computeStateHMAC computes HMAC-SHA256 of the serialized message data using
+// the provided key. The HMAC field of the message is zeroed before serialization
+// so that the digest covers only the payload.
+func computeStateHMAC(msg *StateMessage, key []byte) []byte {
+	// Save and zero the HMAC field so it is excluded from the digest.
+	saved := msg.HMAC
+	msg.HMAC = nil
+	data, err := json.Marshal(msg)
+	msg.HMAC = saved
+	if err != nil {
+		return nil
+	}
+	mac := hmac.New(sha256.New, key)
+	mac.Write(data)
+	return mac.Sum(nil)
+}
+
+// attachHMAC computes and attaches an HMAC to the message if an HMACKey is
+// configured. Returns the message unchanged (no HMAC) when the key is empty.
+func (ds *DistributedState) attachHMAC(msg *StateMessage) {
+	if len(ds.config.HMACKey) == 0 {
+		return
+	}
+	msg.HMAC = computeStateHMAC(msg, ds.config.HMACKey)
+}
+
+// verifyHMAC checks that the message carries a valid HMAC when an HMACKey is
+// configured. Returns true when the HMAC is valid or when no key is configured
+// (backward compatible). Returns false if a key is configured but the message
+// HMAC is missing or invalid.
+func (ds *DistributedState) verifyHMAC(msg *StateMessage) bool {
+	if len(ds.config.HMACKey) == 0 {
+		return true // no key configured — skip verification
+	}
+	if len(msg.HMAC) == 0 {
+		return false
+	}
+	expected := computeStateHMAC(msg, ds.config.HMACKey)
+	return hmac.Equal(msg.HMAC, expected)
 }
 
 // SetSync sets the state synchronization transport.
@@ -363,6 +421,7 @@ func (ds *DistributedState) broadcastHealth(health map[string]*HealthStatus) {
 		Health:    health,
 		Timestamp: time.Now(),
 	}
+	ds.attachHMAC(msg)
 
 	data, err := json.Marshal(msg)
 	if err != nil {
@@ -390,6 +449,7 @@ func (ds *DistributedState) broadcastSessions(sessions map[string]*SessionEntry)
 		Sessions:  sessions,
 		Timestamp: time.Now(),
 	}
+	ds.attachHMAC(msg)
 
 	data, err := json.Marshal(msg)
 	if err != nil {
@@ -418,6 +478,7 @@ func (ds *DistributedState) broadcastFullState() {
 		Sessions:  ds.GetAllSessions(),
 		Timestamp: time.Now(),
 	}
+	ds.attachHMAC(msg)
 
 	data, err := json.Marshal(msg)
 	if err != nil {
@@ -438,6 +499,12 @@ func (ds *DistributedState) handleIncoming(data []byte) {
 
 	// Ignore messages from ourselves
 	if msg.SenderID == ds.config.NodeID {
+		return
+	}
+
+	// Verify HMAC integrity when a key is configured.
+	if !ds.verifyHMAC(&msg) {
+		log.Printf("cluster: dropping state message from %q: HMAC verification failed", msg.SenderID)
 		return
 	}
 
@@ -516,6 +583,7 @@ func (ds *DistributedState) Serialize() ([]byte, error) {
 		Sessions:  ds.GetAllSessions(),
 		Timestamp: time.Now(),
 	}
+	ds.attachHMAC(msg)
 	return json.Marshal(msg)
 }
 
@@ -524,6 +592,11 @@ func (ds *DistributedState) Deserialize(data []byte) error {
 	var msg StateMessage
 	if err := json.Unmarshal(data, &msg); err != nil {
 		return err
+	}
+
+	// Verify HMAC integrity when a key is configured.
+	if !ds.verifyHMAC(&msg) {
+		return ErrInvalidHMAC
 	}
 
 	if msg.Health != nil {

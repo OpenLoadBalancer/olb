@@ -5,7 +5,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"log"
 	"net/http"
+	"strings"
+	"time"
 )
 
 // Config configures request ID middleware.
@@ -70,7 +73,7 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check excluded paths
 		for _, path := range m.config.ExcludePaths {
-			if len(r.URL.Path) >= len(path) && r.URL.Path[:len(path)] == path {
+			if strings.HasPrefix(r.URL.Path, path) && (len(r.URL.Path) == len(path) || r.URL.Path[len(path)] == '/' || path[len(path)-1] == '/') {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -109,11 +112,15 @@ func generateID(length int) string {
 	return hex.EncodeToString(b)
 }
 
-// fallbackID returns a simple fallback ID.
+// fallbackID returns a simple fallback ID when crypto/rand fails.
+// It mixes in the current time to provide some uniqueness, though
+// this is not cryptographically strong.
 func fallbackID() string {
+	log.Println("[requestid] WARNING: crypto/rand unavailable, using fallback ID generation")
 	b := make([]byte, 16)
+	now := time.Now().UnixNano()
 	for i := range b {
-		b[i] = byte(i * 7) // Simple deterministic pattern
+		b[i] = byte(i*7) ^ byte(now>>(i*8)) // Mix deterministic pattern with time
 	}
 	return hex.EncodeToString(b)
 }

@@ -58,7 +58,7 @@ func (wrr *WeightedRoundRobin) Next(ctx *RequestContext, backends []*backend.Bac
 			// Backend not in our state, add it with default weight
 			wb = &weightedBackend{
 				backend:       b,
-				weight:        b.Weight,
+				weight:        b.GetWeight(),
 				currentWeight: 0,
 			}
 			wrr.backends[b.ID] = wb
@@ -112,7 +112,7 @@ func (wrr *WeightedRoundRobin) Add(b *backend.Backend) {
 	if _, exists := wrr.backends[b.ID]; !exists {
 		wrr.backends[b.ID] = &weightedBackend{
 			backend:       b,
-			weight:        b.Weight,
+			weight:        b.GetWeight(),
 			currentWeight: 0,
 		}
 	}
@@ -132,7 +132,7 @@ func (wrr *WeightedRoundRobin) Update(b *backend.Backend) {
 	defer wrr.mu.Unlock()
 
 	if wb, exists := wrr.backends[b.ID]; exists {
-		wb.weight = b.Weight
+		wb.weight = b.GetWeight()
 		wb.backend = b
 	}
 }

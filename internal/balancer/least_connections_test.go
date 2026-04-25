@@ -20,7 +20,7 @@ func mockBackendWithConns(id string, conns int64) *backend.Backend {
 // mockWeightedBackend creates a backend with specific weight and connection count
 func mockWeightedBackend(id string, weight int32, conns int64) *backend.Backend {
 	b := backend.NewBackend(id, "127.0.0.1:8080")
-	b.Weight = weight
+	b.SetWeight(weight)
 	for i := int64(0); i < conns; i++ {
 		b.AcquireConn()
 	}
@@ -181,13 +181,13 @@ func TestLeastConnections_Update(t *testing.T) {
 	lc := NewLeastConnections()
 
 	b1 := backend.NewBackend("backend1", "127.0.0.1:8080")
-	b1.Weight = 1
+	b1.SetWeight(1)
 
 	lc.Add(b1)
 
 	// Update with new backend instance with same ID but different properties
 	b1Updated := backend.NewBackend("backend1", "127.0.0.1:9090")
-	b1Updated.Weight = 5
+	b1Updated.SetWeight(5)
 
 	lc.Update(b1Updated)
 
@@ -273,7 +273,7 @@ func TestWeightedLeastConnections_Next_ByRatio(t *testing.T) {
 	result := wlc.Next(nil, backends)
 	if result != b2 {
 		t.Errorf("expected backend2 (ratio 1.0), got %s (ratio %.2f)",
-			result.ID, float64(result.ActiveConns())/float64(result.Weight))
+			result.ID, float64(result.ActiveConns())/float64(result.GetWeight()))
 	}
 }
 
@@ -293,7 +293,7 @@ func TestWeightedLeastConnections_Next_WeightedRatio(t *testing.T) {
 	result := wlc.Next(nil, backends)
 	if result != b3 {
 		t.Errorf("expected backend3 (ratio 3.0), got %s (ratio %.2f)",
-			result.ID, float64(result.ActiveConns())/float64(result.Weight))
+			result.ID, float64(result.ActiveConns())/float64(result.GetWeight()))
 	}
 }
 
@@ -353,9 +353,9 @@ func TestWeightedLeastConnections_Add(t *testing.T) {
 	wlc := NewWeightedLeastConnections()
 
 	b1 := backend.NewBackend("backend1", "127.0.0.1:8080")
-	b1.Weight = 5
+	b1.SetWeight(5)
 	b2 := backend.NewBackend("backend2", "127.0.0.1:8081")
-	b2.Weight = 10
+	b2.SetWeight(10)
 
 	wlc.Add(b1)
 	wlc.Add(b2)
@@ -403,13 +403,13 @@ func TestWeightedLeastConnections_Update(t *testing.T) {
 	wlc := NewWeightedLeastConnections()
 
 	b1 := backend.NewBackend("backend1", "127.0.0.1:8080")
-	b1.Weight = 5
+	b1.SetWeight(5)
 
 	wlc.Add(b1)
 
 	// Update with new weight
 	b1Updated := backend.NewBackend("backend1", "127.0.0.1:8080")
-	b1Updated.Weight = 10
+	b1Updated.SetWeight(10)
 
 	wlc.Update(b1Updated)
 

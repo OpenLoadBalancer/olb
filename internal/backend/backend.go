@@ -25,11 +25,12 @@ type Backend struct {
 	Scheme string
 
 	// Weight is the load balancing weight for this backend.
-	Weight int32
+	// Use GetWeight/SetWeight for atomic access.
+	weight int32
 
 	// MaxConns is the maximum number of concurrent connections.
-	// 0 means unlimited.
-	MaxConns int32
+	// 0 means unlimited. Use GetMaxConns/SetMaxConns for atomic access.
+	maxConns int32
 
 	// state is the current state of the backend.
 	state *AtomicState
@@ -64,10 +65,10 @@ func NewBackend(id, address string) *Backend {
 		ID:       id,
 		Address:  address,
 		Scheme:   "http",
-		Weight:   1,
 		state:    NewAtomicState(StateStarting),
 		metadata: make(map[string]string),
 	}
+	b.SetWeight(1)
 	b.avgLatency = utils.NewAtomicDuration(0)
 	b.lastLatency = utils.NewAtomicDuration(0)
 	return b
@@ -98,6 +99,26 @@ func (b *Backend) IsAvailable() bool {
 // IsHealthy returns true if the backend is in an active state.
 func (b *Backend) IsHealthy() bool {
 	return b.state.Load().IsActive()
+}
+
+// GetWeight returns the backend weight (atomic).
+func (b *Backend) GetWeight() int32 {
+	return atomic.LoadInt32(&b.weight)
+}
+
+// SetWeight sets the backend weight (atomic).
+func (b *Backend) SetWeight(w int32) {
+	atomic.StoreInt32(&b.weight, w)
+}
+
+// GetMaxConns returns the maximum concurrent connections (atomic).
+func (b *Backend) GetMaxConns() int32 {
+	return atomic.LoadInt32(&b.maxConns)
+}
+
+// SetMaxConns sets the maximum concurrent connections (atomic).
+func (b *Backend) SetMaxConns(n int32) {
+	atomic.StoreInt32(&b.maxConns, n)
 }
 
 // ActiveConns returns the number of active connections.
@@ -139,10 +160,10 @@ func (b *Backend) LastLatency() time.Duration {
 // Returns true if successful, false if at max connections.
 // Uses atomic compare-and-swap to prevent race conditions.
 func (b *Backend) AcquireConn() bool {
-	if b.MaxConns > 0 {
+	if maxConns := b.GetMaxConns(); maxConns > 0 {
 		for {
 			current := b.activeConns.Load()
-			if current >= int64(b.MaxConns) {
+			if current >= int64(maxConns) {
 				return false
 			}
 			if b.activeConns.CompareAndSwap(current, current+1) {

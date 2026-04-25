@@ -187,7 +187,7 @@ func (rh *RingHash) Update(b *backend.Backend) {
 
 	// Check if weight changed
 	oldBackend := rh.backends[b.ID]
-	if oldBackend.Weight != b.Weight {
+	if oldBackend.GetWeight() != b.GetWeight() {
 		rh.backends[b.ID] = b
 		rh.rebuildRing()
 	} else {
@@ -201,7 +201,7 @@ func (rh *RingHash) rebuildRing() {
 	rh.ring = make([]ringHashNode, 0, len(rh.backends)*rh.vnodes)
 
 	for _, b := range rh.backends {
-		weight := int(b.Weight)
+		weight := int(b.GetWeight())
 		if weight <= 0 {
 			weight = 1
 		}

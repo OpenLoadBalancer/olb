@@ -157,7 +157,7 @@ func (wlc *WeightedLeastConnections) Next(ctx *RequestContext, backends []*backe
 		if _, exists := wlc.backends[b.ID]; !exists {
 			wlc.backends[b.ID] = &lcWeightedBackend{
 				backend: b,
-				weight:  b.Weight,
+				weight:  b.GetWeight(),
 			}
 		}
 	}
@@ -226,7 +226,7 @@ func (wlc *WeightedLeastConnections) Add(b *backend.Backend) {
 	if _, exists := wlc.backends[b.ID]; !exists {
 		wlc.backends[b.ID] = &lcWeightedBackend{
 			backend: b,
-			weight:  b.Weight,
+			weight:  b.GetWeight(),
 		}
 	}
 }
@@ -245,7 +245,7 @@ func (wlc *WeightedLeastConnections) Update(b *backend.Backend) {
 	defer wlc.mu.Unlock()
 
 	if wb, exists := wlc.backends[b.ID]; exists {
-		wb.weight = b.Weight
+		wb.weight = b.GetWeight()
 		wb.backend = b
 	}
 }

@@ -176,7 +176,7 @@ func (c *Client) fetchDirectory() error {
 	}
 
 	var dir Directory
-	if err := json.NewDecoder(resp.Body).Decode(&dir); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&dir); err != nil {
 		return err
 	}
 

@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/openloadbalancer/olb/internal/security"
 )
 
 // Config configures response transformation.
@@ -97,7 +99,7 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check excluded paths
 		for _, path := range m.config.ExcludePaths {
-			if strings.HasPrefix(r.URL.Path, path) {
+			if strings.HasPrefix(r.URL.Path, path) && (len(r.URL.Path) == len(path) || r.URL.Path[len(path)] == '/' || path[len(path)-1] == '/') {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -232,9 +234,9 @@ func (w *responseWriter) transformHeaders() {
 		w.ResponseWriter.Header().Del(header)
 	}
 
-	// Add new headers
+	// Add new headers (sanitize values to prevent CRLF injection)
 	for name, value := range w.config.AddHeaders {
-		w.ResponseWriter.Header().Set(name, value)
+		w.ResponseWriter.Header().Set(name, security.SanitizeHeaderValue(value))
 	}
 }
 

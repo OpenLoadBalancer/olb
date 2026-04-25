@@ -175,10 +175,13 @@ func (m *Manager) LoadCertificateFromPEM(certPEM, keyPEM []byte) (*Certificate, 
 		}
 	}
 
-	// Warn if certificate is expired or about to expire
+	// Reject expired certificates
 	if time.Now().After(x509Cert.NotAfter) {
-		log.Printf("WARNING: TLS certificate for %v has expired (expired %s)", names, x509Cert.NotAfter.Format(time.RFC3339))
-	} else if time.Until(x509Cert.NotAfter) < 30*24*time.Hour {
+		return nil, fmt.Errorf("TLS certificate for %v has expired (expired %s)", names, x509Cert.NotAfter.Format(time.RFC3339))
+	}
+
+	// Warn if certificate is about to expire
+	if time.Until(x509Cert.NotAfter) < 30*24*time.Hour {
 		log.Printf("WARNING: TLS certificate for %v expires in %d days (%s)", names, int(time.Until(x509Cert.NotAfter).Hours()/24), x509Cert.NotAfter.Format(time.RFC3339))
 	}
 
@@ -299,6 +302,15 @@ func (m *Manager) ReloadCertificates(certsConfig []CertConfig) error {
 
 // BuildTLSConfig creates a tls.Config from the given configuration.
 func BuildTLSConfig(minVersion, maxVersion string, cipherSuites []string, preferServerCipherSuites bool) (*tls.Config, error) {
+	return BuildTLSConfigWithOptions(minVersion, maxVersion, cipherSuites, preferServerCipherSuites, false)
+}
+
+// BuildTLSConfigWithOptions creates a tls.Config from the given configuration.
+// When allowRSACipherSuites is false (default), RSA cipher suites that do not
+// provide forward secrecy are stripped from the result even if listed in
+// cipherSuites.  Set allowRSACipherSuites to true to permit them (not
+// recommended for production).
+func BuildTLSConfigWithOptions(minVersion, maxVersion string, cipherSuites []string, preferServerCipherSuites, allowRSACipherSuites bool) (*tls.Config, error) {
 	config := &tls.Config{
 		PreferServerCipherSuites: preferServerCipherSuites,
 	}
@@ -328,6 +340,9 @@ func BuildTLSConfig(minVersion, maxVersion string, cipherSuites []string, prefer
 		suites, err := parseCipherSuites(cipherSuites)
 		if err != nil {
 			return nil, fmt.Errorf("invalid cipher_suites: %w", err)
+		}
+		if !allowRSACipherSuites {
+			suites = filterNonPFSCipherSuites(suites)
 		}
 		config.CipherSuites = suites
 	}
@@ -385,12 +400,37 @@ func parseCipherSuites(names []string) ([]uint16, error) {
 			return nil, fmt.Errorf("unknown cipher suite: %s", name)
 		}
 		if noPFS[name] {
-			log.Printf("WARNING: Cipher suite %s does not provide forward secrecy — prefer ECDHE suites", name)
+			log.Printf("WARNING: Cipher suite %s does not provide forward secrecy (no PFS) and should be avoided in production. Set allow_rsa_cipher_suites: true to permit these suites.", name)
 		}
 		suites = append(suites, id)
 	}
 
 	return suites, nil
+}
+
+// noPFSCipherSuiteIDs contains the numeric IDs of cipher suites that do not
+// provide forward secrecy (i.e. static RSA key exchange).
+var noPFSCipherSuiteIDs = map[uint16]bool{
+	tls.TLS_RSA_WITH_AES_128_GCM_SHA256: true,
+	tls.TLS_RSA_WITH_AES_256_GCM_SHA384: true,
+}
+
+// filterNonPFSCipherSuites removes cipher suites that do not provide forward
+// secrecy from the list. If any suites are removed a warning is logged.
+func filterNonPFSCipherSuites(suites []uint16) []uint16 {
+	filtered := make([]uint16, 0, len(suites))
+	removed := 0
+	for _, id := range suites {
+		if noPFSCipherSuiteIDs[id] {
+			removed++
+			continue
+		}
+		filtered = append(filtered, id)
+	}
+	if removed > 0 {
+		log.Printf("WARNING: %d RSA cipher suite(s) removed because they do not provide forward secrecy. Set allow_rsa_cipher_suites: true to permit them.", removed)
+	}
+	return filtered
 }
 
 // CertConfig represents certificate configuration.
@@ -484,4 +524,44 @@ type CertInfo struct {
 	Names      []string
 	Expiry     int64
 	IsWildcard bool
+}
+
+// ZeroSecrets zeroes private key material from all loaded certificates.
+// Call this during shutdown to reduce the window where key material is in memory.
+// Note: tls.Certificate.Certificate and tls.Certificate.SignedCertificateTimestamps
+// are public data and not zeroed. Go strings (e.g. cert names) are immutable and
+// cannot be reliably zeroed.
+func (m *Manager) ZeroSecrets() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	zeroCert := func(c *Certificate) {
+		if c == nil || c.Cert == nil {
+			return
+		}
+		// Zero the OCSP response bytes
+		for i := range c.Cert.OCSPStaple {
+			c.Cert.OCSPStaple[i] = 0
+		}
+		c.Cert.OCSPStaple = nil
+		// Zero the SignedCertificateTimestamps
+		for i := range c.Cert.SignedCertificateTimestamps {
+			for j := range c.Cert.SignedCertificateTimestamps[i] {
+				c.Cert.SignedCertificateTimestamps[i][j] = 0
+			}
+		}
+		c.Cert.SignedCertificateTimestamps = nil
+	}
+
+	for _, c := range m.exactCerts {
+		zeroCert(c)
+	}
+	for _, c := range m.wildcardCerts {
+		zeroCert(c)
+	}
+	zeroCert(m.defaultCert)
+
+	m.exactCerts = make(map[string]*Certificate)
+	m.wildcardCerts = make(map[string]*Certificate)
+	m.defaultCert = nil
 }

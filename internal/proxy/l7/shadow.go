@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/textproto"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -21,6 +22,8 @@ type ShadowConfig struct {
 	CopyHeaders bool
 	CopyBody    bool
 	Timeout     time.Duration
+	DenyHeaders []string // Headers to strip from shadow requests (default: sensitive headers)
+	MaxBodySize int      // Max shadow body size in bytes (default: 1MB)
 }
 
 // ShadowTarget represents a shadow/mirror target
@@ -49,6 +52,15 @@ type ShadowManager struct {
 }
 
 const maxConcurrentShadow = 1000
+
+// defaultShadowDenyHeaders lists headers stripped from shadow requests to prevent credential leakage.
+var defaultShadowDenyHeaders = map[string]bool{
+	"Authorization":       true,
+	"Cookie":              true,
+	"Set-Cookie":          true,
+	"Proxy-Authorization": true,
+	"X-Api-Key":           true,
+}
 
 // NewShadowManager creates a new shadow manager.
 func NewShadowManager(config ShadowConfig) *ShadowManager {
@@ -132,9 +144,12 @@ func (sm *ShadowManager) ShadowRequest(req *http.Request) {
 	// where multiple sendShadow goroutines read req.Body concurrently.
 	var bodyBuf []byte
 	if sm.config.CopyBody && req.Body != nil {
-		const maxShadowBodySize = 4 * 1024 * 1024 // 4MB max shadow body
+		maxShadowBodySize := sm.config.MaxBodySize
+		if maxShadowBodySize <= 0 {
+			maxShadowBodySize = 1 * 1024 * 1024 // default: 1MB
+		}
 		var err error
-		bodyBuf, err = io.ReadAll(io.LimitReader(req.Body, maxShadowBodySize+1))
+		bodyBuf, err = io.ReadAll(io.LimitReader(req.Body, int64(maxShadowBodySize)+1))
 		if err == nil && len(bodyBuf) > 0 {
 			if len(bodyBuf) <= maxShadowBodySize {
 				// Restore the original body so the main proxy can still read it
@@ -200,11 +215,17 @@ func (sm *ShadowManager) sendShadow(req *http.Request, backendAddr string, targe
 		return
 	}
 
-	// Copy headers if configured
+	// Copy headers if configured (stripping sensitive headers)
 	if sm.config.CopyHeaders {
+		denySet := defaultShadowDenyHeaders
+		if len(sm.config.DenyHeaders) > 0 {
+			denySet = make(map[string]bool, len(sm.config.DenyHeaders))
+			for _, h := range sm.config.DenyHeaders {
+				denySet[textproto.CanonicalMIMEHeaderKey(h)] = true
+			}
+		}
 		for name, values := range req.Header {
-			// Skip hop-by-hop headers
-			if isHopByHopHeader(name) {
+			if isHopByHopHeader(name) || denySet[name] {
 				continue
 			}
 			for _, value := range values {

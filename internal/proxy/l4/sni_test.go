@@ -1455,7 +1455,7 @@ func TestSNIRouter_ProxyToBackend_MaxConns(t *testing.T) {
 	router := NewSNIRouter(DefaultSNIRouterConfig())
 	be := backend.NewBackend("backend-1", "127.0.0.1:0")
 	be.SetState(backend.StateUp)
-	be.MaxConns = 1
+	be.SetMaxConns(1)
 	// Saturate the conn slot
 	be.AcquireConn()
 

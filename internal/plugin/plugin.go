@@ -370,21 +370,24 @@ func (pm *PluginManager) EventBus() *EventBus {
 }
 
 // isAllowed checks whether a plugin name is permitted by the whitelist.
+// When the allowlist is empty, no plugins are allowed — require explicit allowlisting.
 func (pm *PluginManager) isAllowed(name string) bool {
 	if len(pm.managerConfig.AllowedPlugins) == 0 {
-		return true
+		return false
 	}
 	return slices.Contains(pm.managerConfig.AllowedPlugins, name)
 }
 
 // RegisterPlugin registers a plugin directly (for built-in plugins).
-// The plugin is not initialized or started; call StartAll for that.
+// When AllowedPlugins is configured, only listed names are accepted.
+// When AllowedPlugins is empty, all plugins are accepted (for backward
+// compatibility with programmatic registration).
 func (pm *PluginManager) RegisterPlugin(p Plugin) error {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
 	name := p.Name()
-	if !pm.isAllowed(name) {
+	if len(pm.managerConfig.AllowedPlugins) > 0 && !pm.isAllowed(name) {
 		return fmt.Errorf("plugin %q is not in the allowed list", name)
 	}
 

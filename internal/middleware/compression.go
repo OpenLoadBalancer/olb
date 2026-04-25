@@ -168,7 +168,7 @@ func (m *CompressionMiddleware) shouldCompress(r *http.Request, _ http.ResponseW
 	// Check excluded paths
 	path := r.URL.Path
 	for _, prefix := range m.config.ExcludePaths {
-		if strings.HasPrefix(path, prefix) {
+		if strings.HasPrefix(path, prefix) && (len(path) == len(prefix) || path[len(prefix)] == '/' || prefix[len(prefix)-1] == '/') {
 			return false
 		}
 	}

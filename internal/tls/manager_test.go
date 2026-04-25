@@ -1019,22 +1019,9 @@ func TestExpiredCertificate(t *testing.T) {
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes})
 
 	m := NewManager()
-	cert, err := m.LoadCertificateFromPEM(certPEM, keyPEM)
-	if err != nil {
-		t.Fatalf("failed to load expired certificate: %v", err)
-	}
-
-	m.AddCertificate(cert)
-
-	// Manager doesn't check expiry - it just stores and retrieves
-	result := m.GetCertificate("expired.com")
-	if result == nil {
-		t.Error("should be able to retrieve expired certificate")
-	}
-
-	// Verify expiry is recorded
-	if result.Expiry != template.NotAfter.Unix() {
-		t.Error("expiry not recorded correctly")
+	_, err := m.LoadCertificateFromPEM(certPEM, keyPEM)
+	if err == nil {
+		t.Fatal("expired certificate should be rejected")
 	}
 }
 
@@ -1152,7 +1139,8 @@ func TestBuildTLSConfig_AllCipherSuites(t *testing.T) {
 		"TLS_RSA_WITH_AES_128_GCM_SHA256",
 		"TLS_RSA_WITH_AES_256_GCM_SHA384",
 	}
-	config, err := BuildTLSConfig("1.2", "1.3", suites, true)
+	// With allowRSACipherSuites=true, all 11 should be present
+	config, err := BuildTLSConfigWithOptions("1.2", "1.3", suites, true, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1161,6 +1149,16 @@ func TestBuildTLSConfig_AllCipherSuites(t *testing.T) {
 	}
 	if !config.PreferServerCipherSuites {
 		t.Error("expected PreferServerCipherSuites to be true")
+	}
+
+	// With allowRSACipherSuites=false (default), RSA suites should be filtered out
+	configFiltered, err := BuildTLSConfig("1.2", "1.3", suites, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expectedFiltered := len(suites) - 2 // 2 RSA suites removed
+	if len(configFiltered.CipherSuites) != expectedFiltered {
+		t.Errorf("expected %d cipher suites after filtering, got %d", expectedFiltered, len(configFiltered.CipherSuites))
 	}
 }
 

@@ -246,7 +246,7 @@ func TestUDPProxy_CreateSession_AcquireConnFails(t *testing.T) {
 	pool := backend.NewPool("test", "round_robin")
 	b := backend.NewBackend("b1", backendServer.LocalAddr().String())
 	b.SetState(backend.StateUp)
-	b.MaxConns = 1
+	b.SetMaxConns(1)
 	b.AcquireConn() // Saturate
 	pool.AddBackend(b)
 
@@ -1999,7 +1999,7 @@ func TestTCPProxy_HandleConnection_AcquireConnFails(t *testing.T) {
 	pool := backend.NewPool("test", "round_robin")
 	b := backend.NewBackend("b1", "127.0.0.1:0")
 	b.SetState(backend.StateUp)
-	b.MaxConns = 1
+	b.SetMaxConns(1)
 	b.AcquireConn() // Saturate
 	pool.AddBackend(b)
 	cfg := DefaultTCPProxyConfig()

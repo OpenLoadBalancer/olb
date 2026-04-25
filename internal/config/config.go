@@ -59,6 +59,7 @@ type ProfilingConfig struct {
 	MemProfilePath       string `yaml:"mem_profile_path" json:"mem_profile_path"`
 	BlockProfileRate     int    `yaml:"block_profile_rate" json:"block_profile_rate"`
 	MutexProfileFraction int    `yaml:"mutex_profile_fraction" json:"mutex_profile_fraction"`
+	Token                string `yaml:"token" json:"-"`
 }
 
 // MiddlewareConfig represents middleware configuration.
@@ -700,12 +701,13 @@ type Backend struct {
 
 // HealthCheck represents health check configuration.
 type HealthCheck struct {
-	Type     string   `yaml:"type" json:"type"`
-	Path     string   `yaml:"path" json:"path"`
-	Interval string   `yaml:"interval" json:"interval"`
-	Timeout  string   `yaml:"timeout" json:"timeout"`
-	Command  string   `yaml:"command" json:"command"`
-	Args     []string `yaml:"args" json:"args"`
+	Type             string   `yaml:"type" json:"type"`
+	Path             string   `yaml:"path" json:"path"`
+	Interval         string   `yaml:"interval" json:"interval"`
+	Timeout          string   `yaml:"timeout" json:"timeout"`
+	Command          string   `yaml:"command" json:"command"`
+	Args             []string `yaml:"args" json:"args"`
+	GRPCTLSSkipVerify bool    `yaml:"grpc_tls_skip_verify" json:"grpc_tls_skip_verify"`
 }
 
 // TLSConfig represents TLS configuration.
@@ -825,6 +827,45 @@ func ExpandEnv(s string) string {
 		// Check for default value syntax: VAR:-default
 		if idx := strings.Index(key, ":-"); idx > 0 {
 			varName := key[:idx]
+			defaultValue := key[idx+2:]
+			if val := os.Getenv(varName); val != "" {
+				return val
+			}
+			return defaultValue
+		}
+		return os.Getenv(key)
+	})
+}
+
+// ExpandEnvWithPrefixes substitutes environment variables in a string.
+// When allowedPrefixes is non-empty, only variables whose names start with
+// one of the given prefixes are expanded; all others are left as-is.
+// When allowedPrefixes is empty, all environment variables are expanded
+// (backward compatible with ExpandEnv).
+func ExpandEnvWithPrefixes(s string, allowedPrefixes []string) string {
+	if len(allowedPrefixes) == 0 {
+		return ExpandEnv(s)
+	}
+	return os.Expand(s, func(key string) string {
+		// Extract the variable name (strip default value syntax for prefix check).
+		varName := key
+		if idx := strings.Index(key, ":-"); idx > 0 {
+			varName = key[:idx]
+		}
+		// Check if the variable name matches any allowed prefix.
+		allowed := false
+		for _, prefix := range allowedPrefixes {
+			if strings.HasPrefix(varName, prefix) {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			// Leave the reference unchanged so the caller can see it was not expanded.
+			return "${" + key + "}"
+		}
+		// Expand as usual.
+		if idx := strings.Index(key, ":-"); idx > 0 {
 			defaultValue := key[idx+2:]
 			if val := os.Getenv(varName); val != "" {
 				return val

@@ -68,6 +68,7 @@ func TestJWT_ExcludedPath(t *testing.T) {
 	config := DefaultConfig()
 	config.Enabled = true
 	config.Required = true
+	config.Secret = "test-secret"
 	config.ExcludePaths = []string{"/health"}
 
 	mw, err := New(config)
@@ -94,6 +95,7 @@ func TestJWT_InvalidFormat(t *testing.T) {
 	config := DefaultConfig()
 	config.Enabled = true
 	config.Required = true
+	config.Secret = "test-secret"
 
 	mw, err := New(config)
 	if err != nil {

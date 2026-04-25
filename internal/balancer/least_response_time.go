@@ -85,7 +85,7 @@ func (bs *lrtBackendState) average() time.Duration {
 // For weighted least response time: effective_time = avg_response_time / weight
 func (bs *lrtBackendState) weightedAverage() time.Duration {
 	avg := bs.average()
-	weight := bs.backend.Weight
+	weight := bs.backend.GetWeight()
 	if weight <= 0 {
 		weight = 1
 	}

@@ -2245,7 +2245,7 @@ func TestEngineBackendProvider_ListPools(t *testing.T) {
 	poolMgr := backend.NewPoolManager()
 	pool := backend.NewPool("test-pool", "round_robin")
 	b := backend.NewBackend("b1", "127.0.0.1:8080")
-	b.Weight = 5
+	b.SetWeight(5)
 	pool.AddBackend(b)
 	poolMgr.AddPool(pool)
 

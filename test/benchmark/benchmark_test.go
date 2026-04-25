@@ -89,7 +89,7 @@ func createBackends(n int) []*backend.Backend {
 			fmt.Sprintf("10.0.0.%d:%d", i%256, 8080+i),
 		)
 		be.SetState(backend.StateUp)
-		be.Weight = int32(1 + i%5)
+		be.SetWeight(int32(1 + i%5))
 		backends[i] = be
 	}
 	return backends

@@ -84,7 +84,7 @@ func (p *engineBackendProvider) ListPools() []mcp.PoolInfo {
 				ID:          b.ID,
 				Address:     b.Address,
 				Status:      b.State().String(),
-				Weight:      int(b.Weight),
+				Weight:      int(b.GetWeight()),
 				Connections: b.ActiveConns(),
 			})
 		}

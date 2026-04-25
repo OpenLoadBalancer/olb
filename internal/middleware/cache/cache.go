@@ -166,7 +166,7 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 
 		// Check excluded paths
 		for _, path := range m.config.ExcludePaths {
-			if strings.HasPrefix(r.URL.Path, path) {
+			if strings.HasPrefix(r.URL.Path, path) && (len(r.URL.Path) == len(path) || r.URL.Path[len(path)] == '/' || path[len(path)-1] == '/') {
 				next.ServeHTTP(w, r)
 				return
 			}

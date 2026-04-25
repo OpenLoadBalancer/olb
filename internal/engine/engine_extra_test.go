@@ -687,6 +687,7 @@ func TestShutdown_ConfigWatcherPath(t *testing.T) {
 func TestShutdown_MCPTransport(t *testing.T) {
 	cfg := createTestConfig()
 	cfg.Admin.MCPAddress = "127.0.0.1:0"
+	cfg.Admin.MCPToken = "test-bearer-token"
 	configPath := createTempConfigFile(t, cfg)
 	engine, err := New(cfg, configPath)
 	if err != nil {
@@ -2419,6 +2420,7 @@ func TestCov_Start_ShutdownCluster(t *testing.T) {
 func TestCov_Start_MCPWithExplicitAddress(t *testing.T) {
 	cfg := createTestConfig()
 	cfg.Admin.MCPAddress = "127.0.0.1:0"
+	cfg.Admin.MCPToken = "test-bearer-token"
 
 	configPath := createTempConfigFile(t, cfg)
 	engine, err := New(cfg, configPath)

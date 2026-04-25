@@ -8,6 +8,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	nethttpcookiejar "net/http/cookiejar"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1072,7 +1074,8 @@ pools:
 	waitForReady(t, proxyAddr, 5*time.Second)
 	waitForReady(t, adminAddr, 5*time.Second)
 
-	client := &http.Client{Timeout: 5 * time.Second}
+	jar, _ := nethttpcookiejar.New(nil)
+	client := &http.Client{Timeout: 5 * time.Second, Jar: jar}
 
 	// Verify initial proxy works
 	resp, err := client.Get(fmt.Sprintf("http://%s/", proxyAddr))
@@ -1119,7 +1122,27 @@ pools:
 	}
 
 	// Trigger reload via admin API
+	// First, GET a page to obtain CSRF cookie (auto-enabled when WebUI is present)
+	csrfReq, _ := http.NewRequest("GET", fmt.Sprintf("http://%s/api/v1/health", adminAddr), nil)
+	csrfResp, err := client.Do(csrfReq)
+	if err == nil {
+		io.ReadAll(csrfResp.Body)
+		csrfResp.Body.Close()
+	}
+
+	// Extract CSRF token from cookie and include it in the POST
+	var csrfToken string
+	for _, cookie := range client.Jar.Cookies(&url.URL{Scheme: "http", Host: adminAddr}) {
+		if cookie.Name == "csrf_token" {
+			csrfToken = cookie.Value
+			break
+		}
+	}
+
 	req, _ := http.NewRequest("POST", fmt.Sprintf("http://%s/api/v1/system/reload", adminAddr), nil)
+	if csrfToken != "" {
+		req.Header.Set("X-CSRF-Token", csrfToken)
+	}
 	resp, err = client.Do(req)
 	if err != nil {
 		t.Fatalf("Reload request failed: %v", err)
@@ -2467,6 +2490,7 @@ func TestE2E_MCP(t *testing.T) {
 	yamlCfg := fmt.Sprintf(`admin:
   address: "127.0.0.1:%d"
   mcp_address: "127.0.0.1:%d"
+  mcp_token: "test-e2e-bearer-token"
 listeners:
   - name: http
     address: "127.0.0.1:%d"
@@ -2512,11 +2536,13 @@ pools:
 
 	// Send JSON-RPC "initialize" request
 	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}`
-	resp, err := client.Post(
+	initHTTPReq, _ := http.NewRequest("POST",
 		fmt.Sprintf("http://%s/mcp", mcpAddr),
-		"application/json",
 		strings.NewReader(initReq),
 	)
+	initHTTPReq.Header.Set("Content-Type", "application/json")
+	initHTTPReq.Header.Set("Authorization", "Bearer test-e2e-bearer-token")
+	resp, err := client.Do(initHTTPReq)
 	if err != nil {
 		t.Fatalf("MCP initialize request failed: %v", err)
 	}
@@ -2539,11 +2565,13 @@ pools:
 
 	// Send JSON-RPC "tools/list" request
 	toolsReq := `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`
-	resp, err = client.Post(
+	toolsHTTPReq, _ := http.NewRequest("POST",
 		fmt.Sprintf("http://%s/mcp", mcpAddr),
-		"application/json",
 		strings.NewReader(toolsReq),
 	)
+	toolsHTTPReq.Header.Set("Content-Type", "application/json")
+	toolsHTTPReq.Header.Set("Authorization", "Bearer test-e2e-bearer-token")
+	resp, err = client.Do(toolsHTTPReq)
 	if err != nil {
 		t.Fatalf("MCP tools/list request failed: %v", err)
 	}

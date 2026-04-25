@@ -175,6 +175,15 @@ func NewDockerProviderWithConfig(config *ProviderConfig, dc *DockerConfig) (*Doc
 		transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, "unix", dc.SocketPath)
 		}
+	} else {
+		// Remote TCP mode — warn if connecting over plaintext (no TLS).
+		// Plaintext Docker daemon connections expose the API to network-level
+		// eavesdropping and man-in-the-middle attacks. Configure TLS with
+		// client certificates for production deployments.
+		if strings.HasPrefix(dc.Host, "tcp://") && !dc.TLSEnabled {
+			log.Printf("WARNING: Docker daemon connection at %q is using plaintext TCP without TLS — "+
+				"this exposes the Docker API to network eavesdropping. Enable TLS (tls: true) for secure communication.", dc.Host)
+		}
 	}
 
 	client := &http.Client{

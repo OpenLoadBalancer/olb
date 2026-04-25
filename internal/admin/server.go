@@ -84,6 +84,7 @@ type Server struct {
 	// Optional components
 	clusterAdmin     ClusterAdmin // optional, nil if clustering not enabled
 	raftProposer     RaftProposer // optional, nil if clustering not enabled
+	configValidator  func([]byte) error // optional, validates config before Raft propose
 	webUI            http.Handler // optional, nil if web UI not available
 	configGetter     ConfigGetter // optional, for GET /api/v1/config
 	certLister       CertLister   // optional, for GET /api/v1/certificates
@@ -135,9 +136,10 @@ type Config struct {
 	RateLimitWindow      string
 
 	// Optional components
-	ClusterAdmin ClusterAdmin // optional cluster management
-	RaftProposer RaftProposer // optional, for Raft-based config changes
-	WebUI        http.Handler // optional web UI handler
+	ClusterAdmin    ClusterAdmin       // optional cluster management
+	RaftProposer    RaftProposer       // optional, for Raft-based config changes
+	ConfigValidator func([]byte) error // optional, validates config before Raft propose
+	WebUI           http.Handler       // optional web UI handler
 	ConfigGetter ConfigGetter // optional config provider
 	CertLister   CertLister   // optional certificate lister
 	WAFStatus    func() any   // optional WAF status provider
@@ -191,6 +193,7 @@ func NewServer(config *Config) (*Server, error) {
 		onReload:         config.OnReload,
 		clusterAdmin:     config.ClusterAdmin,
 		raftProposer:     config.RaftProposer,
+		configValidator:  config.ConfigValidator,
 		webUI:            config.WebUI,
 		configGetter:     config.ConfigGetter,
 		allowedOrigins:   config.AllowedOrigins,
@@ -214,6 +217,12 @@ func NewServer(config *Config) (*Server, error) {
 			return nil, fmt.Errorf("admin API at %s has no authentication configured — either configure auth or bind to localhost", config.Address)
 		}
 		log.Printf("WARNING: Admin API at %s has no authentication configured — bound to localhost only", config.Address)
+	}
+
+	// Enable CSRF by default when WebUI is present and CSRF is not explicitly configured.
+	if config.WebUI != nil && config.CSRFConfig == nil {
+		defaultCSRF := csrf.DefaultConfig()
+		s.csrfConfig = &defaultCSRF
 	}
 
 	s.setupRoutes()
@@ -289,6 +298,9 @@ func (s *Server) setupRoutes() {
 	s.eventBus = newEventBus()
 	mux.HandleFunc("/api/v1/events/stream", s.streamEvents)
 
+	// Auth endpoints
+	mux.HandleFunc("/api/v1/auth/rotate-token", s.rotateToken)
+
 	// Cluster endpoints (optional)
 	if s.clusterAdmin != nil {
 		s.clusterAdmin.RegisterAdminEndpoints(mux)
@@ -309,6 +321,13 @@ func (s *Server) setupRoutes() {
 	rl := newRateLimiter(s.rateLimitMaxReqs, s.rateLimitWindow)
 	handler = rl.middleware(handler)
 	s.rateLimiter = rl
+
+	// Apply RBAC: read-only users are blocked from state-changing endpoints.
+	// Applied BEFORE auth in the wrapping chain so it runs AFTER auth in the
+	// execution chain. AuthMiddleware sets the role in context; requireAdminRole
+	// checks it. When no role is set (backward-compatible default), requests
+	// pass through as admin.
+	handler = requireAdminRole(handler)
 
 	// Apply auth middleware if configured; warn if admin API has no authentication
 	if s.config != nil {

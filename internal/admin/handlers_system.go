@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
@@ -178,17 +179,94 @@ func (s *Server) getConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := s.configGetter.GetConfig()
-	writeSuccess(w, cfg)
+	sanitized, err := sanitizeConfigForAPI(cfg)
+	if err != nil {
+		// If sanitization fails (unexpected), fall back to original.
+		// The json:"-" tags still provide a baseline level of protection.
+		writeSuccess(w, cfg)
+		return
+	}
+	writeSuccess(w, sanitized)
+}
+
+// secretJSONKeys lists well-known JSON key names that must never appear in
+// the config API response. This provides defense-in-depth: even if a
+// developer forgets to add json:"-" to a secret field, it will be stripped
+// here. The keys match the json tag names used in config structs.
+var secretJSONKeys = map[string]bool{
+	// Admin credentials
+	"password":     true,
+	"bearer_token": true,
+	"mcp_token":    true,
+	"username":     true, // admin username is also sensitive
+	// Auth secrets
+	"secret":        true,
+	"client_secret": true,
+	"shared_secret": true,
+	"token":         true,
+	// Key material (map values contain credentials)
+	"users": true, // BasicAuth users map (username -> hashed password)
+	"keys":  true, // APIKey keys map (key_id -> api_key)
+}
+
+// sanitizeConfigForAPI serializes the config to JSON and then strips any
+// well-known secret fields. This is a defense-in-depth measure: the primary
+// protection is json:"-" tags on config struct fields, but this prevents
+// accidental leakage if a tag is forgotten.
+func sanitizeConfigForAPI(cfg any) (any, error) {
+	// Serialize to JSON first (respects json:"-" tags)
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	// Deserialize into a generic map for recursive stripping
+	var generic any
+	if err := json.Unmarshal(raw, &generic); err != nil {
+		return nil, err
+	}
+
+	stripSecrets(generic)
+	return generic, nil
+}
+
+// stripSecrets recursively walks a JSON-derived value and removes keys that
+// match known secret field names.
+func stripSecrets(v any) {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return
+	}
+	for key, val := range m {
+		if secretJSONKeys[key] {
+			delete(m, key)
+			continue
+		}
+		stripSecrets(val)
+		// Also recurse into arrays of objects
+		if arr, ok := val.([]any); ok {
+			for _, elem := range arr {
+				stripSecrets(elem)
+			}
+		}
+	}
 }
 
 // updateConfig handles PUT /api/v1/config
 func (s *Server) updateConfig(w http.ResponseWriter, r *http.Request) {
 	if s.raftProposer != nil {
-		// Clustered mode: propose through Raft
+		// Clustered mode: validate config locally before proposing through Raft
 		body, err := readBody(r)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
 			return
+		}
+		// Validate the proposed config before proposing to Raft
+		if s.configValidator != nil {
+			if valErr := s.configValidator(body); valErr != nil {
+				writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", valErr.Error())
+				return
+			}
 		}
 		if err := s.raftProposer.ProposeSetConfig(body); err != nil {
 			writeError(w, http.StatusConflict, "RAFT_ERROR",
@@ -205,9 +283,58 @@ func (s *Server) updateConfig(w http.ResponseWriter, r *http.Request) {
 			"no reload handler available")
 		return
 	}
-	if err := s.onReload(); err != nil {
-		writeError(w, http.StatusInternalServerError, "RELOAD_ERROR", "configuration reload failed")
+
+	// Enforce reload cooldown to prevent reload storms
+	lastReloadMu.Lock()
+	if time.Since(lastReloadTime) < minReloadInterval {
+		lastReloadMu.Unlock()
+		writeError(w, http.StatusTooManyRequests, "RELOAD_COOLDOWN",
+			fmt.Sprintf("reload cooldown: please wait %v between reloads", minReloadInterval))
+		return
+	}
+	lastReloadTime = time.Now()
+	lastReloadMu.Unlock()
+
+	err := s.circuitBreaker.Execute(r.Context(), func(ctx context.Context) error {
+		return s.onReload()
+	})
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "RELOAD_FAILED", "configuration reload failed")
 		return
 	}
 	writeSuccess(w, map[string]string{"status": "reloaded"})
+}
+
+// rotateTokenRequest is the request body for token rotation.
+type rotateTokenRequest struct {
+	OldToken string `json:"old_token"`
+	NewToken string `json:"new_token"`
+}
+
+// rotateToken handles POST /api/v1/auth/rotate-token.
+// It allows operators to rotate bearer tokens without restarting the server.
+// Requires admin authentication.
+func (s *Server) rotateToken(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only POST is allowed")
+		return
+	}
+
+	if s.config == nil {
+		writeError(w, http.StatusServiceUnavailable, "NOT_AVAILABLE", "authentication not configured")
+		return
+	}
+
+	var req rotateTokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
+		return
+	}
+
+	if err := s.config.RotateBearerToken(req.OldToken, req.NewToken); err != nil {
+		writeError(w, http.StatusBadRequest, "ROTATION_FAILED", err.Error())
+		return
+	}
+
+	writeSuccess(w, map[string]string{"message": "bearer token rotated successfully"})
 }

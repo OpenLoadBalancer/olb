@@ -31,6 +31,9 @@ type SNIRouterConfig struct {
 
 	// MaxHandshakeSize is the maximum size of the ClientHello to read.
 	MaxHandshakeSize int
+
+	// MaxConnections limits concurrent connections. 0 = unlimited (default 10000).
+	MaxConnections int
 }
 
 // DefaultSNIRouterConfig returns a default SNI router configuration.
@@ -39,6 +42,7 @@ func DefaultSNIRouterConfig() *SNIRouterConfig {
 		Passthrough:      true,
 		ReadTimeout:      5 * time.Second,
 		MaxHandshakeSize: 16 * 1024, // 16KB
+		MaxConnections:   10000,
 	}
 }
 
@@ -440,16 +444,26 @@ type SNIBasedProxy struct {
 	listener net.Listener
 	config   *SNIRouterConfig
 
-	running atomic.Bool
-	mu      sync.RWMutex
-	wg      sync.WaitGroup
+	maxConns    int64
+	activeConns atomic.Int64
+	running     atomic.Bool
+	mu          sync.RWMutex
+	wg          sync.WaitGroup
 }
 
 // NewSNIBasedProxy creates a new SNI-based proxy.
 func NewSNIBasedProxy(config *SNIRouterConfig) *SNIBasedProxy {
+	if config == nil {
+		config = DefaultSNIRouterConfig()
+	}
+	maxConns := int64(config.MaxConnections)
+	if maxConns <= 0 {
+		maxConns = 10000
+	}
 	return &SNIBasedProxy{
-		router: NewSNIRouter(config),
-		config: config,
+		router:   NewSNIRouter(config),
+		config:   config,
+		maxConns: maxConns,
 	}
 }
 
@@ -504,9 +518,27 @@ func (p *SNIBasedProxy) acceptLoop() {
 			continue
 		}
 
+		// Enforce connection limit with CAS to prevent TOCTOU races.
+		accepted := false
+		for {
+			current := p.activeConns.Load()
+			if current >= p.maxConns {
+				conn.Close()
+				break
+			}
+			if p.activeConns.CompareAndSwap(current, current+1) {
+				accepted = true
+				break
+			}
+		}
+		if !accepted {
+			continue
+		}
+
 		p.wg.Add(1)
 		go func() {
 			defer p.wg.Done()
+			defer p.activeConns.Add(-1)
 			defer func() {
 				if r := recover(); r != nil {
 					log.Printf("[sni-proxy] panic recovered in connection handler: %v", r)

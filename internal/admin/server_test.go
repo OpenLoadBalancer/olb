@@ -344,13 +344,13 @@ func TestAuthMiddleware_PublicEndpoints(t *testing.T) {
 	baseURL := fmt.Sprintf("http://%s", listener.Addr().String())
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	// GET /api/v1/system/health should work without auth (public health endpoint)
+	// GET /api/v1/system/health now requires auth (only /health is public)
 	resp, err := client.Get(baseURL + "/api/v1/system/health")
 	if err != nil {
 		t.Fatalf("failed to make request: %v", err)
 	}
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200 for /api/v1/system/health, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401 for /api/v1/system/health without auth, got %d", resp.StatusCode)
 	}
 
 	// POST request should require auth
@@ -473,7 +473,7 @@ func TestListBackends(t *testing.T) {
 	// Add test pool with backends
 	pool := backend.NewPool("test-pool", "round_robin")
 	b1 := backend.NewBackend("backend1", "127.0.0.1:8080")
-	b1.Weight = 2
+	b1.SetWeight(2)
 	pool.AddBackend(b1)
 
 	b2 := backend.NewBackend("backend2", "127.0.0.1:8081")
@@ -2152,24 +2152,24 @@ func TestAuthMiddleware_PublicEndpoints_All(t *testing.T) {
 	baseURL := fmt.Sprintf("http://%s", listener.Addr().String())
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	// GET /api/v1/system/health should work without auth (public health endpoint)
+	// GET /api/v1/system/health should require auth (only /health is public)
 	resp, err := client.Get(baseURL + "/api/v1/system/health")
 	if err != nil {
 		t.Fatalf("failed to make request: %v", err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200 for /api/v1/system/health, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401 for /api/v1/system/health without auth, got %d", resp.StatusCode)
 	}
 
-	// GET /api/v1/health should work without auth (public health endpoint)
+	// GET /api/v1/health should require auth (only /health is public)
 	resp, err = client.Get(baseURL + "/api/v1/health")
 	if err != nil {
 		t.Fatalf("failed to make request: %v", err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200 for /api/v1/health, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401 for /api/v1/health without auth, got %d", resp.StatusCode)
 	}
 
 	// GET /api/v1/system/info should require auth (not a health endpoint)
@@ -2981,7 +2981,7 @@ func TestUpdateBackend(t *testing.T) {
 
 	pool := backend.NewPool("test-pool", "round_robin")
 	b := backend.NewBackend("b1", "10.0.0.1:8080")
-	b.Weight = 1
+	b.SetWeight(1)
 	pool.AddBackend(b)
 	poolManager.AddPool(pool)
 
@@ -2996,8 +2996,8 @@ func TestUpdateBackend(t *testing.T) {
 	}
 
 	// Verify weight was updated
-	if b.Weight != 5 {
-		t.Errorf("expected weight 5, got %d", b.Weight)
+	if b.GetWeight() != 5 {
+		t.Errorf("expected weight, got %d", b.GetWeight())
 	}
 }
 
@@ -3399,7 +3399,7 @@ func TestUpdateBackend_WeightNegative(t *testing.T) {
 
 	pool := backend.NewPool("test-pool", "round_robin")
 	b := backend.NewBackend("b1", "10.0.0.1:8080")
-	b.Weight = 5
+	b.SetWeight(5)
 	pool.AddBackend(b)
 	poolManager.AddPool(pool)
 
@@ -3422,8 +3422,8 @@ func TestUpdateBackend_WeightNegative(t *testing.T) {
 	}
 
 	// Weight should not have changed
-	if b.Weight != 5 {
-		t.Errorf("expected weight to remain 5, got %d", b.Weight)
+	if b.GetWeight() != 5 {
+		t.Errorf("expected weight, got %d", b.GetWeight())
 	}
 }
 
@@ -3432,7 +3432,7 @@ func TestUpdateBackend_WeightTooHigh(t *testing.T) {
 
 	pool := backend.NewPool("test-pool", "round_robin")
 	b := backend.NewBackend("b1", "10.0.0.1:8080")
-	b.Weight = 5
+	b.SetWeight(5)
 	pool.AddBackend(b)
 	poolManager.AddPool(pool)
 
@@ -3460,7 +3460,7 @@ func TestUpdateBackend_MaxConnsNegative(t *testing.T) {
 
 	pool := backend.NewPool("test-pool", "round_robin")
 	b := backend.NewBackend("b1", "10.0.0.1:8080")
-	b.MaxConns = 10
+	b.SetMaxConns(10)
 	pool.AddBackend(b)
 	poolManager.AddPool(pool)
 
@@ -3488,7 +3488,7 @@ func TestUpdateBackend_MaxConns(t *testing.T) {
 
 	pool := backend.NewPool("test-pool", "round_robin")
 	b := backend.NewBackend("b1", "10.0.0.1:8080")
-	b.MaxConns = 0
+	b.SetMaxConns(0)
 	pool.AddBackend(b)
 	poolManager.AddPool(pool)
 
@@ -3501,8 +3501,8 @@ func TestUpdateBackend_MaxConns(t *testing.T) {
 		t.Errorf("expected status 200, got %d", w.Code)
 	}
 
-	if b.MaxConns != 50 {
-		t.Errorf("expected max_conns 50, got %d", b.MaxConns)
+	if b.GetMaxConns() != 50 {
+		t.Errorf("expected max_conns 50, got %d", b.GetMaxConns())
 	}
 }
 
@@ -3511,8 +3511,8 @@ func TestUpdateBackend_WeightAndMaxConns(t *testing.T) {
 
 	pool := backend.NewPool("test-pool", "round_robin")
 	b := backend.NewBackend("b1", "10.0.0.1:8080")
-	b.Weight = 1
-	b.MaxConns = 0
+	b.SetWeight(1)
+	b.SetMaxConns(0)
 	pool.AddBackend(b)
 	poolManager.AddPool(pool)
 
@@ -3525,11 +3525,11 @@ func TestUpdateBackend_WeightAndMaxConns(t *testing.T) {
 		t.Errorf("expected status 200, got %d", w.Code)
 	}
 
-	if b.Weight != 10 {
-		t.Errorf("expected weight 10, got %d", b.Weight)
+	if b.GetWeight() != 10 {
+		t.Errorf("expected weight, got %d", b.GetWeight())
 	}
-	if b.MaxConns != 100 {
-		t.Errorf("expected max_conns 100, got %d", b.MaxConns)
+	if b.GetMaxConns() != 100 {
+		t.Errorf("expected max_conns 100, got %d", b.GetMaxConns())
 	}
 }
 
@@ -3604,7 +3604,7 @@ func TestUpdateBackend_WeightZero(t *testing.T) {
 
 	pool := backend.NewPool("test-pool", "round_robin")
 	b := backend.NewBackend("b1", "10.0.0.1:8080")
-	b.Weight = 5
+	b.SetWeight(5)
 	pool.AddBackend(b)
 	poolManager.AddPool(pool)
 
@@ -3617,8 +3617,8 @@ func TestUpdateBackend_WeightZero(t *testing.T) {
 		t.Errorf("expected status 200, got %d", w.Code)
 	}
 
-	if b.Weight != 0 {
-		t.Errorf("expected weight 0, got %d", b.Weight)
+	if b.GetWeight() != 0 {
+		t.Errorf("expected weight, got %d", b.GetWeight())
 	}
 }
 
@@ -3627,8 +3627,8 @@ func TestUpdateBackend_EmptyBody(t *testing.T) {
 
 	pool := backend.NewPool("test-pool", "round_robin")
 	b := backend.NewBackend("b1", "10.0.0.1:8080")
-	b.Weight = 5
-	b.MaxConns = 10
+	b.SetWeight(5)
+	b.SetMaxConns(10)
 	pool.AddBackend(b)
 	poolManager.AddPool(pool)
 
@@ -3643,11 +3643,11 @@ func TestUpdateBackend_EmptyBody(t *testing.T) {
 	}
 
 	// Values should remain unchanged
-	if b.Weight != 5 {
-		t.Errorf("expected weight to remain 5, got %d", b.Weight)
+	if b.GetWeight() != 5 {
+		t.Errorf("expected weight, got %d", b.GetWeight())
 	}
-	if b.MaxConns != 10 {
-		t.Errorf("expected max_conns to remain 10, got %d", b.MaxConns)
+	if b.GetMaxConns() != 10 {
+		t.Errorf("expected max_conns to remain 10, got %d", b.GetMaxConns())
 	}
 }
 
@@ -3814,8 +3814,8 @@ func TestAddBackend_DefaultWeight(t *testing.T) {
 	}
 
 	// Default weight from NewBackend is 1
-	if b.Weight != 1 {
-		t.Errorf("expected default weight 1, got %d", b.Weight)
+	if b.GetWeight() != 1 {
+		t.Errorf("expected weight, got %d", b.GetWeight())
 	}
 }
 
@@ -3839,8 +3839,8 @@ func TestAddBackend_WithPositiveWeight(t *testing.T) {
 		t.Fatal("expected backend to be added")
 	}
 
-	if b.Weight != 7 {
-		t.Errorf("expected weight 7, got %d", b.Weight)
+	if b.GetWeight() != 7 {
+		t.Errorf("expected weight, got %d", b.GetWeight())
 	}
 }
 

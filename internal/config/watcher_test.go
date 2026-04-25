@@ -50,7 +50,7 @@ func TestWatcher_DetectsChange(t *testing.T) {
 	}
 
 	// Wait for the change to be detected
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 
 	if !changed.Load() {
 		t.Error("Expected callback to be called on file change")

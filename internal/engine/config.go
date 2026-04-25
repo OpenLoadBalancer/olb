@@ -62,9 +62,13 @@ func (e *Engine) validateConfig(cfg *config.Config) error {
 func (e *Engine) applyConfig(newCfg *config.Config) error {
 	e.logger.Info("Applying new configuration...")
 
-	// Save current config for potential rollback
+	// Save current config for potential rollback.
+	// Only overwrite prevConfig if it is nil or the rollback timer has expired,
+	// so a second reload during the grace period doesn't lose the original target.
 	e.rollbackMu.Lock()
-	e.prevConfig = e.config
+	if e.prevConfig == nil || (e.rollbackTimer2 != nil && !e.rollbackTimer2.Stop()) {
+		e.prevConfig = e.config
+	}
 	e.errorCount = 0
 	e.reloadTimestamp = time.Now()
 	e.rollbackMu.Unlock()
@@ -115,6 +119,13 @@ func (e *Engine) applyConfigInternal(newCfg *config.Config, noRollback bool) err
 
 	// 3. Create new health checker
 	newHealthChecker := health.NewChecker()
+	// Allow gRPC TLS skip verify if any pool health check requests it
+	for _, pool := range newCfg.Pools {
+		if pool.HealthCheck != nil && pool.HealthCheck.GRPCTLSSkipVerify {
+			newHealthChecker.SetGRPCTLSSkipVerify(true)
+			break
+		}
+	}
 
 	// 4. Initialize pools and register backends
 	for _, poolCfg := range newCfg.Pools {
@@ -137,7 +148,7 @@ func (e *Engine) applyConfigInternal(newCfg *config.Config, noRollback bool) err
 			if backendCfg.Weight > math.MaxInt32 {
 				return fmt.Errorf("backend %s weight %d exceeds maximum %d", backendCfg.Address, backendCfg.Weight, math.MaxInt32)
 			}
-			b.Weight = int32(backendCfg.Weight)
+			b.SetWeight(int32(backendCfg.Weight))
 			if backendCfg.Scheme != "" {
 				b.Scheme = backendCfg.Scheme
 			}

@@ -87,7 +87,7 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check excluded paths
 		for _, path := range m.config.ExcludePaths {
-			if strings.HasPrefix(r.URL.Path, path) {
+			if strings.HasPrefix(r.URL.Path, path) && (len(r.URL.Path) == len(path) || r.URL.Path[len(path)] == '/' || path[len(path)-1] == '/') {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -243,6 +243,7 @@ func (m *Middleware) buildJSONEntry(r *http.Request, rec *responseRecorder, dura
 	// Add headers if configured
 	for _, header := range m.config.RequestHeaders {
 		val := r.Header.Get(header)
+		val = redactIfSensitive(header, val)
 		fields = append(fields, fmt.Sprintf("\"%s\":\"%s\"", strings.ToLower(header), escapeJSON(val)))
 	}
 
@@ -290,6 +291,26 @@ func escapeJSON(s string) string {
 	s = strings.ReplaceAll(s, "\r", "\\r")
 	s = strings.ReplaceAll(s, "\t", "\\t")
 	return s
+}
+
+// sensitiveHeaders is a denylist of header names whose values must always be
+// redacted in log output to prevent credential leakage.
+var sensitiveHeaders = map[string]bool{
+	"authorization":       true,
+	"cookie":              true,
+	"set-cookie":          true,
+	"proxy-authorization": true,
+	"x-api-key":           true,
+	"www-authenticate":    true,
+}
+
+// redactIfSensitive returns "[REDACTED]" if the header name is in the sensitive denylist,
+// otherwise returns the original value unchanged.
+func redactIfSensitive(headerName, value string) string {
+	if sensitiveHeaders[strings.ToLower(headerName)] {
+		return "[REDACTED]"
+	}
+	return value
 }
 
 // WriteHeader captures the status code.

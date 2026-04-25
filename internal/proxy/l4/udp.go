@@ -353,9 +353,31 @@ func (p *UDPProxy) createSession(clientAddr *net.UDPAddr) (*UDPSession, error) {
 		return session, nil
 	}
 
-	// Check max sessions
+	// Check max sessions - evict the least recently used session to make room.
+	// This prevents an attacker from spoofing source addresses to exhaust the
+	// session table and deny service to legitimate clients (CWE-770).
 	if p.config.MaxSessions > 0 && len(p.sessions) >= p.config.MaxSessions {
-		return nil, fmt.Errorf("max sessions (%d) reached", p.config.MaxSessions)
+		var oldestKey string
+		var oldestTime time.Time
+		for k, s := range p.sessions {
+			if s.closed.Load() {
+				// Prefer evicting already-closed sessions
+				oldestKey = k
+				break
+			}
+			la := s.LastActivity()
+			if oldestKey == "" || la.Before(oldestTime) {
+				oldestKey = k
+				oldestTime = la
+			}
+		}
+		if oldestKey != "" {
+			if old, ok := p.sessions[oldestKey]; ok {
+				old.close()
+				delete(p.sessions, oldestKey)
+				slog.Debug("udp proxy: evicted oldest session to make room", "evicted_addr", oldestKey)
+			}
+		}
 	}
 
 	// Get healthy backends

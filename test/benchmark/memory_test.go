@@ -257,7 +257,7 @@ func TestMemory_PoolManager_Scale(t *testing.T) {
 				fmt.Sprintf("10.%d.%d.%d:8080", i/256, (i%256)/256, j%256),
 			)
 			be.SetState(backend.StateUp)
-			be.Weight = int32(1 + j%5)
+			be.SetWeight(int32(1 + j%5))
 			pool.AddBackend(be)
 		}
 		pm.AddPool(pool)

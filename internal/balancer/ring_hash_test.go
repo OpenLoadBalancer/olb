@@ -182,13 +182,13 @@ func TestRingHash_Update(t *testing.T) {
 	rh := NewRingHash()
 
 	be := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	be.Weight = 1
+	be.SetWeight(1)
 	rh.Add(be)
 
 	originalRingSize := len(rh.ring)
 
 	updated := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	updated.Weight = 2
+	updated.SetWeight(2)
 	rh.Update(updated)
 
 	// Weight change should trigger ring rebuild
@@ -201,13 +201,13 @@ func TestRingHash_UpdateSameWeight(t *testing.T) {
 	rh := NewRingHash()
 
 	be := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	be.Weight = 1
+	be.SetWeight(1)
 	rh.Add(be)
 
 	originalRingSize := len(rh.ring)
 
 	updated := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	updated.Weight = 1
+	updated.SetWeight(1)
 	rh.Update(updated)
 
 	// Same weight should not trigger ring rebuild
@@ -300,7 +300,7 @@ func TestRingHash_Update_Nonexistent(t *testing.T) {
 	rh := NewRingHash()
 
 	b := backend.NewBackend("nonexistent", "10.0.0.1:8080")
-	b.Weight = 5
+	b.SetWeight(5)
 
 	// Should not panic when updating a backend not in the ring
 	rh.Update(b)
@@ -390,7 +390,7 @@ func TestRingHash_WeightedBackends(t *testing.T) {
 	rh := NewRingHashWithConfig(10, nil)
 
 	be1 := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	be1.Weight = 3
+	be1.SetWeight(3)
 	be1.SetState(backend.StateUp)
 
 	rh.Add(be1)

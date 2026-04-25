@@ -77,6 +77,11 @@ func New(config Config) (*Middleware, error) {
 		return nil, fmt.Errorf("unsupported JWT algorithm: %s (allowed: HS256, HS384, HS512, EdDSA)", config.Algorithm)
 	}
 
+	// HMAC algorithms require a non-empty secret to prevent token forgery.
+	if (config.Algorithm == "HS256" || config.Algorithm == "HS384" || config.Algorithm == "HS512") && config.Secret == "" {
+		return nil, errors.New("JWT HMAC algorithm requires a non-empty secret")
+	}
+
 	m := &Middleware{
 		config: config,
 	}
@@ -111,7 +116,7 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check excluded paths
 		for _, path := range m.config.ExcludePaths {
-			if strings.HasPrefix(r.URL.Path, path) {
+			if strings.HasPrefix(r.URL.Path, path) && (len(r.URL.Path) == len(path) || r.URL.Path[len(path)] == '/' || path[len(path)-1] == '/') {
 				next.ServeHTTP(w, r)
 				return
 			}

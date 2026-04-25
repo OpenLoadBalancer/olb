@@ -175,10 +175,10 @@ func TestWeightedLeastResponseTime_Next_WeightedSelection(t *testing.T) {
 	// Backend with same response time but higher weight should be preferred
 	be1 := backend.NewBackend("light", "10.0.0.1:8080")
 	be1.SetState(backend.StateUp)
-	be1.Weight = 1
+	be1.SetWeight(1)
 	be2 := backend.NewBackend("heavy", "10.0.0.2:8080")
 	be2.SetState(backend.StateUp)
-	be2.Weight = 5
+	be2.SetWeight(5)
 
 	w.Add(be1)
 	w.Add(be2)
@@ -207,7 +207,7 @@ func TestWeightedLeastResponseTime_ZeroWeight(t *testing.T) {
 
 	be := backend.NewBackend("zero-weight", "10.0.0.1:8080")
 	be.SetState(backend.StateUp)
-	be.Weight = 0
+	be.SetWeight(0)
 	w.Add(be)
 
 	w.Record("zero-weight", 100*time.Millisecond)
@@ -247,16 +247,16 @@ func TestLeastResponseTime_Update(t *testing.T) {
 	l := NewLeastResponseTime()
 
 	be := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	be.Weight = 1
+	be.SetWeight(1)
 	l.Add(be)
 
 	updated := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	updated.Weight = 5
+	updated.SetWeight(5)
 	l.Update(updated)
 
 	bs := l.backends["backend-1"]
-	if bs.backend.Weight != 5 {
-		t.Errorf("Update() did not update weight: got %d, want 5", bs.backend.Weight)
+	if bs.backend.GetWeight() != 5 {
+		t.Errorf("Update() did not update weight: got %d, want 5", bs.backend.GetWeight())
 	}
 }
 
@@ -331,7 +331,7 @@ func TestWeightedLeastResponseTime_ConcurrentAccess(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		be := backend.NewBackend(string(rune('a'+i)), "10.0.0.1:8080")
 		be.SetState(backend.StateUp)
-		be.Weight = int32(i + 1)
+		be.SetWeight(int32(i + 1))
 		backends[i] = be
 		w.Add(be)
 	}
@@ -425,16 +425,16 @@ func TestWeightedLeastResponseTime_Update(t *testing.T) {
 	w := NewWeightedLeastResponseTime()
 
 	be := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	be.Weight = 1
+	be.SetWeight(1)
 	w.Add(be)
 
 	updated := backend.NewBackend("backend-1", "10.0.0.1:8080")
-	updated.Weight = 10
+	updated.SetWeight(10)
 	w.Update(updated)
 
 	bs := w.backends["backend-1"]
-	if bs.backend.Weight != 10 {
-		t.Errorf("Update() did not update weight: got %d, want 10", bs.backend.Weight)
+	if bs.backend.GetWeight() != 10 {
+		t.Errorf("Update() did not update weight: got %d, want 10", bs.backend.GetWeight())
 	}
 
 	// Update non-existent should not panic
@@ -498,14 +498,14 @@ func TestWeightedLeastResponseTime_Next_MixedTrackedUntracked(t *testing.T) {
 
 	be1 := backend.NewBackend("tracked", "10.0.0.1:8080")
 	be1.SetState(backend.StateUp)
-	be1.Weight = 1
+	be1.SetWeight(1)
 	w.Add(be1)
 	w.Record("tracked", 200*time.Millisecond)
 	w.Record("tracked", 300*time.Millisecond)
 
 	be2 := backend.NewBackend("untracked", "10.0.0.2:8080")
 	be2.SetState(backend.StateUp)
-	be2.Weight = 1
+	be2.SetWeight(1)
 
 	backends := []*backend.Backend{be1, be2}
 	got := w.Next(nil, backends)
@@ -612,11 +612,11 @@ func TestWeightedLeastResponseTime_Next_SelectsLowestWeighted(t *testing.T) {
 
 	be1 := backend.NewBackend("light", "10.0.0.1:8080")
 	be1.SetState(backend.StateUp)
-	be1.Weight = 1
+	be1.SetWeight(1)
 
 	be2 := backend.NewBackend("heavy", "10.0.0.2:8080")
 	be2.SetState(backend.StateUp)
-	be2.Weight = 10
+	be2.SetWeight(10)
 
 	w.Add(be1)
 	w.Add(be2)

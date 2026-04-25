@@ -10,6 +10,13 @@ import (
 )
 
 // DNSProvider discovers services via DNS SRV records.
+//
+// SECURITY NOTE: DNS queries are sent over plaintext. An on-path attacker can
+// observe which domains are being resolved and potentially spoof responses.
+// DNS-over-TLS (DoT, RFC 7858) and DNS-over-HTTPS (DoH, RFC 8484) are not yet
+// supported. If your deployment requires encrypted DNS resolution, consider
+// running a local caching resolver (e.g., systemd-resolved or Unbound) with
+// DoT/DoH enabled, and pointing nameserver at that local resolver.
 type DNSProvider struct {
 	*baseProvider
 	domain     string
@@ -49,6 +56,11 @@ func NewDNSProvider(config *ProviderConfig) (*DNSProvider, error) {
 // Start begins watching for service changes.
 func (p *DNSProvider) Start(ctx context.Context) error {
 	p.ctx, p.cancel = context.WithCancel(ctx)
+
+	// Warn that DNS queries are sent over plaintext.
+	// DNS-over-TLS (DoT) and DNS-over-HTTPS (DoH) are not yet supported.
+	log.Printf("[discovery] WARNING: DNS provider %q queries domain %q over plaintext — "+
+		"DNS-over-TLS (DoT) and DNS-over-HTTPS (DoH) are not yet supported", p.name, p.domain)
 
 	// Do initial lookup
 	if err := p.refresh(); err != nil {

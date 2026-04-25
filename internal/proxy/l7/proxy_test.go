@@ -2531,7 +2531,7 @@ func TestCov_ProxyRequest_BackendMaxConns(t *testing.T) {
 
 	b := backend.NewBackend("max-conn-backend", "127.0.0.1:0")
 	b.SetState(backend.StateUp)
-	b.MaxConns = 1
+	b.SetMaxConns(1)
 	b.AcquireConn()
 
 	reqCtx := middleware.NewRequestContext(httptest.NewRequest(http.MethodGet, "/test", nil), httptest.NewRecorder())

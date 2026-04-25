@@ -60,7 +60,13 @@ func (e *Engine) Start() error {
 		e.healthChecker.Stop()
 	}
 	e.healthChecker = health.NewChecker()
-	e.adminServer.SetHealthChecker(e.healthChecker)
+		// Allow gRPC TLS skip verify if any pool health check requests it
+		for _, pool := range e.config.Pools {
+			if pool.HealthCheck != nil && pool.HealthCheck.GRPCTLSSkipVerify {
+				e.healthChecker.SetGRPCTLSSkipVerify(true)
+				break
+			}
+		}
 
 	// 4. Initialize backend pools and register backends with health checker
 	if err := e.initializePools(); err != nil {
@@ -137,16 +143,20 @@ func (e *Engine) Start() error {
 					)
 				}
 			}
-			e.mcpTransport = mcp.NewSSETransport(e.mcpServer, sseConfig)
-			if err := e.mcpTransport.Start(); err != nil {
-				e.logger.Warn("MCP SSE transport start failed", logging.Error(err))
-				e.mcpTransport = nil
+			sseTransport, sseErr := mcp.NewSSETransport(e.mcpServer, sseConfig)
+			if sseErr != nil {
+				e.logger.Error("MCP SSE transport creation failed", logging.Error(sseErr))
 			} else {
-				e.logger.Info("MCP SSE transport started",
-					logging.String("address", e.mcpTransport.Addr()),
-					logging.Bool("auth", sseConfig.BearerToken != ""),
-					logging.Bool("audit", sseConfig.AuditLog),
-				)
+				e.mcpTransport = sseTransport
+				if startErr := e.mcpTransport.Start(); startErr != nil {
+					e.logger.Warn("MCP SSE transport start failed", logging.Error(startErr))
+					e.mcpTransport = nil
+				} else {
+					e.logger.Info("MCP SSE transport started",
+						logging.String("address", e.mcpTransport.Addr()),
+						logging.Bool("audit", sseConfig.AuditLog),
+					)
+				}
 			}
 		}
 	}

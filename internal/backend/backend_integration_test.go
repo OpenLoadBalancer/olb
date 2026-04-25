@@ -127,7 +127,7 @@ func TestConcurrentRequestsToMultipleBackends(t *testing.T) {
 		address := "10.0.0." + string(rune('0'+i)) + ":8080"
 		b := NewBackend(string(rune('0'+i)), address)
 		b.SetState(StateUp)
-		b.MaxConns = 100
+		b.SetMaxConns(100)
 		pool.AddBackend(b)
 	}
 
@@ -435,7 +435,7 @@ func TestHealthCheckIntegration(t *testing.T) {
 // TestMaxConnectionsLimit tests connection limit enforcement
 func TestMaxConnectionsLimit(t *testing.T) {
 	b := NewBackend("test", "127.0.0.1:8080")
-	b.MaxConns = 5
+	b.SetMaxConns(5)
 	b.SetState(StateUp)
 
 	// Acquire max connections
