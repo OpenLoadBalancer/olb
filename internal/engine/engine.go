@@ -114,6 +114,13 @@ type Engine struct {
 	errorCount      int64          // errors since last reload
 	reloadTimestamp time.Time      // when last reload happened
 
+	// Resolved server timeouts (from config with sensible defaults)
+	shutdownTimeout         time.Duration // signal handler graceful shutdown timeout
+	listenerStopTimeout     time.Duration // timeout when stopping listeners
+	proxyDrainWindow        time.Duration // window to drain old proxy during reload
+	rollbackCheckInterval   time.Duration // interval for first rollback health check
+	rollbackMonitorDuration time.Duration // total duration to monitor for rollback
+
 	// Runtime state
 	state     State
 	startTime time.Time
@@ -361,32 +368,61 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 		adminCfg.WebUI = webUIH
 	}
 
+	// Resolve server-level timeouts with sensible defaults
+	shutdownTimeout := 30 * time.Second
+	listenerStopTimeout := 5 * time.Second
+	proxyDrainWindowVal := 5 * time.Second
+	rollbackCheckInterval := 15 * time.Second
+	rollbackMonitorDuration := 30 * time.Second
+	if cfg.Server != nil {
+		if d, err := time.ParseDuration(cfg.Server.ShutdownTimeout); err == nil && d > 0 {
+			shutdownTimeout = d
+		}
+		if d, err := time.ParseDuration(cfg.Server.ListenerStopTimeout); err == nil && d > 0 {
+			listenerStopTimeout = d
+		}
+		if d, err := time.ParseDuration(cfg.Server.ProxyDrainWindow); err == nil && d > 0 {
+			proxyDrainWindowVal = d
+		}
+		if d, err := time.ParseDuration(cfg.Server.RollbackCheckInterval); err == nil && d > 0 {
+			rollbackCheckInterval = d
+		}
+		if d, err := time.ParseDuration(cfg.Server.RollbackMonitorDuration); err == nil && d > 0 {
+			rollbackMonitorDuration = d
+		}
+	}
+
 	e := &Engine{
-		config:          cfg,
-		configPath:      configPath,
-		logger:          logger,
-		logFileOutput:   logFileOutput,
-		metrics:         metricsRegistry,
-		tlsManager:      tlsMgr,
-		mtlsManager:     mtlsMgr,
-		ocspManager:     ocspMgr,
-		poolManager:     poolMgr,
-		healthChecker:   healthChecker,
-		passiveChecker:  passiveChecker,
-		router:          rtr,
-		proxy:           proxy,
-		connManager:     connMgr,
-		connPoolMgr:     connPoolMgr,
-		middlewareChain: mwChain,
-		pluginMgr:       pluginMgr,
-		discoveryMgr:    discoveryMgr,
-		webUIHandler:    webUIH,
-		geoDNS:          geoDNSMgr,
-		shadowMgr:       shadowManager,
-		sysMetrics:      sysMetrics,
-		sysMetricsStop:  make(chan struct{}),
-		state:           StateStopped,
-		stopCh:          make(chan struct{}),
+		config:                 cfg,
+		configPath:             configPath,
+		logger:                 logger,
+		logFileOutput:          logFileOutput,
+		metrics:                metricsRegistry,
+		tlsManager:             tlsMgr,
+		mtlsManager:            mtlsMgr,
+		ocspManager:            ocspMgr,
+		poolManager:            poolMgr,
+		healthChecker:          healthChecker,
+		passiveChecker:         passiveChecker,
+		router:                 rtr,
+		proxy:                  proxy,
+		connManager:            connMgr,
+		connPoolMgr:            connPoolMgr,
+		middlewareChain:        mwChain,
+		pluginMgr:              pluginMgr,
+		discoveryMgr:           discoveryMgr,
+		webUIHandler:           webUIH,
+		geoDNS:                 geoDNSMgr,
+		shadowMgr:              shadowManager,
+		sysMetrics:             sysMetrics,
+		sysMetricsStop:         make(chan struct{}),
+		state:                  StateStopped,
+		stopCh:                 make(chan struct{}),
+		shutdownTimeout:        shutdownTimeout,
+		listenerStopTimeout:    listenerStopTimeout,
+		proxyDrainWindow:       proxyDrainWindowVal,
+		rollbackCheckInterval:  rollbackCheckInterval,
+		rollbackMonitorDuration: rollbackMonitorDuration,
 	}
 
 	// Wire config getter and cert lister for admin API

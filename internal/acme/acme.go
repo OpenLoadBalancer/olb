@@ -682,6 +682,13 @@ func (c *Client) GetRateTracker() *RateTracker {
 	return c.rateTracker
 }
 
+// Close releases resources held by the client, including idle HTTP connections.
+func (c *Client) Close() {
+	if c.httpClient != nil {
+		c.httpClient.CloseIdleConnections()
+	}
+}
+
 // RateLimitStats returns current rate limit usage statistics.
 // Returns nil if rate tracking is disabled.
 func (c *Client) RateLimitStats() *RateLimitStats {

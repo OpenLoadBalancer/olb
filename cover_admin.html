@@ -1,0 +1,2906 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>admin: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/openloadbalancer/olb/internal/admin/auth.go (95.0%)</option>
+				
+				<option value="file1">github.com/openloadbalancer/olb/internal/admin/circuit_breaker.go (100.0%)</option>
+				
+				<option value="file2">github.com/openloadbalancer/olb/internal/admin/events.go (91.8%)</option>
+				
+				<option value="file3">github.com/openloadbalancer/olb/internal/admin/handlers_backends.go (91.5%)</option>
+				
+				<option value="file4">github.com/openloadbalancer/olb/internal/admin/handlers_helpers.go (100.0%)</option>
+				
+				<option value="file5">github.com/openloadbalancer/olb/internal/admin/handlers_pools.go (100.0%)</option>
+				
+				<option value="file6">github.com/openloadbalancer/olb/internal/admin/handlers_readonly.go (98.0%)</option>
+				
+				<option value="file7">github.com/openloadbalancer/olb/internal/admin/handlers_system.go (97.8%)</option>
+				
+				<option value="file8">github.com/openloadbalancer/olb/internal/admin/rbac.go (100.0%)</option>
+				
+				<option value="file9">github.com/openloadbalancer/olb/internal/admin/server.go (95.1%)</option>
+				
+				<option value="file10">github.com/openloadbalancer/olb/internal/admin/types.go (100.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package admin
+
+import (
+        "context"
+        "crypto/subtle"
+        "encoding/base64"
+        "encoding/json"
+        "fmt"
+        "log"
+        "net"
+        "net/http"
+        "strings"
+        "sync"
+        "time"
+
+        "golang.org/x/crypto/bcrypt"
+)
+
+// Role constants for RBAC.
+const (
+        RoleAdmin    = "admin"
+        RoleReadOnly = "readonly"
+)
+
+// roleContextKey is the context key for storing the authenticated user's role.
+type roleContextKey struct{}
+
+// RoleFromContext extracts the role string from the request context.
+// Returns RoleAdmin if no role is set (backward compatible default).
+func RoleFromContext(ctx context.Context) string <span class="cov8" title="1">{
+        role, _ := ctx.Value(roleContextKey{}).(string)
+        if role == "" </span><span class="cov8" title="1">{
+                return RoleAdmin
+        }</span>
+        <span class="cov8" title="1">return role</span>
+}
+
+// AuthConfig holds authentication configuration.
+type AuthConfig struct {
+        // Basic auth
+        Username string
+        Password string // bcrypt hashed
+
+        // Bearer token auth
+        BearerTokens []string // API keys
+
+        // BearerRoles maps bearer tokens to their RBAC role.
+        // Tokens not in this map default to RoleAdmin for backward compatibility.
+        // When nil or empty, all authenticated users have the admin role.
+        BearerRoles map[string]string
+
+        // Options
+        RequireAuthForRead bool
+
+        // Auth failure rate limiter (initialized lazily)
+        failureLimiter *authFailureLimiter
+
+        // tokenMu protects BearerTokens and BearerRoles for safe rotation at runtime.
+        tokenMu sync.RWMutex
+}
+
+// authFailureLimiter tracks per-IP authentication failures and locks out
+// IPs that exceed the threshold within the lockout window.
+type authFailureLimiter struct {
+        mu      sync.Mutex
+        entries map[string]*authFailureEntry
+        stopCh  chan struct{}
+        stopped bool
+}
+
+const (
+        authFailureMaxAttempts = 5               // failures before lockout
+        authFailureLockout     = 5 * time.Minute // lockout duration
+        authFailureCleanup     = 1 * time.Minute // cleanup interval
+        maxAuthEntries         = 100_000         // cap on tracked IPs to prevent memory exhaustion
+)
+
+type authFailureEntry struct {
+        count       int
+        lockedUntil time.Time
+        lastAccess  time.Time
+}
+
+func newAuthFailureLimiter() *authFailureLimiter <span class="cov8" title="1">{
+        l := &amp;authFailureLimiter{
+                entries: make(map[string]*authFailureEntry),
+                stopCh:  make(chan struct{}),
+        }
+        go func() </span><span class="cov8" title="1">{
+                defer func() </span><span class="cov8" title="1">{
+                        if r := recover(); r != nil </span><span class="cov0" title="0">{
+                                log.Printf("[auth] panic recovered in cleanup: %v", r)
+                        }</span>
+                }()
+                <span class="cov8" title="1">l.cleanupLoop()</span>
+        }()
+        <span class="cov8" title="1">return l</span>
+}
+
+func (l *authFailureLimiter) isLocked(ip string) bool <span class="cov8" title="1">{
+        l.mu.Lock()
+        defer l.mu.Unlock()
+        e, ok := l.entries[ip]
+        if !ok </span><span class="cov8" title="1">{
+                return false
+        }</span>
+        <span class="cov8" title="1">if e.lockedUntil.IsZero() </span><span class="cov8" title="1">{
+                // Not locked out yet (hasn't reached failure threshold)
+                return false
+        }</span>
+        <span class="cov8" title="1">if time.Now().Before(e.lockedUntil) </span><span class="cov8" title="1">{
+                return true
+        }</span>
+        // Lockout expired, clear
+        <span class="cov8" title="1">delete(l.entries, ip)
+        return false</span>
+}
+
+// getClientIP extracts the real client IP from the request, respecting
+// X-Real-Ip and X-Forwarded-For headers when the admin server is behind
+// a reverse proxy. Falls back to r.RemoteAddr.
+func getClientIP(r *http.Request) string <span class="cov8" title="1">{
+        // Check X-Real-Ip first (set by nginx and similar proxies)
+        if realIP := r.Header.Get("X-Real-Ip"); realIP != "" </span><span class="cov8" title="1">{
+                if ip := net.ParseIP(realIP); ip != nil </span><span class="cov8" title="1">{
+                        return realIP
+                }</span>
+        }
+        // Check X-Forwarded-For (set by many proxies; first entry is the client)
+        <span class="cov8" title="1">if xff := r.Header.Get("X-Forwarded-For"); xff != "" </span><span class="cov8" title="1">{
+                if idx := strings.Index(xff, ","); idx != -1 </span><span class="cov8" title="1">{
+                        return strings.TrimSpace(xff[:idx])
+                }</span>
+                <span class="cov8" title="1">return strings.TrimSpace(xff)</span>
+        }
+        // Fallback to RemoteAddr (host:port — strip port)
+        <span class="cov8" title="1">ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+        if ip != "" </span><span class="cov8" title="1">{
+                return ip
+        }</span>
+        <span class="cov8" title="1">return r.RemoteAddr</span>
+}
+
+func (l *authFailureLimiter) recordFailure(ip string) <span class="cov8" title="1">{
+        l.mu.Lock()
+        defer l.mu.Unlock()
+        e, ok := l.entries[ip]
+        if !ok </span><span class="cov8" title="1">{
+                if len(l.entries) &gt;= maxAuthEntries </span><span class="cov8" title="1">{
+                        now := time.Now()
+                        // First pass: evict expired (lockout elapsed) entries
+                        for k, v := range l.entries </span><span class="cov8" title="1">{
+                                if !v.lockedUntil.IsZero() &amp;&amp; now.After(v.lockedUntil) </span><span class="cov0" title="0">{
+                                        delete(l.entries, k)
+                                }</span>
+                        }
+                        // Second pass: if still full, evict the oldest non-locked entry (LRU-style)
+                        <span class="cov8" title="1">if len(l.entries) &gt;= maxAuthEntries </span><span class="cov8" title="1">{
+                                var oldestIP string
+                                var oldestTime time.Time
+                                for k, v := range l.entries </span><span class="cov8" title="1">{
+                                        // Skip currently locked entries — they must remain tracked
+                                        if !v.lockedUntil.IsZero() &amp;&amp; now.Before(v.lockedUntil) </span><span class="cov8" title="1">{
+                                                continue</span>
+                                        }
+                                        <span class="cov8" title="1">if oldestIP == "" || v.lastAccess.Before(oldestTime) </span><span class="cov8" title="1">{
+                                                oldestIP = k
+                                                oldestTime = v.lastAccess
+                                        }</span>
+                                }
+                                <span class="cov8" title="1">if oldestIP != "" </span><span class="cov8" title="1">{
+                                        delete(l.entries, oldestIP)
+                                }</span>
+                                // If all entries are locked, we cannot evict safely;
+                                // still allow the new entry so the IP is tracked.
+                        }
+                }
+                <span class="cov8" title="1">e = &amp;authFailureEntry{
+                        lastAccess: time.Now(),
+                }
+                l.entries[ip] = e</span>
+        }
+        <span class="cov8" title="1">e.lastAccess = time.Now()
+        e.count++
+        if e.count &gt;= authFailureMaxAttempts </span><span class="cov8" title="1">{
+                e.lockedUntil = time.Now().Add(authFailureLockout)
+        }</span>
+}
+
+func (l *authFailureLimiter) recordSuccess(ip string) <span class="cov8" title="1">{
+        l.mu.Lock()
+        defer l.mu.Unlock()
+        delete(l.entries, ip)
+}</span>
+
+func (l *authFailureLimiter) cleanupLoop() <span class="cov8" title="1">{
+        ticker := time.NewTicker(authFailureCleanup)
+        defer ticker.Stop()
+        for </span><span class="cov8" title="1">{
+                select </span>{
+                case &lt;-l.stopCh:<span class="cov8" title="1">
+                        return</span>
+                case &lt;-ticker.C:<span class="cov0" title="0">
+                        l.mu.Lock()
+                        now := time.Now()
+                        for ip, e := range l.entries </span><span class="cov0" title="0">{
+                                if now.After(e.lockedUntil) </span><span class="cov0" title="0">{
+                                        delete(l.entries, ip)
+                                }</span>
+                        }
+                        <span class="cov0" title="0">l.mu.Unlock()</span>
+                }
+        }
+}
+
+func (l *authFailureLimiter) stop() <span class="cov8" title="1">{
+        l.mu.Lock()
+        defer l.mu.Unlock()
+        if !l.stopped </span><span class="cov8" title="1">{
+                close(l.stopCh)
+                l.stopped = true
+        }</span>
+}
+
+// Close stops the auth failure limiter's background goroutine.
+func (c *AuthConfig) Close() <span class="cov8" title="1">{
+        if c.failureLimiter != nil </span><span class="cov8" title="1">{
+                c.failureLimiter.stop()
+        }</span>
+}
+
+// ZeroSecrets clears sensitive fields (bearer tokens) from memory.
+// Note: Go strings are immutable and may be copied by the runtime, so
+// this provides best-effort scrubbing for the slice-backed data only.
+func (c *AuthConfig) ZeroSecrets() <span class="cov8" title="1">{
+        for i := range c.BearerTokens </span><span class="cov8" title="1">{
+                // Strings in Go are immutable and their backing memory is shared;
+                // we cannot reliably zero them. Clear the slice reference instead.
+                c.BearerTokens[i] = ""
+        }</span>
+        <span class="cov8" title="1">c.BearerTokens = nil</span>
+}
+
+// AuthMiddleware creates authentication middleware.
+// By default, all endpoints require authentication. When RequireAuthForRead
+// is explicitly false, GET requests to public health endpoints are allowed
+// without authentication for load balancer health probes.
+func AuthMiddleware(config *AuthConfig) func(http.Handler) http.Handler <span class="cov8" title="1">{
+        // Initialize the failure limiter
+        if config.failureLimiter == nil </span><span class="cov8" title="1">{
+                config.failureLimiter = newAuthFailureLimiter()
+        }</span>
+
+        <span class="cov8" title="1">return func(next http.Handler) http.Handler </span><span class="cov8" title="1">{
+                return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) </span><span class="cov8" title="1">{
+                        // When RequireAuthForRead is false, allow unauthenticated GET to
+                        // public health endpoints only. All other GET requests still require auth.
+                        if !config.RequireAuthForRead &amp;&amp; r.Method == http.MethodGet &amp;&amp; isPublicHealthEndpoint(r.URL.Path) </span><span class="cov8" title="1">{
+                                next.ServeHTTP(w, r)
+                                return
+                        }</span>
+
+                        // Extract client IP for rate limiting
+                        <span class="cov8" title="1">ip := getClientIP(r)
+
+                        // Check if IP is locked out due to too many failures
+                        if config.failureLimiter.isLocked(ip) </span><span class="cov8" title="1">{
+                                w.Header().Set("Content-Type", "application/json")
+                                w.Header().Set("Retry-After", "300")
+                                w.WriteHeader(http.StatusTooManyRequests)
+                                if err := json.NewEncoder(w).Encode(ErrorResponse("TOO_MANY_FAILURES", "too many auth failures, try again later")); err != nil </span><span class="cov0" title="0">{
+                                        log.Printf("admin: failed to encode lockout response: %v", err)
+                                }</span>
+                                <span class="cov8" title="1">return</span>
+                        }
+
+                        // Check for authorization header
+                        <span class="cov8" title="1">authHeader := r.Header.Get("Authorization")
+                        if authHeader == "" </span><span class="cov8" title="1">{
+                                config.failureLimiter.recordFailure(ip)
+                                config.writeUnauthorized(w, "missing authorization header")
+                                return
+                        }</span>
+
+                        // Try bearer token auth first
+                        <span class="cov8" title="1">if token, ok := strings.CutPrefix(authHeader, "Bearer "); ok </span><span class="cov8" title="1">{
+                                if config.validateBearerToken(token) </span><span class="cov8" title="1">{
+                                        config.failureLimiter.recordSuccess(ip)
+                                        role := config.bearerRole(token)
+                                        ctx := context.WithValue(r.Context(), roleContextKey{}, role)
+                                        next.ServeHTTP(w, r.WithContext(ctx))
+                                        return
+                                }</span>
+                                <span class="cov8" title="1">config.failureLimiter.recordFailure(ip)
+                                config.writeUnauthorized(w, "invalid bearer token")
+                                return</span>
+                        }
+
+                        // Try basic auth
+                        <span class="cov8" title="1">if encoded, ok := strings.CutPrefix(authHeader, "Basic "); ok </span><span class="cov8" title="1">{
+                                decoded, err := base64.StdEncoding.DecodeString(encoded)
+                                if err != nil </span><span class="cov8" title="1">{
+                                        config.failureLimiter.recordFailure(ip)
+                                        config.writeUnauthorized(w, "invalid basic auth encoding")
+                                        return
+                                }</span>
+
+                                <span class="cov8" title="1">parts := strings.SplitN(string(decoded), ":", 2)
+                                if len(parts) != 2 </span><span class="cov8" title="1">{
+                                        config.failureLimiter.recordFailure(ip)
+                                        config.writeUnauthorized(w, "invalid basic auth format")
+                                        return
+                                }</span>
+
+                                <span class="cov8" title="1">username, password := parts[0], parts[1]
+                                if config.validateBasicAuth(username, password) </span><span class="cov8" title="1">{
+                                        config.failureLimiter.recordSuccess(ip)
+                                        // Basic auth users always get admin role (backward compatible)
+                                        ctx := context.WithValue(r.Context(), roleContextKey{}, RoleAdmin)
+                                        next.ServeHTTP(w, r.WithContext(ctx))
+                                        return
+                                }</span>
+                                <span class="cov8" title="1">config.failureLimiter.recordFailure(ip)
+                                config.writeUnauthorized(w, "invalid credentials")
+                                return</span>
+                        }
+
+                        <span class="cov8" title="1">config.failureLimiter.recordFailure(ip)
+                        config.writeUnauthorized(w, "unsupported authorization scheme")</span>
+                })
+        }
+}
+
+// validateBasicAuth validates username and password against configured credentials.
+func (c *AuthConfig) validateBasicAuth(username, password string) bool <span class="cov8" title="1">{
+        // Constant-time username comparison
+        if subtle.ConstantTimeCompare([]byte(username), []byte(c.Username)) != 1 </span><span class="cov8" title="1">{
+                return false
+        }</span>
+
+        // Verify bcrypt password
+        <span class="cov8" title="1">err := bcrypt.CompareHashAndPassword([]byte(c.Password), []byte(password))
+        return err == nil</span>
+}
+
+// validateBearerToken validates a bearer token against configured tokens.
+func (c *AuthConfig) validateBearerToken(token string) bool <span class="cov8" title="1">{
+        c.tokenMu.RLock()
+        defer c.tokenMu.RUnlock()
+        for _, validToken := range c.BearerTokens </span><span class="cov8" title="1">{
+                // Constant-time comparison to prevent timing attacks
+                if subtle.ConstantTimeCompare([]byte(token), []byte(validToken)) == 1 </span><span class="cov8" title="1">{
+                        return true
+                }</span>
+        }
+        <span class="cov8" title="1">return false</span>
+}
+
+// bearerRole returns the RBAC role for the given bearer token.
+// If the token has an explicit role in BearerRoles, that role is returned.
+// Otherwise, RoleAdmin is returned for backward compatibility.
+func (c *AuthConfig) bearerRole(token string) string <span class="cov8" title="1">{
+        c.tokenMu.RLock()
+        defer c.tokenMu.RUnlock()
+        if c.BearerRoles != nil </span><span class="cov8" title="1">{
+                if role, ok := c.BearerRoles[token]; ok </span><span class="cov8" title="1">{
+                        return role
+                }</span>
+        }
+        <span class="cov8" title="1">return RoleAdmin</span>
+}
+
+// RotateBearerToken replaces an existing bearer token with a new one.
+// It validates that oldToken exists in the current token list, then replaces
+// it with newToken. This is thread-safe and can be called at runtime without
+// restarting the server. Returns an error if oldToken is not found.
+func (c *AuthConfig) RotateBearerToken(oldToken, newToken string) error <span class="cov8" title="1">{
+        if oldToken == "" || newToken == "" </span><span class="cov8" title="1">{
+                return fmt.Errorf("old and new tokens must not be empty")
+        }</span>
+
+        <span class="cov8" title="1">c.tokenMu.Lock()
+        defer c.tokenMu.Unlock()
+
+        // Find and replace the old token
+        found := false
+        for i, t := range c.BearerTokens </span><span class="cov8" title="1">{
+                if subtle.ConstantTimeCompare([]byte(t), []byte(oldToken)) == 1 </span><span class="cov8" title="1">{
+                        // Preserve any role mapping for the old token
+                        if c.BearerRoles != nil </span><span class="cov8" title="1">{
+                                if role, ok := c.BearerRoles[oldToken]; ok </span><span class="cov8" title="1">{
+                                        delete(c.BearerRoles, oldToken)
+                                        c.BearerRoles[newToken] = role
+                                }</span>
+                        }
+                        <span class="cov8" title="1">c.BearerTokens[i] = newToken
+                        found = true
+                        break</span>
+                }
+        }
+
+        <span class="cov8" title="1">if !found </span><span class="cov8" title="1">{
+                return fmt.Errorf("old token not found in bearer token list")
+        }</span>
+
+        <span class="cov8" title="1">log.Printf("[auth] bearer token rotated successfully")
+        return nil</span>
+}
+
+// writeUnauthorized writes a 401 Unauthorized response.
+func (c *AuthConfig) writeUnauthorized(w http.ResponseWriter, message string) <span class="cov8" title="1">{
+        w.Header().Set("WWW-Authenticate", `Basic realm="admin"`)
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusUnauthorized)
+
+        resp := ErrorResponse("UNAUTHORIZED", message)
+        if err := json.NewEncoder(w).Encode(resp); err != nil </span><span class="cov8" title="1">{
+                log.Printf("admin: failed to encode unauthorized response: %v", err)
+        }</span>
+}
+
+// HashPassword generates a bcrypt hash of the password.
+func HashPassword(password string) (string, error) <span class="cov8" title="1">{
+        bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+        return string(bytes), err
+}</span>
+
+// CheckPasswordHash compares a password with a bcrypt hash.
+func CheckPasswordHash(password, hash string) bool <span class="cov8" title="1">{
+        err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+        return err == nil
+}</span>
+
+// isPublicHealthEndpoint returns true for endpoints that are safe to expose
+// without authentication (used for load balancer health probes).
+// Only the simple /health up/down probe is public; the /api/v1/... variants
+// expose detailed operational state and always require authentication.
+func isPublicHealthEndpoint(path string) bool <span class="cov8" title="1">{
+        return path == "/health"
+}</span>
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package admin
+
+import (
+        "context"
+        "fmt"
+        "sync"
+        "time"
+)
+
+// adminCircuitBreaker protects admin API handlers from cascading failures
+// when engine internals are slow or unresponsive. Unlike the HTTP-layer
+// circuit breaker in middleware, this wraps Go function calls with timeout
+// and error counting.
+type adminCircuitBreaker struct {
+        mu sync.Mutex
+
+        state     cbState
+        openSince time.Time
+        errors    int
+        successes int
+        lastError time.Time
+
+        // Configuration
+        errorThreshold int           // errors before opening (default: 5)
+        openDuration   time.Duration // how long to stay open (default: 30s)
+        timeout        time.Duration // per-call timeout (default: 10s)
+        windowSize     time.Duration // error counting window (default: 60s)
+}
+
+type cbState int
+
+const (
+        cbClosed cbState = iota
+        cbOpen
+        cbHalfOpen
+)
+
+// newAdminCircuitBreaker creates a new circuit breaker for admin API protection.
+func newAdminCircuitBreaker() *adminCircuitBreaker <span class="cov8" title="1">{
+        return &amp;adminCircuitBreaker{
+                state:          cbClosed,
+                errorThreshold: 5,
+                openDuration:   30 * time.Second,
+                timeout:        10 * time.Second,
+                windowSize:     60 * time.Second,
+        }
+}</span>
+
+// State returns the current circuit breaker state as a string.
+func (acb *adminCircuitBreaker) State() string <span class="cov8" title="1">{
+        acb.mu.Lock()
+        defer acb.mu.Unlock()
+
+        now := time.Now()
+
+        switch acb.state </span>{
+        case cbOpen:<span class="cov8" title="1">
+                if now.Sub(acb.openSince) &gt;= acb.openDuration </span><span class="cov8" title="1">{
+                        return "half-open"
+                }</span>
+                <span class="cov8" title="1">return "open"</span>
+        case cbHalfOpen:<span class="cov8" title="1">
+                return "half-open"</span>
+        default:<span class="cov8" title="1">
+                return "closed"</span>
+        }
+}
+
+// Execute runs the given function with circuit breaker protection.
+// The caller's context deadline is combined with the circuit breaker's timeout.
+// Returns an error if the circuit is open or if the function fails/times out.
+func (acb *adminCircuitBreaker) Execute(ctx context.Context, fn func(ctx context.Context) error) error <span class="cov8" title="1">{
+        acb.mu.Lock()
+        now := time.Now()
+
+        switch acb.state </span>{
+        case cbOpen:<span class="cov8" title="1">
+                if now.Sub(acb.openSince) &gt;= acb.openDuration </span><span class="cov8" title="1">{
+                        acb.state = cbHalfOpen
+                        acb.errors = 0
+                        acb.successes = 0
+                }</span> else<span class="cov8" title="1"> {
+                        acb.mu.Unlock()
+                        return fmt.Errorf("admin circuit breaker open (retry after %v)", acb.openDuration-time.Since(acb.openSince))
+                }</span>
+        case cbClosed:<span class="cov8" title="1">
+                // Evict old errors outside the window
+                if acb.lastError.IsZero() || now.Sub(acb.lastError) &gt; acb.windowSize </span><span class="cov8" title="1">{
+                        acb.errors = 0
+                        acb.successes = 0
+                }</span>
+        case cbHalfOpen:<span class="cov8" title="1"></span>
+                // Allow through
+        }
+        <span class="cov8" title="1">acb.mu.Unlock()
+
+        // Combine caller context with circuit breaker timeout
+        callCtx, cancel := context.WithTimeout(ctx, acb.timeout)
+        defer cancel()
+
+        done := make(chan error, 1)
+        go func() </span><span class="cov8" title="1">{
+                defer func() </span><span class="cov8" title="1">{
+                        if r := recover(); r != nil </span><span class="cov8" title="1">{
+                                done &lt;- fmt.Errorf("panic in admin handler: %v", r)
+                        }</span>
+                }()
+                <span class="cov8" title="1">done &lt;- fn(callCtx)</span>
+        }()
+
+        <span class="cov8" title="1">var err error
+        select </span>{
+        case err = &lt;-done:<span class="cov8" title="1"></span>
+                // Function completed
+        case &lt;-callCtx.Done():<span class="cov8" title="1">
+                err = fmt.Errorf("admin call timed out after %v", acb.timeout)
+                // Drain the goroutine so it doesn't leak. Bound the wait
+                // to prevent permanent leaks if fn ignores context cancellation.
+                go func() </span><span class="cov8" title="1">{
+                        timer := time.NewTimer(acb.timeout)
+                        defer timer.Stop()
+                        select </span>{
+                        case &lt;-done:<span class="cov8" title="1"></span>
+                        case &lt;-timer.C:<span class="cov8" title="1"></span>
+                        }
+                }()
+        }
+
+        <span class="cov8" title="1">acb.recordOutcome(err)
+        return err</span>
+}
+
+// recordOutcome records the result of a function call.
+func (acb *adminCircuitBreaker) recordOutcome(err error) <span class="cov8" title="1">{
+        acb.mu.Lock()
+        defer acb.mu.Unlock()
+
+        if err == nil </span><span class="cov8" title="1">{
+                acb.successes++
+                if acb.state == cbHalfOpen &amp;&amp; acb.successes &gt;= 3 </span><span class="cov8" title="1">{
+                        acb.state = cbClosed
+                        acb.errors = 0
+                        acb.successes = 0
+                }</span>
+                <span class="cov8" title="1">return</span>
+        }
+
+        <span class="cov8" title="1">acb.errors++
+        acb.lastError = time.Now()
+
+        switch acb.state </span>{
+        case cbClosed:<span class="cov8" title="1">
+                if acb.errors &gt;= acb.errorThreshold </span><span class="cov8" title="1">{
+                        acb.state = cbOpen
+                        acb.openSince = time.Now()
+                }</span>
+        case cbHalfOpen:<span class="cov8" title="1">
+                acb.state = cbOpen
+                acb.openSince = time.Now()</span>
+        }
+}
+
+// Reset resets the circuit breaker to closed state.
+func (acb *adminCircuitBreaker) Reset() <span class="cov8" title="1">{
+        acb.mu.Lock()
+        defer acb.mu.Unlock()
+        acb.state = cbClosed
+        acb.errors = 0
+        acb.successes = 0
+        acb.openSince = time.Time{}
+}</span>
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package admin
+
+import (
+        "encoding/json"
+        "fmt"
+        "net/http"
+        "sync"
+        "time"
+)
+
+// maxEventSubscribers limits the number of concurrent SSE subscribers
+// to prevent unbounded resource exhaustion.
+const maxEventSubscribers = 100
+
+// sseKeepAliveInterval is the idle timeout for SSE connections.
+// If no events are sent within this period, a keepalive comment is sent
+// to detect dead connections and prevent intermediate proxies from closing
+// the connection.
+const sseKeepAliveInterval = 5 * time.Minute
+
+// eventBus broadcasts EventItems to connected SSE subscribers.
+type eventBus struct {
+        mu          sync.RWMutex
+        subscribers map[chan EventItem]struct{}
+}
+
+// newEventBus creates a new event bus.
+func newEventBus() *eventBus <span class="cov8" title="1">{
+        return &amp;eventBus{
+                subscribers: make(map[chan EventItem]struct{}),
+        }
+}</span>
+
+// subscribe creates and registers a new subscriber channel.
+// If the subscriber limit has been reached, it returns a closed channel
+// so the caller receives EOF immediately.
+func (eb *eventBus) subscribe() chan EventItem <span class="cov8" title="1">{
+        ch := make(chan EventItem, 16)
+        eb.mu.Lock()
+        if len(eb.subscribers) &gt;= maxEventSubscribers </span><span class="cov8" title="1">{
+                eb.mu.Unlock()
+                close(ch)
+                return ch
+        }</span>
+        <span class="cov8" title="1">eb.subscribers[ch] = struct{}{}
+        eb.mu.Unlock()
+        return ch</span>
+}
+
+// unsubscribe removes a subscriber channel and drains it.
+func (eb *eventBus) unsubscribe(ch chan EventItem) <span class="cov8" title="1">{
+        eb.mu.Lock()
+        delete(eb.subscribers, ch)
+        eb.mu.Unlock()
+        // Drain remaining messages to prevent goroutine leak
+        for </span><span class="cov8" title="1">{
+                select </span>{
+                case &lt;-ch:<span class="cov0" title="0"></span>
+                default:<span class="cov8" title="1">
+                        return</span>
+                }
+        }
+}
+
+// Publish sends an event to all connected subscribers.
+// Non-blocking: if a subscriber's buffer is full, the event is dropped
+// for that subscriber to prevent slow clients from blocking the publisher.
+func (eb *eventBus) Publish(event EventItem) <span class="cov8" title="1">{
+        eb.mu.RLock()
+        defer eb.mu.RUnlock()
+
+        for ch := range eb.subscribers </span><span class="cov8" title="1">{
+                select </span>{
+                case ch &lt;- event:<span class="cov8" title="1"></span>
+                default:<span class="cov8" title="1"></span>
+                        // Subscriber buffer full — drop event to avoid blocking
+                }
+        }
+}
+
+// SubscriberCount returns the number of connected SSE clients.
+func (eb *eventBus) SubscriberCount() int <span class="cov8" title="1">{
+        eb.mu.RLock()
+        defer eb.mu.RUnlock()
+        return len(eb.subscribers)
+}</span>
+
+// streamEvents handles GET /api/v1/events/stream (SSE).
+// Clients receive real-time events via Server-Sent Events.
+func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodGet </span><span class="cov8" title="1">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only GET is allowed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">if s.eventBus == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "event streaming not available")
+                return
+        }</span>
+
+        <span class="cov8" title="1">flusher, ok := w.(http.Flusher)
+        if !ok </span><span class="cov8" title="1">{
+                writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "streaming not supported")
+                return
+        }</span>
+
+        // Set SSE headers
+        <span class="cov8" title="1">w.Header().Set("Content-Type", "text/event-stream")
+        w.Header().Set("Cache-Control", "no-cache")
+        w.Header().Set("Connection", "keep-alive")
+        w.Header().Set("X-Accel-Buffering", "no") // Disable nginx buffering
+
+        // Subscribe to events
+        ch := s.eventBus.subscribe()
+
+        // If the channel is already closed, the subscriber limit was reached.
+        select </span>{
+        case &lt;-ch:<span class="cov8" title="1">
+                writeError(w, http.StatusServiceUnavailable, "TOO_MANY_SUBSCRIBERS",
+                        "maximum number of SSE subscribers reached")
+                return</span>
+        default:<span class="cov8" title="1"></span>
+        }
+
+        <span class="cov8" title="1">defer s.eventBus.unsubscribe(ch)
+
+        // Send initial connection event
+        fmt.Fprintf(w, "event: connected\ndata: {}\n\n")
+        flusher.Flush()
+
+        // Set up keepalive ticker to detect dead connections
+        keepalive := time.NewTicker(sseKeepAliveInterval)
+        defer keepalive.Stop()
+
+        // Stream events until client disconnects
+        for </span><span class="cov8" title="1">{
+                select </span>{
+                case event, ok := &lt;-ch:<span class="cov8" title="1">
+                        if !ok </span><span class="cov0" title="0">{
+                                return
+                        }</span>
+                        <span class="cov8" title="1">data, err := json.Marshal(event)
+                        if err != nil </span><span class="cov0" title="0">{
+                                continue</span>
+                        }
+                        <span class="cov8" title="1">fmt.Fprintf(w, "event: event\ndata: %s\n\n", data)
+                        flusher.Flush()</span>
+                case &lt;-keepalive.C:<span class="cov0" title="0">
+                        // Send SSE keepalive comment; if the write fails the client has disconnected.
+                        if _, err := fmt.Fprintf(w, ": keepalive\n\n"); err != nil </span><span class="cov0" title="0">{
+                                return
+                        }</span>
+                        <span class="cov0" title="0">flusher.Flush()</span>
+                case &lt;-r.Context().Done():<span class="cov8" title="1">
+                        return</span>
+                }
+        }
+}
+
+// PublishEvent is a public method to push an event to all SSE subscribers.
+func (s *Server) PublishEvent(event EventItem) <span class="cov8" title="1">{
+        if s.eventBus != nil </span><span class="cov8" title="1">{
+                s.eventBus.Publish(event)
+        }</span>
+}
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package admin
+
+import (
+        "encoding/json"
+        "math"
+        "net"
+        "net/http"
+        "strings"
+
+        "github.com/openloadbalancer/olb/internal/backend"
+        "github.com/openloadbalancer/olb/pkg/errors"
+)
+
+// listBackends handles GET /api/v1/backends
+func (s *Server) listBackends(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodGet </span><span class="cov8" title="1">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only GET is allowed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">if s.poolManager == nil </span><span class="cov8" title="1">{
+                writeSuccess(w, []string{})
+                return
+        }</span>
+
+        <span class="cov8" title="1">pools := s.poolManager.GetAllPools()
+        names := make([]string, 0, len(pools))
+        for _, pool := range pools </span><span class="cov8" title="1">{
+                names = append(names, pool.Name)
+        }</span>
+
+        <span class="cov8" title="1">writeSuccess(w, names)</span>
+}
+
+// getPool handles GET /api/v1/backends/:pool
+func (s *Server) getPool(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodGet </span><span class="cov8" title="1">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only GET is allowed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">poolName := extractPoolName(r.URL.Path)
+        if poolName == "" </span><span class="cov8" title="1">{
+                writeError(w, http.StatusBadRequest, "INVALID_POOL", "pool name is required")
+                return
+        }</span>
+
+        <span class="cov8" title="1">if s.poolManager == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusNotFound, "POOL_NOT_FOUND", "pool not found")
+                return
+        }</span>
+
+        <span class="cov8" title="1">pool := s.poolManager.GetPool(poolName)
+        if pool == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusNotFound, "POOL_NOT_FOUND", "pool not found: "+poolName)
+                return
+        }</span>
+
+        <span class="cov8" title="1">response := poolToInfo(pool)
+        writeSuccess(w, response)</span>
+}
+
+// addBackend handles POST /api/v1/backends/:pool
+func (s *Server) addBackend(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodPost </span><span class="cov8" title="1">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only POST is allowed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">poolName := extractPoolName(r.URL.Path)
+        if poolName == "" </span><span class="cov8" title="1">{
+                writeError(w, http.StatusBadRequest, "INVALID_POOL", "pool name is required")
+                return
+        }</span>
+
+        <span class="cov8" title="1">if s.poolManager == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusNotFound, "POOL_NOT_FOUND", "pool not found")
+                return
+        }</span>
+
+        <span class="cov8" title="1">pool := s.poolManager.GetPool(poolName)
+        if pool == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusNotFound, "POOL_NOT_FOUND", "pool not found: "+poolName)
+                return
+        }</span>
+
+        <span class="cov8" title="1">var req AddBackendRequest
+        if err := readJSONBody(r, &amp;req); err != nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusBadRequest, "INVALID_JSON", "invalid JSON")
+                return
+        }</span>
+
+        // Validate required fields
+        <span class="cov8" title="1">if req.ID == "" </span><span class="cov8" title="1">{
+                writeError(w, http.StatusBadRequest, "MISSING_FIELD", "backend ID is required")
+                return
+        }</span>
+        <span class="cov8" title="1">if req.Address == "" </span><span class="cov8" title="1">{
+                writeError(w, http.StatusBadRequest, "MISSING_FIELD", "backend address is required")
+                return
+        }</span>
+
+        // Validate address format (host:port)
+        <span class="cov8" title="1">if _, err := net.ResolveTCPAddr("tcp", req.Address); err != nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusBadRequest, "INVALID_ADDRESS", "backend address must be in host:port format")
+                return
+        }</span>
+
+        // Check if backend already exists
+        <span class="cov8" title="1">if existing := pool.GetBackend(req.ID); existing != nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusConflict, "ALREADY_EXISTS", "backend already exists: "+req.ID)
+                return
+        }</span>
+
+        // Raft mode: propose the backend addition through consensus
+        <span class="cov8" title="1">if s.raftProposer != nil </span><span class="cov8" title="1">{
+                backendJSON, err := json.Marshal(map[string]any{
+                        "id":      req.ID,
+                        "address": req.Address,
+                        "weight":  req.Weight,
+                })
+                if err != nil </span><span class="cov0" title="0">{
+                        writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to marshal backend data")
+                        return
+                }</span>
+                <span class="cov8" title="1">if err := s.raftProposer.ProposeUpdateBackend(poolName, backendJSON); err != nil </span><span class="cov8" title="1">{
+                        writeError(w, http.StatusConflict, "RAFT_ERROR",
+                                "failed to propose backend addition")
+                        return
+                }</span>
+                <span class="cov8" title="1">writeSuccess(w, map[string]string{
+                        "status":  "proposed",
+                        "pool":    poolName,
+                        "backend": req.ID,
+                })
+                return</span>
+        }
+
+        // Create backend (standalone mode)
+        <span class="cov8" title="1">b := backend.NewBackend(req.ID, req.Address)
+        if req.Weight &gt; 0 </span><span class="cov8" title="1">{
+                if req.Weight &gt; math.MaxInt32 </span><span class="cov8" title="1">{
+                        writeError(w, http.StatusBadRequest, "INVALID_ARGUMENT", "weight exceeds maximum value")
+                        return
+                }</span>
+                <span class="cov8" title="1">b.SetWeight(int32(req.Weight))</span>
+        }
+
+        <span class="cov8" title="1">if err := pool.AddBackend(b); err != nil </span><span class="cov0" title="0">{
+                if errors.Is(err, errors.ErrAlreadyExist) </span><span class="cov0" title="0">{
+                        writeError(w, http.StatusConflict, "ALREADY_EXISTS", "backend already exists")
+                        return
+                }</span>
+                <span class="cov0" title="0">writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
+                return</span>
+        }
+
+        <span class="cov8" title="1">writeSuccess(w, backendToInfo(b))</span>
+}
+
+// removeBackend handles DELETE /api/v1/backends/:pool/:backend
+func (s *Server) removeBackend(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodDelete </span><span class="cov8" title="1">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only DELETE is allowed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">poolName, backendID := extractBackendID(r.URL.Path)
+        if poolName == "" || backendID == "" </span><span class="cov8" title="1">{
+                writeError(w, http.StatusBadRequest, "INVALID_PATH", "pool and backend IDs are required")
+                return
+        }</span>
+
+        <span class="cov8" title="1">if s.poolManager == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusNotFound, "POOL_NOT_FOUND", "pool not found")
+                return
+        }</span>
+
+        <span class="cov8" title="1">pool := s.poolManager.GetPool(poolName)
+        if pool == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusNotFound, "POOL_NOT_FOUND", "pool not found: "+poolName)
+                return
+        }</span>
+
+        // Raft mode: propose the backend removal through consensus
+        <span class="cov8" title="1">if s.raftProposer != nil </span><span class="cov8" title="1">{
+                if err := s.raftProposer.ProposeDeleteBackend(poolName, backendID); err != nil </span><span class="cov8" title="1">{
+                        writeError(w, http.StatusConflict, "RAFT_ERROR",
+                                "failed to propose backend removal")
+                        return
+                }</span>
+                <span class="cov8" title="1">writeSuccess(w, map[string]string{
+                        "status":  "proposed",
+                        "pool":    poolName,
+                        "backend": backendID,
+                })
+                return</span>
+        }
+
+        // Standalone mode: direct removal
+        <span class="cov8" title="1">if err := pool.RemoveBackend(backendID); err != nil </span><span class="cov8" title="1">{
+                if errors.Is(err, errors.ErrBackendNotFound) </span><span class="cov8" title="1">{
+                        writeError(w, http.StatusNotFound, "BACKEND_NOT_FOUND", "backend not found")
+                        return
+                }</span>
+                <span class="cov0" title="0">writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
+                return</span>
+        }
+
+        <span class="cov8" title="1">writeSuccess(w, map[string]string{"message": "backend removed successfully"})</span>
+}
+
+// updateBackend handles PATCH /api/v1/backends/:pool/:backend
+func (s *Server) updateBackend(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodPatch </span><span class="cov0" title="0">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only PATCH is allowed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">poolName, backendID := extractBackendID(r.URL.Path)
+        if poolName == "" || backendID == "" </span><span class="cov8" title="1">{
+                writeError(w, http.StatusBadRequest, "INVALID_PATH", "pool and backend IDs are required")
+                return
+        }</span>
+
+        <span class="cov8" title="1">if s.poolManager == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusNotFound, "POOL_NOT_FOUND", "pool not found")
+                return
+        }</span>
+
+        <span class="cov8" title="1">pool := s.poolManager.GetPool(poolName)
+        if pool == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusNotFound, "POOL_NOT_FOUND", "pool not found: "+poolName)
+                return
+        }</span>
+
+        <span class="cov8" title="1">b := pool.GetBackend(backendID)
+        if b == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusNotFound, "BACKEND_NOT_FOUND", "backend not found: "+backendID)
+                return
+        }</span>
+
+        <span class="cov8" title="1">var req UpdateBackendRequest
+        if err := readJSONBody(r, &amp;req); err != nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusBadRequest, "INVALID_JSON", "invalid JSON")
+                return
+        }</span>
+
+        <span class="cov8" title="1">if req.Weight != nil </span><span class="cov8" title="1">{
+                if *req.Weight &lt; 0 || *req.Weight &gt; 1000 </span><span class="cov8" title="1">{
+                        writeError(w, http.StatusBadRequest, "INVALID_WEIGHT", "weight must be between 0 and 1000")
+                        return
+                }</span>
+        }
+
+        // Raft mode: propose the backend update through consensus
+        <span class="cov8" title="1">if s.raftProposer != nil </span><span class="cov8" title="1">{
+                backendJSON, err := json.Marshal(map[string]any{
+                        "id":      backendID,
+                        "address": b.Address,
+                        "weight":  b.GetWeight(),
+                })
+                if err != nil </span><span class="cov0" title="0">{
+                        writeError(w, http.StatusInternalServerError, "MARSHAL_ERROR", "failed to marshal backend data")
+                        return
+                }</span>
+                <span class="cov8" title="1">if req.Weight != nil </span><span class="cov8" title="1">{
+                        backendJSON, err = json.Marshal(map[string]any{
+                                "id":      backendID,
+                                "address": b.Address,
+                                "weight":  *req.Weight,
+                        })
+                        if err != nil </span><span class="cov0" title="0">{
+                                writeError(w, http.StatusInternalServerError, "MARSHAL_ERROR", "failed to marshal backend data")
+                                return
+                        }</span>
+                }
+                <span class="cov8" title="1">if err := s.raftProposer.ProposeUpdateBackend(poolName, backendJSON); err != nil </span><span class="cov8" title="1">{
+                        writeError(w, http.StatusConflict, "RAFT_ERROR",
+                                "failed to propose backend update")
+                        return
+                }</span>
+                <span class="cov8" title="1">writeSuccess(w, map[string]string{
+                        "status":  "proposed",
+                        "pool":    poolName,
+                        "backend": backendID,
+                })
+                return</span>
+        }
+
+        // Standalone mode: direct update
+        <span class="cov8" title="1">if req.Weight != nil </span><span class="cov8" title="1">{
+                b.SetWeight(*req.Weight)
+        }</span>
+        <span class="cov8" title="1">if req.MaxConns != nil </span><span class="cov8" title="1">{
+                if *req.MaxConns &lt; 0 </span><span class="cov8" title="1">{
+                        writeError(w, http.StatusBadRequest, "INVALID_MAX_CONNS", "max connections must be non-negative")
+                        return
+                }</span>
+                <span class="cov8" title="1">b.SetMaxConns(*req.MaxConns)</span>
+        }
+
+        <span class="cov8" title="1">writeSuccess(w, backendToInfo(b))</span>
+}
+
+// drainBackend handles POST /api/v1/backends/:pool/:backend/drain
+func (s *Server) drainBackend(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodPost </span><span class="cov8" title="1">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only POST is allowed")
+                return
+        }</span>
+
+        // Extract pool and backend from path like /api/v1/backends/:pool/:backend/drain
+        <span class="cov8" title="1">path := strings.Trim(r.URL.Path, "/")
+        parts := strings.Split(path, "/")
+        if len(parts) &lt; 6 </span><span class="cov8" title="1">{
+                writeError(w, http.StatusBadRequest, "INVALID_PATH", "pool and backend IDs are required")
+                return
+        }</span>
+
+        <span class="cov8" title="1">poolName := parts[3]
+        backendID := parts[4]
+
+        if s.poolManager == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusNotFound, "POOL_NOT_FOUND", "pool not found")
+                return
+        }</span>
+
+        <span class="cov8" title="1">pool := s.poolManager.GetPool(poolName)
+        if pool == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusNotFound, "POOL_NOT_FOUND", "pool not found: "+poolName)
+                return
+        }</span>
+
+        <span class="cov8" title="1">if err := pool.DrainBackend(backendID); err != nil </span><span class="cov8" title="1">{
+                if errors.Is(err, errors.ErrBackendNotFound) </span><span class="cov8" title="1">{
+                        writeError(w, http.StatusNotFound, "BACKEND_NOT_FOUND", "backend not found")
+                        return
+                }</span>
+                <span class="cov0" title="0">writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
+                return</span>
+        }
+
+        <span class="cov8" title="1">writeSuccess(w, map[string]string{"message": "backend drained successfully"})</span>
+}
+
+// getBackendDetail handles GET /api/v1/backends/:pool/:backend
+func (s *Server) getBackendDetail(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodGet </span><span class="cov8" title="1">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only GET is allowed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">poolName, backendID := extractBackendID(r.URL.Path)
+        if poolName == "" || backendID == "" </span><span class="cov8" title="1">{
+                writeError(w, http.StatusBadRequest, "INVALID_PATH", "pool and backend IDs are required")
+                return
+        }</span>
+
+        <span class="cov8" title="1">if s.poolManager == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusNotFound, "POOL_NOT_FOUND", "pool not found")
+                return
+        }</span>
+
+        <span class="cov8" title="1">pool := s.poolManager.GetPool(poolName)
+        if pool == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusNotFound, "POOL_NOT_FOUND", "pool not found: "+poolName)
+                return
+        }</span>
+
+        <span class="cov8" title="1">b := pool.GetBackend(backendID)
+        if b == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusNotFound, "BACKEND_NOT_FOUND", "backend not found: "+backendID)
+                return
+        }</span>
+
+        <span class="cov8" title="1">writeSuccess(w, backendToInfo(b))</span>
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">// Package admin provides the Admin API HTTP handlers for OpenLoadBalancer.
+package admin
+
+import (
+        "encoding/json"
+        "io"
+        "log"
+        "net/http"
+        "strings"
+        "time"
+
+        "github.com/openloadbalancer/olb/internal/backend"
+)
+
+// writeError writes an error response with the given status code and error details.
+func writeError(w http.ResponseWriter, status int, code, message string) <span class="cov8" title="1">{
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(status)
+        resp := ErrorResponse(code, message)
+        if err := json.NewEncoder(w).Encode(resp); err != nil </span><span class="cov8" title="1">{
+                log.Printf("admin: failed to encode error response: %v", err)
+        }</span>
+}
+
+// writeSuccess writes a success response with data.
+func writeSuccess(w http.ResponseWriter, data any) <span class="cov8" title="1">{
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusOK)
+        resp := SuccessResponse(data)
+        if err := json.NewEncoder(w).Encode(resp); err != nil </span><span class="cov8" title="1">{
+                log.Printf("admin: failed to encode success response: %v", err)
+        }</span>
+}
+
+// readBody reads and returns the request body, limited to 1MB.
+func readBody(r *http.Request) ([]byte, error) <span class="cov8" title="1">{
+        defer r.Body.Close()
+        return io.ReadAll(io.LimitReader(r.Body, 1&lt;&lt;20))
+}</span>
+
+// readJSONBody reads a JSON request body with size limiting and strict decoding.
+// It limits the body to 1MB and disallows unknown fields.
+func readJSONBody(r *http.Request, dst any) error <span class="cov8" title="1">{
+        defer r.Body.Close()
+        dec := json.NewDecoder(io.LimitReader(r.Body, 1&lt;&lt;20))
+        dec.DisallowUnknownFields()
+        return dec.Decode(dst)
+}</span>
+
+// Helper type for extended backend info
+type BackendInfo struct {
+        ID            string            `json:"id"`
+        Address       string            `json:"address"`
+        Weight        int32             `json:"weight"`
+        MaxConns      int32             `json:"max_conns"`
+        State         string            `json:"state"`
+        Healthy       bool              `json:"healthy"`
+        ActiveConns   int64             `json:"active_conns"`
+        TotalRequests int64             `json:"total_requests"`
+        TotalErrors   int64             `json:"total_errors"`
+        TotalBytes    int64             `json:"total_bytes"`
+        AvgLatency    string            `json:"avg_latency"`
+        LastLatency   string            `json:"last_latency"`
+        Metadata      map[string]string `json:"metadata,omitempty"`
+}
+
+// Helper type for extended pool info
+type PoolInfo struct {
+        Name        string           `json:"name"`
+        Algorithm   string           `json:"algorithm"`
+        Backends    []BackendInfo    `json:"backends"`
+        Total       int              `json:"total"`
+        Healthy     int              `json:"healthy"`
+        HealthCheck *HealthCheckInfo `json:"health_check,omitempty"`
+}
+
+// HealthCheckInfo contains health check configuration.
+type HealthCheckInfo struct {
+        Enabled  bool          `json:"enabled"`
+        Interval time.Duration `json:"interval"`
+        Timeout  time.Duration `json:"timeout"`
+        Path     string        `json:"path,omitempty"`
+        Port     int           `json:"port,omitempty"`
+}
+
+// Helper type for health status with extended info
+type HealthStatusInfo struct {
+        BackendID string    `json:"backend_id"`
+        Status    string    `json:"status"`
+        LastCheck time.Time `json:"last_check,omitempty"`
+        Latency   string    `json:"latency,omitempty"`
+        Error     string    `json:"error,omitempty"`
+}
+
+// UpdateBackendRequest for updating backend settings.
+type UpdateBackendRequest struct {
+        Weight   *int32 `json:"weight,omitempty"`
+        MaxConns *int32 `json:"max_conns,omitempty"`
+}
+
+// extractPoolName extracts the pool name from a URL path like /api/v1/backends/:pool
+func extractPoolName(path string) string <span class="cov8" title="1">{
+        parts := strings.Split(strings.Trim(path, "/"), "/")
+        // Path format: api/v1/backends/:pool
+        if len(parts) &gt;= 4 &amp;&amp; parts[0] == "api" &amp;&amp; parts[1] == "v1" &amp;&amp; parts[2] == "backends" </span><span class="cov8" title="1">{
+                return parts[3]
+        }</span>
+        <span class="cov8" title="1">return ""</span>
+}
+
+// extractBackendID extracts pool and backend IDs from a URL path like /api/v1/backends/:pool/:backend
+func extractBackendID(path string) (pool, backend string) <span class="cov8" title="1">{
+        parts := strings.Split(strings.Trim(path, "/"), "/")
+        // Path format: api/v1/backends/:pool/:backend
+        if len(parts) &gt;= 5 &amp;&amp; parts[0] == "api" &amp;&amp; parts[1] == "v1" &amp;&amp; parts[2] == "backends" </span><span class="cov8" title="1">{
+                return parts[3], parts[4]
+        }</span>
+        <span class="cov8" title="1">return "", ""</span>
+}
+
+// poolToInfo converts a Pool to PoolInfo.
+func poolToInfo(pool *backend.Pool) PoolInfo <span class="cov8" title="1">{
+        backends := pool.GetAllBackends()
+        response := PoolInfo{
+                Name:      pool.Name,
+                Algorithm: pool.Algorithm,
+                Backends:  make([]BackendInfo, 0, len(backends)),
+                Total:     len(backends),
+        }
+
+        for _, b := range backends </span><span class="cov8" title="1">{
+                response.Backends = append(response.Backends, backendToInfo(b))
+                if b.IsHealthy() </span><span class="cov8" title="1">{
+                        response.Healthy++
+                }</span>
+        }
+
+        <span class="cov8" title="1">if pool.HealthCheck != nil </span><span class="cov8" title="1">{
+                response.HealthCheck = &amp;HealthCheckInfo{
+                        Enabled:  pool.HealthCheck.Enabled,
+                        Interval: pool.HealthCheck.Interval,
+                        Timeout:  pool.HealthCheck.Timeout,
+                        Path:     pool.HealthCheck.Path,
+                        Port:     pool.HealthCheck.Port,
+                }
+        }</span>
+
+        <span class="cov8" title="1">return response</span>
+}
+
+// backendToInfo converts a Backend to BackendInfo.
+func backendToInfo(b *backend.Backend) BackendInfo <span class="cov8" title="1">{
+        return BackendInfo{
+                ID:            b.ID,
+                Address:       b.Address,
+                Weight:        b.GetWeight(),
+                MaxConns:      b.GetMaxConns(),
+                State:         b.State().String(),
+                Healthy:       b.IsHealthy(),
+                ActiveConns:   b.ActiveConns(),
+                TotalRequests: b.TotalRequests(),
+                TotalErrors:   b.TotalErrors(),
+                TotalBytes:    b.TotalBytes(),
+                AvgLatency:    b.AvgLatency().String(),
+                LastLatency:   b.LastLatency().String(),
+                Metadata:      b.GetAllMetadata(),
+        }
+}</span>
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">package admin
+
+import (
+        "net/http"
+        "strings"
+)
+
+// listPools handles GET /api/v1/pools
+func (s *Server) listPools(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodGet </span><span class="cov8" title="1">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only GET is allowed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">if s.poolManager == nil </span><span class="cov8" title="1">{
+                writeSuccess(w, []PoolInfo{})
+                return
+        }</span>
+
+        <span class="cov8" title="1">pools := s.poolManager.GetAllPools()
+        response := make([]PoolInfo, 0, len(pools))
+        for _, pool := range pools </span><span class="cov8" title="1">{
+                response = append(response, poolToInfo(pool))
+        }</span>
+
+        <span class="cov8" title="1">writeSuccess(w, response)</span>
+}
+
+// handlePoolDetail handles requests to /api/v1/pools/...
+func (s *Server) handlePoolDetail(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        path := r.URL.Path
+        trimmed := strings.Trim(path, "/")
+        parts := strings.Split(trimmed, "/")
+
+        // /api/v1/pools/:pool (4 parts)
+        if len(parts) == 4 </span><span class="cov8" title="1">{
+                switch r.Method </span>{
+                case http.MethodGet:<span class="cov8" title="1">
+                        s.getPoolByName(w, r)</span>
+                default:<span class="cov8" title="1">
+                        writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")</span>
+                }
+        } else<span class="cov8" title="1"> {
+                writeError(w, http.StatusBadRequest, "INVALID_PATH", "invalid path")
+        }</span>
+}
+
+// getPoolByName handles GET /api/v1/pools/:pool
+func (s *Server) getPoolByName(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+        if len(parts) &lt; 4 </span><span class="cov8" title="1">{
+                writeError(w, http.StatusBadRequest, "INVALID_POOL", "pool name is required")
+                return
+        }</span>
+        <span class="cov8" title="1">poolName := parts[3]
+
+        if s.poolManager == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusNotFound, "POOL_NOT_FOUND", "pool not found")
+                return
+        }</span>
+
+        <span class="cov8" title="1">pool := s.poolManager.GetPool(poolName)
+        if pool == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusNotFound, "POOL_NOT_FOUND", "pool not found: "+poolName)
+                return
+        }</span>
+
+        <span class="cov8" title="1">writeSuccess(w, poolToInfo(pool))</span>
+}
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">package admin
+
+import (
+        "fmt"
+        "log/slog"
+        "net/http"
+        "time"
+)
+
+// listRoutes handles GET /api/v1/routes
+func (s *Server) listRoutes(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodGet </span><span class="cov8" title="1">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only GET is allowed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">if s.router == nil </span><span class="cov8" title="1">{
+                writeSuccess(w, []Route{})
+                return
+        }</span>
+
+        <span class="cov8" title="1">routes := s.router.Routes()
+        response := make([]Route, 0, len(routes))
+        for _, route := range routes </span><span class="cov8" title="1">{
+                response = append(response, Route{
+                        Name:        route.Name,
+                        Host:        route.Host,
+                        Path:        route.Path,
+                        Methods:     route.Methods,
+                        Headers:     route.Headers,
+                        BackendPool: route.BackendPool,
+                        Priority:    route.Priority,
+                })
+        }</span>
+
+        <span class="cov8" title="1">writeSuccess(w, response)</span>
+}
+
+// getHealthStatus handles GET /api/v1/health
+func (s *Server) getHealthStatus(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodGet </span><span class="cov8" title="1">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only GET is allowed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">s.mu.RLock()
+        hc := s.healthChecker
+        s.mu.RUnlock()
+        if hc == nil </span><span class="cov8" title="1">{
+                writeSuccess(w, []HealthStatusInfo{})
+                return
+        }</span>
+
+        <span class="cov8" title="1">statuses := hc.ListStatuses()
+        response := make([]HealthStatusInfo, 0, len(statuses))
+
+        for backendID, status := range statuses </span><span class="cov8" title="1">{
+                hcs := HealthStatusInfo{
+                        BackendID: backendID,
+                        Status:    status.String(),
+                }
+
+                // Get last result if available
+                if result := hc.GetResult(backendID); result != nil </span><span class="cov8" title="1">{
+                        hcs.LastCheck = result.Timestamp
+                        if result.Latency &gt; 0 </span><span class="cov8" title="1">{
+                                hcs.Latency = result.Latency.String()
+                        }</span>
+                        <span class="cov8" title="1">if result.Error != nil </span><span class="cov8" title="1">{
+                                hcs.Error = "unhealthy"
+                        }</span>
+                }
+
+                <span class="cov8" title="1">response = append(response, hcs)</span>
+        }
+
+        <span class="cov8" title="1">writeSuccess(w, response)</span>
+}
+
+// getMetricsJSON handles GET /api/v1/metrics
+func (s *Server) getMetricsJSON(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodGet </span><span class="cov8" title="1">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only GET is allowed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">if s.metrics == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusServiceUnavailable, "NOT_AVAILABLE", "metrics not available")
+                return
+        }</span>
+
+        <span class="cov8" title="1">metrics := s.metrics.GetAllMetrics()
+        writeSuccess(w, metrics)</span>
+}
+
+// getMetricsPrometheus handles GET /metrics
+func (s *Server) getMetricsPrometheus(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodGet </span><span class="cov8" title="1">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only GET is allowed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">if s.metrics == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusServiceUnavailable, "NOT_AVAILABLE", "metrics not available")
+                return
+        }</span>
+
+        <span class="cov8" title="1">prometheusOutput := s.metrics.PrometheusFormat()
+        w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+        if _, err := w.Write([]byte(prometheusOutput)); err != nil </span><span class="cov8" title="1">{
+                slog.Warn("Failed to write Prometheus metrics response", "error", err)
+        }</span>
+}
+
+// getCertificates handles GET /api/v1/certificates
+func (s *Server) getCertificates(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodGet </span><span class="cov8" title="1">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only GET is allowed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">if s.certLister == nil </span><span class="cov8" title="1">{
+                writeSuccess(w, []CertInfoView{})
+                return
+        }</span>
+
+        <span class="cov8" title="1">certs := s.certLister.ListCertificates()
+        writeSuccess(w, certs)</span>
+}
+
+// getWAFStatus handles GET /api/v1/waf/status
+func (s *Server) getWAFStatus(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodGet </span><span class="cov8" title="1">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only GET is allowed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">if s.wafStatus == nil </span><span class="cov8" title="1">{
+                writeSuccess(w, map[string]any{"enabled": false})
+                return
+        }</span>
+
+        <span class="cov8" title="1">writeSuccess(w, s.wafStatus())</span>
+}
+
+// getMiddlewareStatus handles GET /api/v1/middleware/status
+func (s *Server) getMiddlewareStatus(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodGet </span><span class="cov8" title="1">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only GET is allowed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">if s.middlewareStatus == nil </span><span class="cov0" title="0">{
+                writeSuccess(w, []MiddlewareStatusItem{})
+                return
+        }</span>
+
+        <span class="cov8" title="1">writeSuccess(w, s.middlewareStatus())</span>
+}
+
+// getEvents handles GET /api/v1/events
+func (s *Server) getEvents(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodGet </span><span class="cov8" title="1">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only GET is allowed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">events := make([]EventItem, 0)
+
+        // Collect backend health events
+        s.mu.RLock()
+        hc := s.healthChecker
+        s.mu.RUnlock()
+        if hc != nil &amp;&amp; s.poolManager != nil </span><span class="cov8" title="1">{
+                pools := s.poolManager.GetAllPools()
+                for _, pool := range pools </span><span class="cov8" title="1">{
+                        backends := pool.GetAllBackends()
+                        healthy := 0
+                        for _, b := range backends </span><span class="cov8" title="1">{
+                                if b.IsHealthy() </span><span class="cov8" title="1">{
+                                        healthy++
+                                }</span>
+                                // Check individual backend health result
+                                <span class="cov8" title="1">result := hc.GetResult(b.ID)
+                                if result != nil </span><span class="cov8" title="1">{
+                                        eventType := "success"
+                                        msg := "healthy"
+                                        if !result.Healthy </span><span class="cov8" title="1">{
+                                                eventType = "warning"
+                                                if result.Error != nil </span><span class="cov8" title="1">{
+                                                        msg = result.Error.Error()
+                                                }</span> else<span class="cov8" title="1"> {
+                                                        msg = "unhealthy"
+                                                }</span>
+                                        }
+                                        <span class="cov8" title="1">events = append(events, EventItem{
+                                                ID:        "health-" + b.ID,
+                                                Type:      eventType,
+                                                Message:   "Backend " + b.ID + " (" + b.Address + ") is " + msg,
+                                                Timestamp: result.Timestamp.Format(time.RFC3339),
+                                        })</span>
+                                }
+                        }
+
+                        // Pool summary
+                        <span class="cov8" title="1">if len(backends) &gt; 0 &amp;&amp; healthy &lt; len(backends) </span><span class="cov8" title="1">{
+                                events = append(events, EventItem{
+                                        ID:        "pool-" + pool.Name,
+                                        Type:      "warning",
+                                        Message:   fmt.Sprintf("Pool %s: %d/%d backends healthy", pool.Name, healthy, len(backends)),
+                                        Timestamp: time.Now().Format(time.RFC3339),
+                                })
+                        }</span>
+                }
+        }
+
+        // Add system uptime event
+        <span class="cov8" title="1">events = append(events, EventItem{
+                ID:        "system-start",
+                Type:      "info",
+                Message:   "System started",
+                Timestamp: s.startTime.Format(time.RFC3339),
+        })
+
+        writeSuccess(w, events)</span>
+}
+</pre>
+		
+		<pre class="file" id="file7" style="display: none">package admin
+
+import (
+        "context"
+        "encoding/json"
+        "fmt"
+        "net/http"
+        "sync"
+        "time"
+
+        "github.com/openloadbalancer/olb/internal/health"
+        "github.com/openloadbalancer/olb/pkg/version"
+)
+
+var (
+        lastReloadMu      sync.Mutex
+        lastReloadTime    time.Time
+        minReloadInterval = 30 * time.Second
+)
+
+// getVersion handles GET /api/v1/version
+func (s *Server) getVersion(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodGet </span><span class="cov8" title="1">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only GET is allowed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">writeSuccess(w, map[string]string{
+                "version":    version.Version,
+                "commit":     version.Commit,
+                "build_date": version.Date,
+                "go_version": version.GoVersion,
+                "platform":   version.Platform,
+        })</span>
+}
+
+// getSystemInfo handles GET /api/v1/system/info
+func (s *Server) getSystemInfo(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodGet </span><span class="cov8" title="1">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only GET is allowed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">info := SystemInfo{
+                Version:   version.Version,
+                Commit:    version.Commit,
+                BuildDate: version.Date,
+                GoVersion: version.GoVersion,
+                Uptime:    time.Since(s.startTime).String(),
+                State:     s.GetState(),
+        }
+
+        writeSuccess(w, info)</span>
+}
+
+// getSystemHealth handles GET /api/v1/system/health
+func (s *Server) getSystemHealth(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodGet </span><span class="cov8" title="1">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only GET is allowed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">status := "healthy"
+        checks := make(map[string]Check)
+
+        // Check router
+        if s.router != nil </span><span class="cov8" title="1">{
+                routes := s.router.Routes()
+                if len(routes) &gt; 0 </span><span class="cov8" title="1">{
+                        checks["router"] = Check{Status: "ok", Message: "router operational"}
+                }</span> else<span class="cov8" title="1"> {
+                        checks["router"] = Check{Status: "warning", Message: "no routes configured"}
+                }</span>
+        } else<span class="cov8" title="1"> {
+                checks["router"] = Check{Status: "error", Message: "router not available"}
+                status = "degraded"
+        }</span>
+
+        // Check pool manager
+        <span class="cov8" title="1">if s.poolManager != nil </span><span class="cov8" title="1">{
+                pools := s.poolManager.GetAllPools()
+                if len(pools) &gt; 0 </span><span class="cov8" title="1">{
+                        checks["pool_manager"] = Check{Status: "ok", Message: "pool manager operational"}
+                }</span> else<span class="cov8" title="1"> {
+                        checks["pool_manager"] = Check{Status: "warning", Message: "no pools configured"}
+                }</span>
+        } else<span class="cov8" title="1"> {
+                checks["pool_manager"] = Check{Status: "error", Message: "pool manager not available"}
+                status = "degraded"
+        }</span>
+
+        // Check health checker
+        <span class="cov8" title="1">s.mu.RLock()
+        hc := s.healthChecker
+        s.mu.RUnlock()
+        if hc != nil </span><span class="cov8" title="1">{
+                statuses := hc.ListStatuses()
+                healthyCount := 0
+                for _, st := range statuses </span><span class="cov8" title="1">{
+                        if st == health.StatusHealthy </span><span class="cov8" title="1">{
+                                healthyCount++
+                        }</span>
+                }
+                <span class="cov8" title="1">checks["health_checker"] = Check{
+                        Status:  "ok",
+                        Message: "health checker operational",
+                }
+                checks["backends"] = Check{
+                        Status:  "ok",
+                        Message: "healthy",
+                        Count:   healthyCount,
+                        Total:   len(statuses),
+                }</span>
+        } else<span class="cov8" title="1"> {
+                checks["health_checker"] = Check{Status: "warning", Message: "health checker not available"}
+        }</span>
+
+        <span class="cov8" title="1">healthResp := HealthStatus{
+                Status:    status,
+                Checks:    checks,
+                Timestamp: time.Now(),
+        }
+
+        writeSuccess(w, healthResp)</span>
+}
+
+// reloadConfig handles POST /api/v1/system/reload
+func (s *Server) reloadConfig(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodPost </span><span class="cov8" title="1">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only POST is allowed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">if s.onReload == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusServiceUnavailable, "NOT_AVAILABLE", "reload callback not configured")
+                return
+        }</span>
+
+        // Enforce reload cooldown to prevent reload storms
+        <span class="cov8" title="1">lastReloadMu.Lock()
+        if time.Since(lastReloadTime) &lt; minReloadInterval </span><span class="cov8" title="1">{
+                lastReloadMu.Unlock()
+                writeError(w, http.StatusTooManyRequests, "RELOAD_COOLDOWN",
+                        fmt.Sprintf("reload cooldown: please wait %v between reloads", minReloadInterval))
+                return
+        }</span>
+        <span class="cov8" title="1">lastReloadTime = time.Now()
+        lastReloadMu.Unlock()
+
+        err := s.circuitBreaker.Execute(r.Context(), func(ctx context.Context) error </span><span class="cov8" title="1">{
+                return s.onReload()
+        }</span>)
+        <span class="cov8" title="1">if err != nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusServiceUnavailable, "RELOAD_FAILED", "configuration reload failed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">writeSuccess(w, map[string]string{"message": "configuration reloaded successfully"})</span>
+}
+
+// handleConfig handles requests to /api/v1/config
+func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        switch r.Method </span>{
+        case http.MethodGet:<span class="cov8" title="1">
+                s.getConfig(w, r)</span>
+        case http.MethodPut:<span class="cov8" title="1">
+                s.updateConfig(w, r)</span>
+        default:<span class="cov8" title="1">
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED",
+                        "only GET and PUT are allowed")</span>
+        }
+}
+
+// getConfig handles GET /api/v1/config
+func (s *Server) getConfig(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if s.configGetter == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusServiceUnavailable, "NOT_AVAILABLE", "config provider not available")
+                return
+        }</span>
+
+        <span class="cov8" title="1">cfg := s.configGetter.GetConfig()
+        sanitized, err := sanitizeConfigForAPI(cfg)
+        if err != nil </span><span class="cov8" title="1">{
+                // If sanitization fails (unexpected), fall back to original.
+                // The json:"-" tags still provide a baseline level of protection.
+                writeSuccess(w, cfg)
+                return
+        }</span>
+        <span class="cov8" title="1">writeSuccess(w, sanitized)</span>
+}
+
+// secretJSONKeys lists well-known JSON key names that must never appear in
+// the config API response. This provides defense-in-depth: even if a
+// developer forgets to add json:"-" to a secret field, it will be stripped
+// here. The keys match the json tag names used in config structs.
+var secretJSONKeys = map[string]bool{
+        // Admin credentials
+        "password":     true,
+        "bearer_token": true,
+        "mcp_token":    true,
+        "username":     true, // admin username is also sensitive
+        // Auth secrets
+        "secret":        true,
+        "client_secret": true,
+        "shared_secret": true,
+        "token":         true,
+        // Key material (map values contain credentials)
+        "users": true, // BasicAuth users map (username -&gt; hashed password)
+        "keys":  true, // APIKey keys map (key_id -&gt; api_key)
+}
+
+// sanitizeConfigForAPI serializes the config to JSON and then strips any
+// well-known secret fields. This is a defense-in-depth measure: the primary
+// protection is json:"-" tags on config struct fields, but this prevents
+// accidental leakage if a tag is forgotten.
+func sanitizeConfigForAPI(cfg any) (any, error) <span class="cov8" title="1">{
+        // Serialize to JSON first (respects json:"-" tags)
+        raw, err := json.Marshal(cfg)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+
+        // Deserialize into a generic map for recursive stripping
+        <span class="cov8" title="1">var generic any
+        if err := json.Unmarshal(raw, &amp;generic); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">stripSecrets(generic)
+        return generic, nil</span>
+}
+
+// stripSecrets recursively walks a JSON-derived value and removes keys that
+// match known secret field names.
+func stripSecrets(v any) <span class="cov8" title="1">{
+        m, ok := v.(map[string]any)
+        if !ok </span><span class="cov8" title="1">{
+                return
+        }</span>
+        <span class="cov8" title="1">for key, val := range m </span><span class="cov8" title="1">{
+                if secretJSONKeys[key] </span><span class="cov8" title="1">{
+                        delete(m, key)
+                        continue</span>
+                }
+                <span class="cov8" title="1">stripSecrets(val)
+                // Also recurse into arrays of objects
+                if arr, ok := val.([]any); ok </span><span class="cov8" title="1">{
+                        for _, elem := range arr </span><span class="cov8" title="1">{
+                                stripSecrets(elem)
+                        }</span>
+                }
+        }
+}
+
+// updateConfig handles PUT /api/v1/config
+func (s *Server) updateConfig(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if s.raftProposer != nil </span><span class="cov8" title="1">{
+                // Clustered mode: validate config locally before proposing through Raft
+                body, err := readBody(r)
+                if err != nil </span><span class="cov0" title="0">{
+                        writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
+                        return
+                }</span>
+                // Validate the proposed config before proposing to Raft
+                <span class="cov8" title="1">if s.configValidator != nil </span><span class="cov8" title="1">{
+                        if valErr := s.configValidator(body); valErr != nil </span><span class="cov8" title="1">{
+                                writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", valErr.Error())
+                                return
+                        }</span>
+                }
+                <span class="cov8" title="1">if err := s.raftProposer.ProposeSetConfig(body); err != nil </span><span class="cov8" title="1">{
+                        writeError(w, http.StatusConflict, "RAFT_ERROR",
+                                "failed to propose config change")
+                        return
+                }</span>
+                <span class="cov8" title="1">writeSuccess(w, map[string]string{"status": "proposed"})
+                return</span>
+        }
+
+        // Standalone mode: trigger a reload from disk
+        <span class="cov8" title="1">if s.onReload == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusServiceUnavailable, "NOT_AVAILABLE",
+                        "no reload handler available")
+                return
+        }</span>
+
+        // Enforce reload cooldown to prevent reload storms
+        <span class="cov8" title="1">lastReloadMu.Lock()
+        if time.Since(lastReloadTime) &lt; minReloadInterval </span><span class="cov8" title="1">{
+                lastReloadMu.Unlock()
+                writeError(w, http.StatusTooManyRequests, "RELOAD_COOLDOWN",
+                        fmt.Sprintf("reload cooldown: please wait %v between reloads", minReloadInterval))
+                return
+        }</span>
+        <span class="cov8" title="1">lastReloadTime = time.Now()
+        lastReloadMu.Unlock()
+
+        err := s.circuitBreaker.Execute(r.Context(), func(ctx context.Context) error </span><span class="cov8" title="1">{
+                return s.onReload()
+        }</span>)
+        <span class="cov8" title="1">if err != nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusServiceUnavailable, "RELOAD_FAILED", "configuration reload failed")
+                return
+        }</span>
+        <span class="cov8" title="1">writeSuccess(w, map[string]string{"status": "reloaded"})</span>
+}
+
+// rotateTokenRequest is the request body for token rotation.
+type rotateTokenRequest struct {
+        OldToken string `json:"old_token"`
+        NewToken string `json:"new_token"`
+}
+
+// rotateToken handles POST /api/v1/auth/rotate-token.
+// It allows operators to rotate bearer tokens without restarting the server.
+// Requires admin authentication.
+func (s *Server) rotateToken(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        if r.Method != http.MethodPost </span><span class="cov8" title="1">{
+                writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only POST is allowed")
+                return
+        }</span>
+
+        <span class="cov8" title="1">if s.config == nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusServiceUnavailable, "NOT_AVAILABLE", "authentication not configured")
+                return
+        }</span>
+
+        <span class="cov8" title="1">var req rotateTokenRequest
+        if err := json.NewDecoder(r.Body).Decode(&amp;req); err != nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
+                return
+        }</span>
+
+        <span class="cov8" title="1">if err := s.config.RotateBearerToken(req.OldToken, req.NewToken); err != nil </span><span class="cov8" title="1">{
+                writeError(w, http.StatusBadRequest, "ROTATION_FAILED", err.Error())
+                return
+        }</span>
+
+        <span class="cov8" title="1">writeSuccess(w, map[string]string{"message": "bearer token rotated successfully"})</span>
+}
+</pre>
+		
+		<pre class="file" id="file8" style="display: none">package admin
+
+import (
+        "encoding/json"
+        "net/http"
+)
+
+// isWriteMethod returns true for HTTP methods that modify state.
+func isWriteMethod(method string) bool <span class="cov8" title="1">{
+        switch method </span>{
+        case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:<span class="cov8" title="1">
+                return true</span>
+        default:<span class="cov8" title="1">
+                return false</span>
+        }
+}
+
+// requireAdminRole is middleware that rejects state-changing requests from
+// users who do not have the admin role. Read-only requests (GET, HEAD, OPTIONS)
+// are always allowed through — the role check only applies to write methods.
+//
+// The role is read from the request context, set by AuthMiddleware during
+// authentication. When no role is present (e.g., auth is disabled or the
+// request is unauthenticated), RoleAdmin is assumed for backward compatibility.
+func requireAdminRole(next http.Handler) http.Handler <span class="cov8" title="1">{
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) </span><span class="cov8" title="1">{
+                if isWriteMethod(r.Method) </span><span class="cov8" title="1">{
+                        role := RoleFromContext(r.Context())
+                        if role != RoleAdmin </span><span class="cov8" title="1">{
+                                w.Header().Set("Content-Type", "application/json")
+                                w.WriteHeader(http.StatusForbidden)
+                                resp := ErrorResponse("FORBIDDEN", "admin role required for this operation")
+                                if err := json.NewEncoder(w).Encode(resp); err != nil </span>{<span class="cov0" title="0">
+                                        // Response already started; nothing more we can do.
+                                }</span>
+                                <span class="cov8" title="1">return</span>
+                        }
+                }
+                <span class="cov8" title="1">next.ServeHTTP(w, r)</span>
+        })
+}
+</pre>
+		
+		<pre class="file" id="file9" style="display: none">// Package admin provides the Admin API server for OpenLoadBalancer.
+package admin
+
+import (
+        "bytes"
+        "context"
+        "encoding/json"
+        "errors"
+        "fmt"
+        "log"
+        "net"
+        "net/http"
+        "strconv"
+        "strings"
+        "sync"
+        "time"
+
+        "github.com/openloadbalancer/olb/internal/backend"
+        "github.com/openloadbalancer/olb/internal/health"
+        "github.com/openloadbalancer/olb/internal/metrics"
+        "github.com/openloadbalancer/olb/internal/middleware/csrf"
+        "github.com/openloadbalancer/olb/internal/middleware/secureheaders"
+        "github.com/openloadbalancer/olb/internal/router"
+)
+
+// RaftProposer proposes configuration changes through Raft consensus.
+// When non-nil, the admin server uses this to replicate state changes
+// across cluster nodes instead of applying them locally.
+type RaftProposer interface {
+        // ProposeSetConfig proposes a full config replacement.
+        ProposeSetConfig(configJSON []byte) error
+        // ProposeUpdateBackend proposes a backend upsert in a pool.
+        ProposeUpdateBackend(pool string, backendJSON []byte) error
+        // ProposeDeleteBackend proposes removing a backend from a pool.
+        ProposeDeleteBackend(pool, backendID string) error
+}
+
+// ClusterAdmin is the interface for cluster management operations.
+// It is optional and may be nil if clustering is not enabled.
+type ClusterAdmin interface {
+        RegisterAdminEndpoints(mux *http.ServeMux)
+}
+
+// ConfigGetter returns the current configuration as a serializable value.
+type ConfigGetter interface {
+        GetConfig() any
+}
+
+// CertLister lists loaded TLS certificates.
+type CertLister interface {
+        ListCertificates() []CertInfoView
+}
+
+// CertInfoView is a JSON-friendly view of a TLS certificate.
+type CertInfoView struct {
+        Names      []string `json:"names"`
+        Expiry     int64    `json:"expiry"`
+        IsWildcard bool     `json:"is_wildcard"`
+}
+
+// Server provides the Admin API HTTP server.
+type Server struct {
+        addr      string
+        server    *http.Server
+        config    *AuthConfig
+        startTime time.Time
+
+        // CSRF
+        csrfConfig *csrf.Config
+
+        // CORS
+        allowedOrigins []string
+
+        // TLS
+        tlsCertFile string
+        tlsKeyFile  string
+
+        // Component references (interfaces)
+        poolManager   PoolManager
+        router        Router
+        healthChecker HealthChecker
+        metrics       Metrics
+
+        // Optional components
+        clusterAdmin     ClusterAdmin // optional, nil if clustering not enabled
+        raftProposer     RaftProposer // optional, nil if clustering not enabled
+        configValidator  func([]byte) error // optional, validates config before Raft propose
+        webUI            http.Handler // optional, nil if web UI not available
+        configGetter     ConfigGetter // optional, for GET /api/v1/config
+        certLister       CertLister   // optional, for GET /api/v1/certificates
+        wafStatus        func() any   // optional WAF status provider
+        middlewareStatus func() any   // optional middleware status provider
+
+        // Callbacks
+        onReload func() error
+
+        // Internal
+        rateLimiter      *rateLimiter
+        rateLimitMaxReqs int
+        rateLimitWindow  string
+        circuitBreaker   *adminCircuitBreaker
+        eventBus         *eventBus
+
+        // State
+        mu    sync.RWMutex
+        state string
+}
+
+// Config holds the server configuration.
+type Config struct {
+        Address       string
+        Auth          *AuthConfig
+        PoolManager   PoolManager
+        Router        Router
+        HealthChecker HealthChecker
+        Metrics       Metrics
+        OnReload      func() error
+
+        // CORS configuration
+        // AllowedOrigins restricts which origins can make cross-origin requests.
+        // When empty, defaults to same-origin only (no CORS headers).
+        // Use "*" to allow all origins (credentials won't be sent).
+        // Use specific origins like ["https://admin.example.com"] for production.
+        AllowedOrigins []string
+
+        // CSRF configuration for browser-based admin access.
+        // When nil, CSRF protection is disabled (API-only mode).
+        // When provided with Enabled=true, state-changing endpoints require a CSRF token.
+        CSRFConfig *csrf.Config
+
+        // RateLimit configures the per-IP rate limiter for the admin API.
+        // MaxRequests is the maximum requests per Window duration (default: 60).
+        // Window is the rate limit window duration (default: "1m").
+        // When zero/empty, sensible defaults are used.
+        RateLimitMaxRequests int
+        RateLimitWindow      string
+
+        // Optional components
+        ClusterAdmin    ClusterAdmin       // optional cluster management
+        RaftProposer    RaftProposer       // optional, for Raft-based config changes
+        ConfigValidator func([]byte) error // optional, validates config before Raft propose
+        WebUI           http.Handler       // optional web UI handler
+        ConfigGetter ConfigGetter // optional config provider
+        CertLister   CertLister   // optional certificate lister
+        WAFStatus    func() any   // optional WAF status provider
+
+        // TLS configuration for the admin API (optional).
+        // When both CertFile and KeyFile are set, the admin server uses HTTPS.
+        TLSCertFile      string
+        TLSKeyFile       string
+        MiddlewareStatus func() any // optional middleware status provider
+}
+
+// PoolManager interface for backend pool operations.
+type PoolManager interface {
+        GetAllPools() []*backend.Pool
+        GetPool(name string) *backend.Pool
+}
+
+// Router interface for route operations.
+type Router interface {
+        Routes() []*router.Route
+}
+
+// HealthChecker interface for health check operations.
+type HealthChecker interface {
+        ListStatuses() map[string]health.Status
+        GetResult(backendID string) *health.Result
+}
+
+// Metrics interface for metrics operations.
+type Metrics interface {
+        GetAllMetrics() map[string]any
+        PrometheusFormat() string
+}
+
+// NewServer creates a new Admin API server.
+func NewServer(config *Config) (*Server, error) <span class="cov8" title="1">{
+        if config == nil </span><span class="cov8" title="1">{
+                return nil, errors.New("config is nil")
+        }</span>
+        <span class="cov8" title="1">if config.Address == "" </span><span class="cov8" title="1">{
+                return nil, errors.New("address is required")
+        }</span>
+
+        <span class="cov8" title="1">s := &amp;Server{
+                addr:             config.Address,
+                config:           config.Auth,
+                poolManager:      config.PoolManager,
+                router:           config.Router,
+                healthChecker:    config.HealthChecker,
+                metrics:          config.Metrics,
+                onReload:         config.OnReload,
+                clusterAdmin:     config.ClusterAdmin,
+                raftProposer:     config.RaftProposer,
+                configValidator:  config.ConfigValidator,
+                webUI:            config.WebUI,
+                configGetter:     config.ConfigGetter,
+                allowedOrigins:   config.AllowedOrigins,
+                certLister:       config.CertLister,
+                wafStatus:        config.WAFStatus,
+                middlewareStatus: config.MiddlewareStatus,
+                csrfConfig:       config.CSRFConfig,
+                rateLimitMaxReqs: config.RateLimitMaxRequests,
+                rateLimitWindow:  config.RateLimitWindow,
+                tlsCertFile:      config.TLSCertFile,
+                tlsKeyFile:       config.TLSKeyFile,
+                startTime:        time.Now(),
+                circuitBreaker:   newAdminCircuitBreaker(),
+                state:            "running",
+        }
+
+        if config.Auth == nil </span><span class="cov8" title="1">{
+                // Enforce localhost-only binding when no authentication is configured.
+                host, _, _ := net.SplitHostPort(config.Address)
+                if host != "" &amp;&amp; host != "localhost" &amp;&amp; host != "127.0.0.1" &amp;&amp; host != "::1" </span><span class="cov8" title="1">{
+                        return nil, fmt.Errorf("admin API at %s has no authentication configured — either configure auth or bind to localhost", config.Address)
+                }</span>
+                <span class="cov8" title="1">log.Printf("WARNING: Admin API at %s has no authentication configured — bound to localhost only", config.Address)</span>
+        }
+
+        // Enable CSRF by default when WebUI is present and CSRF is not explicitly configured.
+        <span class="cov8" title="1">if config.WebUI != nil &amp;&amp; config.CSRFConfig == nil </span><span class="cov8" title="1">{
+                defaultCSRF := csrf.DefaultConfig()
+                s.csrfConfig = &amp;defaultCSRF
+        }</span>
+
+        <span class="cov8" title="1">s.setupRoutes()
+        return s, nil</span>
+}
+
+// SetRaftProposer sets the Raft proposer for clustered config changes.
+// This is called after initialization when the Raft cluster is set up.
+func (s *Server) SetRaftProposer(proposer RaftProposer) <span class="cov8" title="1">{
+        s.mu.Lock()
+        defer s.mu.Unlock()
+        s.raftProposer = proposer
+}</span>
+
+// SetHealthChecker updates the health checker reference.
+// This is called after Start() or Reload() creates a new checker.
+func (s *Server) SetHealthChecker(hc HealthChecker) <span class="cov8" title="1">{
+        s.mu.Lock()
+        defer s.mu.Unlock()
+        s.healthChecker = hc
+}</span>
+
+// setupRoutes configures the HTTP routes.
+func (s *Server) setupRoutes() <span class="cov8" title="1">{
+        mux := http.NewServeMux()
+
+        // System endpoints
+        mux.HandleFunc("/api/v1/system/info", s.getSystemInfo)
+        mux.HandleFunc("/api/v1/system/health", s.getSystemHealth)
+        mux.HandleFunc("/api/v1/system/reload", s.reloadConfig)
+
+        // Version endpoint
+        mux.HandleFunc("/api/v1/version", s.getVersion)
+
+        // Pool endpoints
+        mux.HandleFunc("/api/v1/pools", s.listPools)
+        mux.HandleFunc("/api/v1/pools/", s.handlePoolDetail)
+
+        // Backend endpoints
+        mux.HandleFunc("/api/v1/backends", s.listBackends)
+        mux.HandleFunc("/api/v1/backends/", s.handleBackendDetail)
+
+        // Route endpoints
+        mux.HandleFunc("/api/v1/routes", s.listRoutes)
+
+        // Health endpoint
+        mux.HandleFunc("/api/v1/health", s.getHealthStatus)
+
+        // Metrics endpoints
+        mux.HandleFunc("/api/v1/metrics", s.getMetricsJSON)
+        mux.HandleFunc("/metrics", s.getMetricsPrometheus)
+
+        // Config endpoint (GET to read, PUT to update via Raft when clustered)
+        mux.HandleFunc("/api/v1/config", s.handleConfig)
+
+        // Certificates endpoint
+        mux.HandleFunc("/api/v1/certificates", s.getCertificates)
+
+        // WAF status endpoint (optional)
+        if s.wafStatus != nil </span><span class="cov8" title="1">{
+                mux.HandleFunc("/api/v1/waf/status", s.getWAFStatus)
+        }</span>
+
+        // Middleware status endpoint (optional)
+        <span class="cov8" title="1">if s.middlewareStatus != nil </span><span class="cov8" title="1">{
+                mux.HandleFunc("/api/v1/middleware/status", s.getMiddlewareStatus)
+        }</span>
+
+        // Events endpoint
+        <span class="cov8" title="1">mux.HandleFunc("/api/v1/events", s.getEvents)
+
+        // SSE real-time events stream
+        s.eventBus = newEventBus()
+        mux.HandleFunc("/api/v1/events/stream", s.streamEvents)
+
+        // Auth endpoints
+        mux.HandleFunc("/api/v1/auth/rotate-token", s.rotateToken)
+
+        // Cluster endpoints (optional)
+        if s.clusterAdmin != nil </span><span class="cov8" title="1">{
+                s.clusterAdmin.RegisterAdminEndpoints(mux)
+        }</span>
+
+        // API 404 fallback — returns JSON for any unmatched /api/ routes
+        <span class="cov8" title="1">mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) </span><span class="cov8" title="1">{
+                writeError(w, http.StatusNotFound, "NOT_FOUND", "endpoint not found: "+r.URL.Path)
+        }</span>)
+
+        // Web UI (optional) — serves static dashboard at root
+        <span class="cov8" title="1">if s.webUI != nil </span><span class="cov8" title="1">{
+                mux.Handle("/", s.webUI)
+        }</span>
+
+        // Apply rate limiting before auth to prevent brute force attacks
+        <span class="cov8" title="1">var handler http.Handler = mux
+        rl := newRateLimiter(s.rateLimitMaxReqs, s.rateLimitWindow)
+        handler = rl.middleware(handler)
+        s.rateLimiter = rl
+
+        // Apply RBAC: read-only users are blocked from state-changing endpoints.
+        // Applied BEFORE auth in the wrapping chain so it runs AFTER auth in the
+        // execution chain. AuthMiddleware sets the role in context; requireAdminRole
+        // checks it. When no role is set (backward-compatible default), requests
+        // pass through as admin.
+        handler = requireAdminRole(handler)
+
+        // Apply auth middleware if configured; warn if admin API has no authentication
+        if s.config != nil </span><span class="cov8" title="1">{
+                handler = AuthMiddleware(s.config)(handler)
+        }</span> else<span class="cov8" title="1"> {
+                handler = warnNoAuth(handler)
+        }</span>
+
+        // Apply CSRF protection for browser-based access to state-changing endpoints.
+        // Safe methods (GET, HEAD, OPTIONS) pass through and receive a CSRF cookie.
+        // The /metrics endpoint is excluded since Prometheus scrapers don't send tokens.
+        <span class="cov8" title="1">if s.csrfConfig != nil &amp;&amp; s.csrfConfig.Enabled </span><span class="cov8" title="1">{
+                csrfMW, err := csrf.New(*s.csrfConfig)
+                if err == nil </span><span class="cov8" title="1">{
+                        handler = csrfMW.Wrap(handler)
+                }</span> else<span class="cov0" title="0"> {
+                        log.Printf("WARNING: CSRF middleware initialization failed: %v — admin API running without CSRF protection", err)
+                }</span>
+        }
+
+        // Apply CORS for admin API (restricted to allowed origins)
+        <span class="cov8" title="1">handler = adminCORS(s.allowedOrigins)(handler)
+
+        // Apply security headers (HSTS, X-Content-Type-Options, etc.)
+        handler = secureheaders.New(secureheaders.RecommendedConfig()).Wrap(handler)
+
+        s.server = &amp;http.Server{
+                Addr:         s.addr,
+                Handler:      handler,
+                ReadTimeout:  10 * time.Second,
+                WriteTimeout: 10 * time.Second,
+                IdleTimeout:  120 * time.Second,
+        }</span>
+}
+
+// Start starts the Admin API server.
+func (s *Server) Start() error <span class="cov8" title="1">{
+        if s.tlsCertFile != "" &amp;&amp; s.tlsKeyFile != "" </span><span class="cov8" title="1">{
+                return s.server.ListenAndServeTLS(s.tlsCertFile, s.tlsKeyFile)
+        }</span>
+        <span class="cov8" title="1">return s.server.ListenAndServe()</span>
+}
+
+// Stop gracefully stops the Admin API server.
+func (s *Server) Stop(ctx context.Context) error <span class="cov8" title="1">{
+        s.mu.Lock()
+        s.state = "stopping"
+        s.mu.Unlock()
+
+        if s.rateLimiter != nil </span><span class="cov8" title="1">{
+                s.rateLimiter.stop()
+        }</span>
+        <span class="cov8" title="1">if s.config != nil </span><span class="cov0" title="0">{
+                s.config.Close()
+        }</span>
+
+        <span class="cov8" title="1">return s.server.Shutdown(ctx)</span>
+}
+
+// GetState returns the current server state.
+func (s *Server) GetState() string <span class="cov8" title="1">{
+        s.mu.RLock()
+        defer s.mu.RUnlock()
+        return s.state
+}</span>
+
+// handleBackendDetail handles requests to /api/v1/backends/...
+func (s *Server) handleBackendDetail(w http.ResponseWriter, r *http.Request) <span class="cov8" title="1">{
+        path := r.URL.Path
+
+        // Check if this is a drain request
+        if strings.HasSuffix(path, "/drain") </span><span class="cov8" title="1">{
+                if r.Method == http.MethodPost </span><span class="cov8" title="1">{
+                        s.drainBackend(w, r)
+                }</span> else<span class="cov8" title="1"> {
+                        writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+                }</span>
+                <span class="cov8" title="1">return</span>
+        }
+
+        // Count path segments to determine if it's a pool or backend request
+        <span class="cov8" title="1">trimmed := strings.Trim(path, "/")
+        parts := strings.Split(trimmed, "/")
+
+        // /api/v1/backends/:pool (4 parts: api, v1, backends, :pool)
+        // /api/v1/backends/:pool/:backend (5 parts)
+        if len(parts) == 4 </span><span class="cov8" title="1">{
+                // Pool-level request
+                switch r.Method </span>{
+                case http.MethodGet:<span class="cov8" title="1">
+                        s.getPool(w, r)</span>
+                case http.MethodPost:<span class="cov8" title="1">
+                        s.addBackend(w, r)</span>
+                default:<span class="cov8" title="1">
+                        writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")</span>
+                }
+        } else<span class="cov8" title="1"> if len(parts) &gt;= 5 </span><span class="cov8" title="1">{
+                // Backend-level request
+                // Check for sub-resource (e.g., /api/v1/backends/:pool/:backend/drain)
+                if len(parts) &gt;= 6 &amp;&amp; parts[5] == "drain" </span><span class="cov0" title="0">{
+                        s.drainBackend(w, r)
+                        return
+                }</span>
+                <span class="cov8" title="1">switch r.Method </span>{
+                case http.MethodGet:<span class="cov8" title="1">
+                        s.getBackendDetail(w, r)</span>
+                case http.MethodPatch:<span class="cov8" title="1">
+                        s.updateBackend(w, r)</span>
+                case http.MethodDelete:<span class="cov8" title="1">
+                        s.removeBackend(w, r)</span>
+                default:<span class="cov8" title="1">
+                        writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")</span>
+                }
+        } else<span class="cov8" title="1"> {
+                writeError(w, http.StatusBadRequest, "INVALID_PATH", "invalid path")
+        }</span>
+}
+
+// defaultMetrics implements the Metrics interface using the default registry.
+type defaultMetrics struct {
+        registry *metrics.Registry
+}
+
+// NewDefaultMetrics creates a new default metrics provider.
+func NewDefaultMetrics(registry *metrics.Registry) Metrics <span class="cov8" title="1">{
+        if registry == nil </span><span class="cov8" title="1">{
+                registry = metrics.DefaultRegistry
+        }</span>
+        <span class="cov8" title="1">return &amp;defaultMetrics{registry: registry}</span>
+}
+
+// GetAllMetrics returns all metrics in JSON-compatible format.
+func (m *defaultMetrics) GetAllMetrics() map[string]any <span class="cov8" title="1">{
+        result := make(map[string]any)
+
+        var buf bytes.Buffer
+        handler := metrics.NewJSONHandler(m.registry)
+        if err := handler.WriteMetrics(&amp;buf); err != nil </span><span class="cov0" title="0">{
+                log.Printf("admin: failed to write metrics: %v", err)
+                return result
+        }</span>
+        <span class="cov8" title="1">var metrics map[string]any
+        if err := json.Unmarshal(buf.Bytes(), &amp;metrics); err != nil </span><span class="cov0" title="0">{
+                log.Printf("admin: failed to unmarshal metrics: %v", err)
+                return result
+        }</span>
+
+        <span class="cov8" title="1">return metrics</span>
+}
+
+// PrometheusFormat returns metrics in Prometheus exposition format.
+func (m *defaultMetrics) PrometheusFormat() string <span class="cov8" title="1">{
+        var buf bytes.Buffer
+        handler := metrics.NewPrometheusHandler(m.registry)
+        if err := handler.WriteMetrics(&amp;buf); err != nil </span><span class="cov0" title="0">{
+                log.Printf("admin: failed to format Prometheus metrics: %v", err)
+        }</span>
+        <span class="cov8" title="1">return buf.String()</span>
+}
+
+// rateLimiter provides basic rate limiting for the admin API to prevent
+// brute-force attacks. Default: 60 requests per window per source IP.
+type rateLimiter struct {
+        mu       sync.Mutex
+        visitors map[string]*rlVisitor
+        maxReqs  int
+        window   time.Duration
+        stopCh   chan struct{}
+}
+
+type rlVisitor struct {
+        count    int
+        lastSeen time.Time
+}
+
+func newRateLimiter(maxReqs int, windowStr string) *rateLimiter <span class="cov8" title="1">{
+        if maxReqs &lt;= 0 </span><span class="cov8" title="1">{
+                maxReqs = 60
+        }</span>
+        <span class="cov8" title="1">window := time.Minute
+        if windowStr != "" </span><span class="cov8" title="1">{
+                d, err := time.ParseDuration(windowStr)
+                if err != nil </span><span class="cov8" title="1">{
+                        log.Printf("admin: invalid rate limit window %q, using default 1m: %v", windowStr, err)
+                }</span> else<span class="cov8" title="1"> if d &gt; 0 </span><span class="cov8" title="1">{
+                        window = d
+                }</span>
+        }
+        <span class="cov8" title="1">rl := &amp;rateLimiter{
+                visitors: make(map[string]*rlVisitor),
+                maxReqs:  maxReqs,
+                window:   window,
+                stopCh:   make(chan struct{}),
+        }
+        go func() </span><span class="cov8" title="1">{
+                defer func() </span><span class="cov8" title="1">{
+                        if r := recover(); r != nil </span><span class="cov0" title="0">{
+                                log.Printf("[admin] panic recovered in rate limiter cleanup: %v", r)
+                        }</span>
+                }()
+                <span class="cov8" title="1">rl.cleanupLoop()</span>
+        }()
+        <span class="cov8" title="1">return rl</span>
+}
+
+func (rl *rateLimiter) stop() <span class="cov8" title="1">{
+        close(rl.stopCh)
+}</span>
+
+func (rl *rateLimiter) cleanupLoop() <span class="cov8" title="1">{
+        ticker := time.NewTicker(rl.window)
+        defer ticker.Stop()
+        for </span><span class="cov8" title="1">{
+                select </span>{
+                case &lt;-rl.stopCh:<span class="cov8" title="1">
+                        return</span>
+                case &lt;-ticker.C:<span class="cov8" title="1">
+                        rl.mu.Lock()
+                        for ip, v := range rl.visitors </span><span class="cov8" title="1">{
+                                if time.Since(v.lastSeen) &gt; rl.window </span><span class="cov8" title="1">{
+                                        delete(rl.visitors, ip)
+                                }</span>
+                        }
+                        <span class="cov8" title="1">rl.mu.Unlock()</span>
+                }
+        }
+}
+
+func (rl *rateLimiter) middleware(next http.Handler) http.Handler <span class="cov8" title="1">{
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) </span><span class="cov8" title="1">{
+                ip, _, err := net.SplitHostPort(r.RemoteAddr)
+                if err != nil </span><span class="cov8" title="1">{
+                        ip = r.RemoteAddr
+                }</span>
+
+                <span class="cov8" title="1">rl.mu.Lock()
+                // Cap visitor map size to prevent memory exhaustion under distributed attacks
+                const maxVisitors = 100000
+                v, exists := rl.visitors[ip]
+                if !exists || time.Since(v.lastSeen) &gt; rl.window </span><span class="cov8" title="1">{
+                        if !exists &amp;&amp; len(rl.visitors) &gt;= maxVisitors </span><span class="cov8" title="1">{
+                                rl.mu.Unlock()
+                                w.Header().Set("Content-Type", "application/json")
+                                w.Header().Set("Retry-After", strconv.FormatFloat(rl.window.Seconds(), 'f', 0, 64))
+                                w.WriteHeader(http.StatusTooManyRequests)
+                                _, _ = w.Write([]byte(`{"error":"rate limit exceeded"}`))
+                                return
+                        }</span>
+                        <span class="cov8" title="1">rl.visitors[ip] = &amp;rlVisitor{count: 1, lastSeen: time.Now()}
+                        rl.mu.Unlock()
+                        next.ServeHTTP(w, r)
+                        return</span>
+                }
+                <span class="cov8" title="1">v.count++
+                v.lastSeen = time.Now()
+                if v.count &gt; rl.maxReqs </span><span class="cov8" title="1">{
+                        rl.mu.Unlock()
+                        w.Header().Set("Content-Type", "application/json")
+                        w.Header().Set("Retry-After", strconv.FormatFloat(rl.window.Seconds(), 'f', 0, 64))
+                        w.WriteHeader(http.StatusTooManyRequests)
+                        _, _ = w.Write([]byte(`{"error":"rate limit exceeded"}`))
+                        return
+                }</span>
+                <span class="cov8" title="1">rl.mu.Unlock()
+                next.ServeHTTP(w, r)</span>
+        })
+}
+
+// warnNoAuth adds a response header warning when the admin API has no authentication
+// configured. This alerts operators and monitoring tools that the admin API is unprotected.
+func warnNoAuth(next http.Handler) http.Handler <span class="cov8" title="1">{
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) </span><span class="cov8" title="1">{
+                if strings.HasPrefix(r.URL.Path, "/api/") </span><span class="cov8" title="1">{
+                        w.Header().Set("X-Security-Warning", "admin API has no authentication configured")
+                }</span>
+                <span class="cov8" title="1">next.ServeHTTP(w, r)</span>
+        })
+}
+
+// adminCORS wraps a handler with CORS headers for the admin API.
+// When AllowedOrigins is configured, only those origins are reflected back.
+// When empty, no CORS headers are set (same-origin policy applies).
+func adminCORS(allowedOrigins []string) func(http.Handler) http.Handler <span class="cov8" title="1">{
+        // Build a set for O(1) lookup
+        originSet := make(map[string]bool, len(allowedOrigins))
+        allowAll := false
+        for _, o := range allowedOrigins </span><span class="cov8" title="1">{
+                if o == "*" </span><span class="cov8" title="1">{
+                        allowAll = true
+                        break</span>
+                }
+                <span class="cov8" title="1">originSet[o] = true</span>
+        }
+
+        <span class="cov8" title="1">return func(next http.Handler) http.Handler </span><span class="cov8" title="1">{
+                return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) </span><span class="cov8" title="1">{
+                        origin := r.Header.Get("Origin")
+
+                        if origin != "" &amp;&amp; (allowAll || originSet[origin]) </span><span class="cov8" title="1">{
+                                w.Header().Add("Vary", "Origin")
+                                w.Header().Set("Access-Control-Allow-Origin", origin)
+                                w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+                                w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+                                if !allowAll </span><span class="cov8" title="1">{
+                                        w.Header().Set("Access-Control-Allow-Credentials", "true")
+                                }</span>
+                                <span class="cov8" title="1">w.Header().Set("Access-Control-Max-Age", "86400")</span>
+                        }
+
+                        // Handle preflight
+                        <span class="cov8" title="1">if r.Method == http.MethodOptions </span><span class="cov8" title="1">{
+                                w.WriteHeader(http.StatusNoContent)
+                                return
+                        }</span>
+
+                        <span class="cov8" title="1">next.ServeHTTP(w, r)</span>
+                })
+        }
+}
+</pre>
+		
+		<pre class="file" id="file10" style="display: none">// Package admin provides the Admin API server for OpenLoadBalancer.
+package admin
+
+import (
+        "time"
+)
+
+// Response is the standard API response format.
+type Response struct {
+        Success bool       `json:"success"`
+        Data    any        `json:"data,omitempty"`
+        Error   *ErrorInfo `json:"error,omitempty"`
+}
+
+// ErrorInfo provides structured error information.
+type ErrorInfo struct {
+        Code    string `json:"code"`
+        Message string `json:"message"`
+}
+
+// SystemInfo response containing version and build information.
+type SystemInfo struct {
+        Version   string `json:"version"`
+        Commit    string `json:"commit"`
+        BuildDate string `json:"build_date"`
+        Uptime    string `json:"uptime"`
+        State     string `json:"state"`
+        GoVersion string `json:"go_version"`
+}
+
+// HealthStatus response for system health checks.
+type HealthStatus struct {
+        Status    string           `json:"status"`
+        Checks    map[string]Check `json:"checks"`
+        Timestamp time.Time        `json:"timestamp"`
+}
+
+// Check represents a single health check result.
+type Check struct {
+        Status  string `json:"status"`
+        Message string `json:"message,omitempty"`
+        Count   int    `json:"count,omitempty"`
+        Total   int    `json:"total,omitempty"`
+}
+
+// BackendPool response for pool information.
+type BackendPool struct {
+        Name      string    `json:"name"`
+        Algorithm string    `json:"algorithm"`
+        Backends  []Backend `json:"backends"`
+}
+
+// Backend response for backend information.
+type Backend struct {
+        ID       string `json:"id"`
+        Address  string `json:"address"`
+        Weight   int    `json:"weight"`
+        State    string `json:"state"`
+        Healthy  bool   `json:"healthy"`
+        Requests int64  `json:"requests"`
+        Errors   int64  `json:"errors"`
+}
+
+// Route response for route information.
+type Route struct {
+        Name        string            `json:"name"`
+        Host        string            `json:"host,omitempty"`
+        Path        string            `json:"path"`
+        Methods     []string          `json:"methods,omitempty"`
+        Headers     map[string]string `json:"headers,omitempty"`
+        BackendPool string            `json:"backend_pool"`
+        Priority    int               `json:"priority"`
+}
+
+// AddBackendRequest for adding a new backend.
+type AddBackendRequest struct {
+        ID      string `json:"id"`
+        Address string `json:"address"`
+        Weight  int    `json:"weight,omitempty"`
+}
+
+// MiddlewareStatusItem describes a single middleware's status.
+type MiddlewareStatusItem struct {
+        ID          string `json:"id"`
+        Name        string `json:"name"`
+        Description string `json:"description"`
+        Enabled     bool   `json:"enabled"`
+        Category    string `json:"category"`
+}
+
+// EventItem describes a system event for the activity feed.
+type EventItem struct {
+        ID        string `json:"id"`
+        Type      string `json:"type"` // success, info, warning, error
+        Message   string `json:"message"`
+        Timestamp string `json:"timestamp"`
+}
+
+// ErrorResponse creates an error response.
+func ErrorResponse(code, message string) *Response <span class="cov8" title="1">{
+        return &amp;Response{
+                Success: false,
+                Error: &amp;ErrorInfo{
+                        Code:    code,
+                        Message: message,
+                },
+        }
+}</span>
+
+// SuccessResponse creates a success response with data.
+func SuccessResponse(data any) *Response <span class="cov8" title="1">{
+        return &amp;Response{
+                Success: true,
+                Data:    data,
+        }
+}</span>
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

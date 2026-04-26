@@ -158,6 +158,14 @@ func (e *Engine) applyConfigInternal(newCfg *config.Config, noRollback bool) err
 			}
 
 			// Register with health checker
+			healthyThreshold := 2
+			if poolCfg.HealthCheck.HealthyThreshold > 0 {
+				healthyThreshold = poolCfg.HealthCheck.HealthyThreshold
+			}
+			unhealthyThreshold := 3
+			if poolCfg.HealthCheck.UnhealthyThreshold > 0 {
+				unhealthyThreshold = poolCfg.HealthCheck.UnhealthyThreshold
+			}
 			checkConfig := &health.Check{
 				Type:               poolCfg.HealthCheck.Type,
 				Path:               poolCfg.HealthCheck.Path,
@@ -165,8 +173,8 @@ func (e *Engine) applyConfigInternal(newCfg *config.Config, noRollback bool) err
 				Timeout:            parseDuration(poolCfg.HealthCheck.Timeout, 5*time.Second),
 				Command:            poolCfg.HealthCheck.Command,
 				Args:               poolCfg.HealthCheck.Args,
-				HealthyThreshold:   2,
-				UnhealthyThreshold: 3,
+				HealthyThreshold:   healthyThreshold,
+				UnhealthyThreshold: unhealthyThreshold,
 			}
 			if err := newHealthChecker.Register(b, checkConfig); err != nil {
 				e.logger.Warn("Failed to register backend with health checker",
@@ -186,8 +194,6 @@ func (e *Engine) applyConfigInternal(newCfg *config.Config, noRollback bool) err
 
 	// 6. Atomic swap - replace router and pools
 	e.mu.Lock()
-	oldRouter := e.router
-	oldPoolManager := e.poolManager
 	oldHealthChecker := e.healthChecker
 
 	e.router = newRouter
@@ -229,7 +235,7 @@ func (e *Engine) applyConfigInternal(newCfg *config.Config, noRollback bool) err
 				}
 			}()
 			select {
-			case <-time.After(5 * time.Second):
+			case <-time.After(e.proxyDrainWindow):
 			case <-e.stopCh:
 			}
 			p.Close()
@@ -269,10 +275,6 @@ func (e *Engine) applyConfigInternal(newCfg *config.Config, noRollback bool) err
 		logging.Int("pools", newPoolManager.PoolCount()),
 		logging.Int("routes", newRouter.RouteCount()),
 	)
-
-	// Suppress unused variable warnings (old components are kept for graceful transition)
-	_ = oldRouter
-	_ = oldPoolManager
 
 	return nil
 }
@@ -383,9 +385,9 @@ func (e *Engine) startRollbackGracePeriod() {
 		}
 	}
 
-	// Check at 15s and 30s after reload
-	e.rollbackTimer = time.AfterFunc(15*time.Second, checkAndRollback)
-	e.rollbackTimer2 = time.AfterFunc(30*time.Second, func() {
+	// Check after rollbackCheckInterval and rollbackMonitorDuration
+	e.rollbackTimer = time.AfterFunc(e.rollbackCheckInterval, checkAndRollback)
+	e.rollbackTimer2 = time.AfterFunc(e.rollbackMonitorDuration, func() {
 		// Final check then clear prevConfig
 		checkAndRollback()
 		e.rollbackMu.Lock()

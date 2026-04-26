@@ -97,7 +97,7 @@ func createTempConfigFile(t *testing.T, cfg *config.Config) string {
 version: "1"
 listeners:
   - name: test-http
-    address: 127.0.0.1:0
+    address: "127.0.0.1:0"
     protocol: http
     routes:
       - path: /
@@ -112,11 +112,11 @@ pools:
       timeout: 5s
     backends:
       - id: backend-1
-        address: 127.0.0.1:8081
+        address: "127.0.0.1:8081"
         weight: 100
 admin:
   enabled: true
-  address: 127.0.0.1:0
+  address: "127.0.0.1:0"
 logging:
   level: info
   format: json
@@ -1990,11 +1990,11 @@ pools:
       timeout: 5s
     backends:
       - id: backend-1
-        address: 127.0.0.1:8081
+        address: "127.0.0.1:8081"
         weight: 100
 admin:
   enabled: true
-  address: 127.0.0.1:0
+  address: "127.0.0.1:0"
 `
 	if err := os.WriteFile(configPath, []byte(invalidContent), 0644); err != nil {
 		t.Fatalf("Failed to write invalid config: %v", err)
@@ -2035,7 +2035,7 @@ func TestEngineReloadWithRouteChanges(t *testing.T) {
 version: "1"
 listeners:
   - name: test-http
-    address: 127.0.0.1:0
+    address: "127.0.0.1:0"
     protocol: http
     routes:
       - path: /
@@ -2052,11 +2052,11 @@ pools:
       timeout: 5s
     backends:
       - id: backend-1
-        address: 127.0.0.1:8081
+        address: "127.0.0.1:8081"
         weight: 100
 admin:
   enabled: true
-  address: 127.0.0.1:0
+  address: "127.0.0.1:0"
 `
 	if err := os.WriteFile(configPath, []byte(newContent), 0644); err != nil {
 		t.Fatalf("Failed to write new config: %v", err)
@@ -2098,7 +2098,7 @@ func TestEngineReloadWithMissingPool(t *testing.T) {
 version: "1"
 listeners:
   - name: test-http
-    address: 127.0.0.1:0
+    address: "127.0.0.1:0"
     protocol: http
     routes:
       - path: /
@@ -2113,11 +2113,11 @@ pools:
       timeout: 5s
     backends:
       - id: backend-1
-        address: 127.0.0.1:8081
+        address: "127.0.0.1:8081"
         weight: 100
 admin:
   enabled: true
-  address: 127.0.0.1:0
+  address: "127.0.0.1:0"
 `
 	if err := os.WriteFile(configPath, []byte(newContent), 0644); err != nil {
 		t.Fatalf("Failed to write new config: %v", err)
@@ -4327,6 +4327,7 @@ func TestNewWithGeoDNS(t *testing.T) {
 	cfg.GeoDNS = &config.GeoDNSConfig{
 		Enabled:     true,
 		DefaultPool: "default-pool",
+		DBPath:      "GeoLite2-Country.mmdb",
 		Rules: []config.GeoDNSRule{
 			{
 				ID:       "us-rule",
@@ -4382,6 +4383,9 @@ func TestNewWithShadow(t *testing.T) {
 		CopyHeaders: true,
 		CopyBody:    true,
 		Timeout:     "5s",
+		Targets: []config.ShadowTarget{
+			{Pool: "test-pool", Percentage: 100},
+		},
 	}
 
 	configPath := createTempConfigFile(t, cfg)
@@ -4403,6 +4407,9 @@ func TestNewWithShadowDefaultTimeout(t *testing.T) {
 		CopyHeaders: false,
 		CopyBody:    false,
 		Timeout:     "", // should use 30s default
+		Targets: []config.ShadowTarget{
+			{Pool: "test-pool", Percentage: 100},
+		},
 	}
 
 	configPath := createTempConfigFile(t, cfg)
@@ -4439,6 +4446,7 @@ func TestNewWithACME(t *testing.T) {
 		ACME: &config.ACME{
 			Enabled: true,
 			Email:   "admin@example.com",
+			Domains: []string{"example.com"},
 		},
 	}
 
@@ -4635,7 +4643,7 @@ func TestStartConfigWatcherWithValidFile(t *testing.T) {
 version: "1"
 listeners:
   - name: test-http
-    address: 127.0.0.1:0
+    address: "127.0.0.1:0"
     protocol: http
     routes:
       - path: /
@@ -4650,11 +4658,11 @@ pools:
       timeout: 5s
     backends:
       - id: backend-1
-        address: 127.0.0.1:8081
+        address: "127.0.0.1:8081"
         weight: 100
 admin:
   enabled: true
-  address: 127.0.0.1:0
+  address: "127.0.0.1:0"
 `
 	if err := os.WriteFile(configPath, []byte(newContent), 0644); err != nil {
 		t.Fatalf("Failed to write updated config: %v", err)

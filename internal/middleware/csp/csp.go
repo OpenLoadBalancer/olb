@@ -101,11 +101,21 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 		// Generate nonces if needed
 		var scriptNonce, styleNonce string
 		if m.config.NonceScript {
-			scriptNonce = generateNonce()
+			nonce, err := generateNonce()
+			if err != nil {
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
+			scriptNonce = nonce
 			w.Header().Set("X-Script-Nonce", scriptNonce)
 		}
 		if m.config.NonceStyle {
-			styleNonce = generateNonce()
+			nonce, err := generateNonce()
+			if err != nil {
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
+			styleNonce = nonce
 			w.Header().Set("X-Style-Nonce", styleNonce)
 		}
 
@@ -215,10 +225,12 @@ func (m *Middleware) buildPolicyWithNonces(scriptNonce, styleNonce string) strin
 }
 
 // generateNonce generates a cryptographically random nonce.
-func generateNonce() string {
+func generateNonce() (string, error) {
 	b := make([]byte, 16)
-	_, _ = crypto_rand.Read(b)
-	return base64.StdEncoding.EncodeToString(b)
+	if _, err := crypto_rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(b), nil
 }
 
 // GetPolicy returns the current CSP policy string.

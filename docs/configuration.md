@@ -683,6 +683,192 @@ See [mcp.md](mcp.md) for integration details.
 
 ---
 
+## Profiling
+
+Go runtime profiling via pprof HTTP endpoint.
+
+```yaml
+profiling:
+  enabled: true
+  pprof_addr: "localhost:6060"     # pprof HTTP endpoint (localhost only recommended)
+  cpu_profile_path: ""              # Write CPU profile to file on shutdown
+  mem_profile_path: ""              # Write heap profile to file on shutdown
+  block_profile_rate: 0             # Fraction of goroutine blocking events to report (0 = off)
+  mutex_profile_fraction: 0         # Fraction of mutex contention events to report (0 = off)
+  token: ""                         # Bearer token for pprof auth (empty = no auth, localhost-only recommended)
+```
+
+When `token` is set, all pprof endpoints require `Authorization: Bearer <token>`.
+
+---
+
+## WAF (Web Application Firewall)
+
+Six-layer security pipeline: SQLi, XSS, CMDi, XXE, SSRF, and Path Traversal detection.
+
+```yaml
+waf:
+  enabled: true
+  mode: enforce                    # "enforce" (block), "monitor" (log only), "disabled"
+
+  ip_acl:
+    enabled: true
+    whitelist:                     # Always allowed, bypasses all checks
+      - cidr: "10.0.0.0/8"
+    blacklist:                     # Always blocked
+      - cidr: "192.168.1.100/32"
+    auto_ban:
+      enabled: true
+      threshold: 100               # Requests in window before auto-ban
+      window: "60s"                # Time window for threshold counting
+      duration: "3600s"            # How long the ban lasts
+
+  rate_limit:
+    enabled: true
+    requests_per_second: 100       # Max requests per second per IP
+    burst: 200                     # Burst allowance
+    window: "60s"                  # Fixed window duration
+
+  sanitizer:
+    enabled: true
+    strip_null_bytes: true
+    normalize_unicode: true
+    max_header_value_length: 8192
+
+  detection:
+    enabled: true
+    sqli:
+      enabled: true
+      mode: pattern                # "pattern" or "semantic"
+    xss:
+      enabled: true
+      mode: pattern
+    cmdi:
+      enabled: true
+    xxe:
+      enabled: true
+    ssrf:
+      enabled: true
+      blocked_cidrs:
+        - "127.0.0.0/8"
+        - "10.0.0.0/8"
+        - "172.16.0.0/12"
+        - "192.168.0.0/16"
+        - "169.254.0.0/16"
+        - "0.0.0.0/0"
+    path_traversal:
+      enabled: true
+
+  bot_detection:
+    enabled: true
+    user_agent_blacklist:
+      - "malicious-bot"
+    challenge_mode: "none"         # "none", "captcha", "javascript"
+
+  response:
+    enabled: true
+    hide_server_header: true
+    hide_powered_by: true
+
+  logging:
+    enabled: true
+    log_body: false                # Log request body (may contain sensitive data)
+    max_body_log_size: 1024
+```
+
+---
+
+## GeoDNS
+
+Geographic DNS routing based on client IP location.
+
+```yaml
+geodns:
+  enabled: true
+  default_pool: "us-east-pool"     # Fallback pool when no rule matches
+  db_path: "/etc/olb/GeoLite2-City.mmdb"  # MaxMind GeoLite2 database
+
+  rules:
+    - id: "eu-rule"
+      country: "DE"                # ISO 3166-1 alpha-2 country code
+      pool: "eu-west-pool"         # Route to this pool
+      weight: 100                  # Routing weight
+
+    - id: "asia-rule"
+      country: "JP"
+      pool: "ap-northeast-pool"
+      weight: 100
+
+    - id: "fallback-rule"
+      country: "*"                 # Wildcard matches all
+      pool: "us-east-pool"
+      weight: 50
+```
+
+Requires a MaxMind GeoLite2 City database (MMDB format). Download from [MaxMind](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data).
+
+---
+
+## Shadow Traffic
+
+Mirror production traffic to a shadow backend for testing and analysis. Shadow responses are discarded — never returned to the client.
+
+```yaml
+shadow:
+  enabled: true
+  percentage: 10.0                 # Percentage of traffic to mirror (0-100)
+  copy_headers: true               # Copy request headers to shadow
+  copy_body: true                  # Copy request body to shadow
+  timeout: "5s"                    # Shadow request timeout
+
+  targets:
+    - pool: "shadow-pool"          # Target pool for mirrored traffic
+      percentage: 100.0            # Percentage of shadowed traffic to this target
+```
+
+Sensitive headers (Authorization, Cookie, Proxy-Authorization, X-Session-ID, X-CSRF-Token) are automatically stripped from shadow requests.
+
+---
+
+## Service Discovery
+
+Service discovery is configured per-pool, not at the top level. Each pool can use one or more discovery providers.
+
+```yaml
+pools:
+  - name: "api-pool"
+    algorithm: round_robin
+
+    discovery:
+      type: "dns"                  # "dns", "docker", "consul", "static", "file"
+      interval: "30s"              # Refresh interval
+
+      # DNS discovery
+      domain: "_api._tcp.example.com"
+      nameserver: "8.8.8.8:53"
+
+      # Docker discovery
+      # docker_host: "unix:///var/run/docker.sock"
+      # docker_label_filter: "com.example.service=api"
+
+      # Consul discovery
+      # consul_addr: "http://127.0.0.1:8500"
+      # consul_service: "api"
+      # consul_tag: "production"
+
+    backends: []                   # Optional static backends merged with discovered ones
+```
+
+| Provider | Config Key | Notes |
+|----------|-----------|-------|
+| DNS | `dns` | SRV record lookup. Queries over plaintext — see warnings at startup. |
+| Docker | `docker` | Docker daemon API. Use TLS for remote connections. |
+| Consul | `consul` | Consul catalog API. HTTP only. |
+| Static | (none) | Uses `backends` list directly. No auto-discovery. |
+| File | `file` | Read backends from a JSON/YAML file. |
+
+---
+
 ## Complete Example
 
 See [configs/olb.yaml](../configs/olb.yaml) for a full annotated configuration example.

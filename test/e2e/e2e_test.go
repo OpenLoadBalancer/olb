@@ -183,7 +183,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), algo, addr1, addr2, addr3)
 
@@ -298,7 +298,7 @@ func TestE2E_HealthCheck(t *testing.T) {
 					{Address: addr3, Weight: 100},
 				},
 				HealthCheck: &config.HealthCheck{
-					Type: "http", Path: "/health", Interval: "500ms", Timeout: "500ms",
+					Type: "http", Path: "/health", Interval: "500ms", Timeout: "200ms",
 				},
 			},
 		},
@@ -454,7 +454,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -560,7 +560,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -678,7 +678,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -797,7 +797,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -908,7 +908,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), addr1, addr2)
 
@@ -1040,7 +1040,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), addr1)
 
@@ -1113,7 +1113,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), addr1, addr2)
 
@@ -1210,7 +1210,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -1304,7 +1304,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), addr1, addr2, addr3)
 
@@ -1411,7 +1411,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -1518,7 +1518,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -1608,7 +1608,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -1691,7 +1691,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -1777,7 +1777,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -1866,7 +1866,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -1947,7 +1947,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -2037,7 +2037,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -2158,7 +2158,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -2266,7 +2266,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -2398,7 +2398,7 @@ pools:
     health_check:
       type: tcp
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
 `, adminPH.Port(), proxyPH.Port(), echoAddr)
 
 	cfgPath := writeYAML(t, yamlCfg)
@@ -2506,7 +2506,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), mcpPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -2658,7 +2658,7 @@ func TestE2E_MultipleListeners(t *testing.T) {
 				Algorithm: "round_robin",
 				Backends:  []*config.Backend{{Address: httpBackendAddr, Weight: 100}},
 				HealthCheck: &config.HealthCheck{
-					Type: "http", Path: "/health", Interval: "1s", Timeout: "1s",
+					Type: "http", Path: "/health", Interval: "1s", Timeout: "500ms",
 				},
 			},
 			{
@@ -2666,7 +2666,7 @@ func TestE2E_MultipleListeners(t *testing.T) {
 				Algorithm: "round_robin",
 				Backends:  []*config.Backend{{Address: echoAddr, Weight: 100}},
 				HealthCheck: &config.HealthCheck{
-					Type: "tcp", Interval: "1s", Timeout: "1s",
+					Type: "tcp", Interval: "1s", Timeout: "500ms",
 				},
 			},
 		},
@@ -2919,7 +2919,7 @@ pools:
       type: http
       enabled: true
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), b1, b2, b3)
 
@@ -2964,7 +2964,7 @@ pools:
       type: http
       enabled: true
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), b1, b2, b3)
 

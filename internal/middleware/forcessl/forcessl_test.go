@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 )
 
@@ -434,5 +435,341 @@ func TestForceSSL_PathPreservation(t *testing.T) {
 		if location != tc.expected {
 			t.Errorf("For input %s, expected %s, got %s", tc.input, tc.expected, location)
 		}
+	}
+}
+
+func TestIsFromTrustedProxy_TrustedIP(t *testing.T) {
+	config := DefaultConfig()
+	config.Enabled = true
+	config.TrustedProxies = []string{"10.0.0.0/8", "172.16.0.0/12"}
+
+	mw := New(config)
+
+	called := false
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Request from a trusted proxy with X-Forwarded-Proto: https should be treated as HTTPS
+	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.RemoteAddr = "10.1.2.3:12345"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if !called {
+		t.Error("Handler should be called for trusted proxy with forwarded proto https")
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+}
+
+func TestIsFromTrustedProxy_UntrustedIP(t *testing.T) {
+	config := DefaultConfig()
+	config.Enabled = true
+	config.TrustedProxies = []string{"10.0.0.0/8"}
+
+	mw := New(config)
+
+	// Request from an untrusted IP with X-Forwarded-Proto: https should NOT be trusted
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Handler should not be called for untrusted proxy with forwarded headers")
+	}))
+
+	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.RemoteAddr = "192.168.1.1:12345"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMovedPermanently {
+		t.Errorf("Expected redirect from untrusted proxy, got status %d", rec.Code)
+	}
+}
+
+func TestIsFromTrustedProxy_UntrustedIPWithXScheme(t *testing.T) {
+	config := DefaultConfig()
+	config.Enabled = true
+	config.TrustedProxies = []string{"10.0.0.0/8"}
+
+	mw := New(config)
+
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Handler should not be called for untrusted proxy")
+	}))
+
+	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req.Header.Set("X-Scheme", "https")
+	req.RemoteAddr = "1.2.3.4:5678"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMovedPermanently {
+		t.Errorf("Expected redirect from untrusted proxy, got status %d", rec.Code)
+	}
+}
+
+func TestIsFromTrustedProxy_NoTrustedProxiesConfigured(t *testing.T) {
+	config := DefaultConfig()
+	config.Enabled = true
+	// TrustedProxies is nil/empty — all forwarded headers are trusted (default behavior)
+
+	mw := New(config)
+
+	called := false
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.RemoteAddr = "192.168.1.1:12345"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if !called {
+		t.Error("Handler should be called when TrustedProxies is empty (headers trusted from any IP)")
+	}
+}
+
+func TestIsFromTrustedProxy_InvalidCIDR(t *testing.T) {
+	config := DefaultConfig()
+	config.Enabled = true
+	config.TrustedProxies = []string{"not-a-valid-cidr", "10.0.0.0/8"}
+
+	mw := New(config)
+
+	called := false
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Should match the second valid CIDR
+	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.RemoteAddr = "10.0.0.5:12345"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if !called {
+		t.Error("Handler should be called; invalid CIDR entries should be skipped")
+	}
+}
+
+func TestIsFromTrustedProxy_InvalidRemoteIP(t *testing.T) {
+	config := DefaultConfig()
+	config.Enabled = true
+	config.TrustedProxies = []string{"10.0.0.0/8"}
+
+	mw := New(config)
+
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Handler should not be called when remote IP is unparseable")
+	}))
+
+	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.RemoteAddr = "not-an-ip"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMovedPermanently {
+		t.Errorf("Expected redirect for invalid remote IP, got status %d", rec.Code)
+	}
+}
+
+func TestIsFromTrustedProxy_IPv6Trusted(t *testing.T) {
+	config := DefaultConfig()
+	config.Enabled = true
+	config.TrustedProxies = []string{"::1/128", "fd00::/8"}
+
+	mw := New(config)
+
+	called := false
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.RemoteAddr = "[::1]:12345"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if !called {
+		t.Error("Handler should be called for trusted IPv6 loopback")
+	}
+}
+
+func TestBuildHTTPSURL_EmptyHost(t *testing.T) {
+	config := DefaultConfig()
+	config.Enabled = true
+
+	mw := New(config)
+
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Handler should not be called")
+	}))
+
+	// When both r.Host and r.URL.Host are empty, buildHTTPSURL returns ""
+	// and http.Redirect writes a redirect to "/" as the location.
+	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req.Host = ""
+	req.URL.Host = ""
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	// buildHTTPSURL returns "" which http.Redirect turns into a redirect to ""
+	// which the Go stdlib resolves to the current path.
+	if rec.Code != http.StatusMovedPermanently {
+		t.Errorf("Expected redirect status, got %d", rec.Code)
+	}
+}
+
+func TestBuildHTTPSURL_HostWithSlash(t *testing.T) {
+	config := DefaultConfig()
+	config.Enabled = true
+
+	mw := New(config)
+
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Handler should not be called")
+	}))
+
+	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	// Set a Host containing "/" to trigger the fallback to r.URL.Host
+	req.Host = "evil/host.com"
+	req.URL = &url.URL{Path: "/test", Host: "safe.example.com"}
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	location := rec.Header().Get("Location")
+	expected := "https://safe.example.com/test"
+	if location != expected {
+		t.Errorf("Expected Location %s, got %s", expected, location)
+	}
+}
+
+func TestBuildHTTPSURL_HostWithBackslash(t *testing.T) {
+	config := DefaultConfig()
+	config.Enabled = true
+
+	mw := New(config)
+
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Handler should not be called")
+	}))
+
+	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	// Set a Host containing "\" to trigger the fallback to r.URL.Host
+	req.Host = "evil\\host.com"
+	req.URL = &url.URL{Path: "/test", Host: "safe.example.com"}
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	location := rec.Header().Get("Location")
+	expected := "https://safe.example.com/test"
+	if location != expected {
+		t.Errorf("Expected Location %s, got %s", expected, location)
+	}
+}
+
+func TestBuildHTTPSURL_EmptyHostEmptyURLHost(t *testing.T) {
+	config := DefaultConfig()
+	config.Enabled = true
+
+	mw := New(config)
+
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Handler should not be called")
+	}))
+
+	// Host contains "/" (triggers fallback), URL.Host is empty => buildHTTPSURL returns ""
+	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req.Host = "bad/host"
+	req.URL = &url.URL{Path: "/test", Host: ""}
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	// buildHTTPSURL returns "" — http.Redirect still writes a redirect
+	if rec.Code != http.StatusMovedPermanently {
+		t.Errorf("Expected redirect status, got %d", rec.Code)
+	}
+}
+
+func TestIsFromTrustedProxy_CustomHeaderFromUntrusted(t *testing.T) {
+	config := DefaultConfig()
+	config.Enabled = true
+	config.HeaderKey = "X-Custom-Proto"
+	config.HeaderValue = "https"
+	config.TrustedProxies = []string{"10.0.0.0/8"}
+
+	mw := New(config)
+
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Handler should not be called for untrusted proxy with custom header")
+	}))
+
+	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req.Header.Set("X-Custom-Proto", "https")
+	req.RemoteAddr = "1.2.3.4:5678"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMovedPermanently {
+		t.Errorf("Expected redirect, got status %d", rec.Code)
+	}
+}
+
+func TestIsFromTrustedProxy_CustomHeaderFromTrusted(t *testing.T) {
+	config := DefaultConfig()
+	config.Enabled = true
+	config.HeaderKey = "X-Custom-Proto"
+	config.HeaderValue = "https"
+	config.TrustedProxies = []string{"10.0.0.0/8"}
+
+	mw := New(config)
+
+	called := false
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req.Header.Set("X-Custom-Proto", "https")
+	req.RemoteAddr = "10.0.0.5:12345"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if !called {
+		t.Error("Handler should be called for trusted proxy with custom header")
+	}
+}
+
+func TestBuildHTTPSURL_CustomPortWithQueryString(t *testing.T) {
+	config := DefaultConfig()
+	config.Enabled = true
+	config.Port = 8443
+
+	mw := New(config)
+
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Handler should not be called")
+	}))
+
+	req := httptest.NewRequest("GET", "http://example.com/path?key=val", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	location := rec.Header().Get("Location")
+	expected := "https://example.com:8443/path?key=val"
+	if location != expected {
+		t.Errorf("Expected Location %s, got %s", expected, location)
 	}
 }

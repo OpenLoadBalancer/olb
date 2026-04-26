@@ -45,6 +45,14 @@ func (e *Engine) initializePools() error {
 			}
 
 			// Register with health checker
+			healthyThreshold := 2
+			if poolCfg.HealthCheck.HealthyThreshold > 0 {
+				healthyThreshold = poolCfg.HealthCheck.HealthyThreshold
+			}
+			unhealthyThreshold := 3
+			if poolCfg.HealthCheck.UnhealthyThreshold > 0 {
+				unhealthyThreshold = poolCfg.HealthCheck.UnhealthyThreshold
+			}
 			checkConfig := &health.Check{
 				Type:               poolCfg.HealthCheck.Type,
 				Path:               poolCfg.HealthCheck.Path,
@@ -52,8 +60,8 @@ func (e *Engine) initializePools() error {
 				Timeout:            parseDuration(poolCfg.HealthCheck.Timeout, 5*time.Second),
 				Command:            poolCfg.HealthCheck.Command,
 				Args:               poolCfg.HealthCheck.Args,
-				HealthyThreshold:   2,
-				UnhealthyThreshold: 3,
+				HealthyThreshold:   healthyThreshold,
+				UnhealthyThreshold: unhealthyThreshold,
 			}
 			if err := e.healthChecker.Register(b, checkConfig); err != nil {
 				e.logger.Warn("Failed to register backend with health checker",

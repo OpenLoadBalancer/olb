@@ -154,7 +154,7 @@ func TestStartCommand_DaemonNotSupportedOnWindows(t *testing.T) {
 	// Create a temporary config file
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "olb.yaml")
-	if err := os.WriteFile(configPath, []byte("version: 1\nlisteners:\n  - name: test\n    address: :8080\n"), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte("version: 1\nlisteners:\n  - name: test\n    address: \":8080\"\n"), 0644); err != nil {
 		t.Fatalf("Failed to create test config: %v", err)
 	}
 
@@ -299,14 +299,14 @@ func TestConfigCommand_Validate_ValidConfig(t *testing.T) {
 	configContent := `version: "1"
 listeners:
   - name: http
-    address: :8080
+    address: ":8080"
     protocol: http
 pools:
   - name: default
     algorithm: round_robin
     backends:
       - id: backend1
-        address: 127.0.0.1:8081
+        address: "127.0.0.1:8081"
         weight: 100
 `
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
@@ -610,14 +610,14 @@ func TestStartCommand_InvalidConfigSyntax(t *testing.T) {
 	invalidConfig := `version: "1"
 listeners:
   - name: test
-    address: :8080
+    address: ":8080"
     protocol: http
 pools:
   - name: default
     algorithm: round_robin
     backends:
       - id: backend1
-        address: 127.0.0.1:8081
+        address: "127.0.0.1:8081"
         weight: invalid_weight_should_be_number
 `
 	if err := os.WriteFile(configPath, []byte(invalidConfig), 0644); err != nil {
@@ -984,14 +984,14 @@ func TestStartCommand_DaemonMode(t *testing.T) {
 	configContent := `version: "1"
 listeners:
   - name: test
-    address: :8080
+    address: ":8080"
     protocol: http
 pools:
   - name: default
     algorithm: round_robin
     backends:
       - id: backend1
-        address: 127.0.0.1:8081
+        address: "127.0.0.1:8081"
 `
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
 		t.Fatalf("Failed to create test config: %v", err)
@@ -1601,14 +1601,14 @@ func TestStartCommand_Run_WritePIDFileFails(t *testing.T) {
 	configContent := `version: "1"
 listeners:
   - name: http
-    address: :8080
+    address: ":8080"
     protocol: http
 pools:
   - name: default
     algorithm: round_robin
     backends:
       - id: backend1
-        address: 127.0.0.1:8081
+        address: "127.0.0.1:8081"
 `
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
 		t.Fatalf("Failed to create test config: %v", err)

@@ -19,7 +19,7 @@
 services:
   # ─── OLB Cluster Nodes ────────────────────────────────────────────────
   olb-1:
-    image: openloadbalancer/olb:latest
+    image: ghcr.io/openloadbalancer/olb:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -63,7 +63,7 @@ services:
         condition: service_healthy
 
   olb-2:
-    image: openloadbalancer/olb:latest
+    image: ghcr.io/openloadbalancer/olb:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -107,7 +107,7 @@ services:
         condition: service_healthy
 
   olb-3:
-    image: openloadbalancer/olb:latest
+    image: ghcr.io/openloadbalancer/olb:latest
     build:
       context: .
       dockerfile: Dockerfile

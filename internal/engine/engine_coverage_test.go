@@ -1142,6 +1142,7 @@ func TestCov_New_WithGeoDNS(t *testing.T) {
 	cfg.GeoDNS = &config.GeoDNSConfig{
 		Enabled:     true,
 		DefaultPool: "test-pool",
+		DBPath:      "GeoLite2-Country.mmdb",
 		Rules: []config.GeoDNSRule{
 			{
 				ID:     "eu-rule",
@@ -1360,6 +1361,9 @@ func TestCov_New_WithShadow(t *testing.T) {
 		CopyHeaders: true,
 		CopyBody:    false,
 		Timeout:     "5s",
+		Targets: []config.ShadowTarget{
+			{Pool: "test-pool", Percentage: 100},
+		},
 	}
 
 	configPath := createTempConfigFile(t, cfg)
@@ -1379,6 +1383,7 @@ func TestCov_New_WithACME(t *testing.T) {
 		ACME: &config.ACME{
 			Enabled: true,
 			Email:   "test@example.com",
+			Domains: []string{"example.com"},
 		},
 	}
 

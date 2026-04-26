@@ -121,7 +121,7 @@ pools:
     health_check:
       type: http
       interval: 500ms
-      timeout: 500ms
+      timeout: 200ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), addrs[0], addrs[1], addrs[2], addrs[3], addrs[4])
 
@@ -321,7 +321,7 @@ pools:
     health_check:
       type: http
       interval: 500ms
-      timeout: 500ms
+      timeout: 200ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), stableAddr, killAddr, failoverAddr)
 
@@ -466,7 +466,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -655,7 +655,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), strings.ReplaceAll(certFile, `\`, `/`), strings.ReplaceAll(keyFile, `\`, `/`), proxyPH.Port(), backendAddr)
 
@@ -816,7 +816,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), healthBackendAddr)
 
@@ -964,7 +964,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -1217,7 +1217,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), addr1, addr2, addr3)
 
@@ -1343,7 +1343,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -1447,7 +1447,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -1544,7 +1544,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 

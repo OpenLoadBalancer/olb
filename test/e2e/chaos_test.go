@@ -174,7 +174,7 @@ pools:
     health_check:
       type: http
       interval: 500ms
-      timeout: 500ms
+      timeout: 200ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr, stableListener.Addr().String())
 
@@ -320,7 +320,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), slowListener.Addr().String(), fastListener.Addr().String())
 
@@ -424,7 +424,7 @@ pools:
     health_check:
       type: http
       interval: 500ms
-      timeout: 500ms
+      timeout: 200ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddrs[0], backendAddrs[1])
 
@@ -517,7 +517,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -595,7 +595,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 
@@ -694,7 +694,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddr)
 

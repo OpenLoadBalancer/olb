@@ -793,7 +793,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), toForwardSlash(certFile), toForwardSlash(keyFile), proxyPH.Port(), backendAddr)
 

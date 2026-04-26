@@ -2417,12 +2417,20 @@ func TestConfigDiffCommand_DefaultFilePath(t *testing.T) {
 	server := newAdvancedTestServer()
 	defer server.Close()
 
+	// Change to a temp dir to ensure olb.yaml does not exist
+	tmpDir := t.TempDir()
+	oldDir, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldDir)
+
 	cmd := &ConfigDiffCommand{}
 	err := cmd.Run([]string{"--api-addr", strings.TrimPrefix(server.URL, "http://")})
 	if err == nil {
 		t.Error("Expected error when default olb.yaml doesn't exist")
 	}
-	if err != nil && !strings.Contains(err.Error(), "failed to read config file") && !strings.Contains(err.Error(), "no such file") {
+	if err != nil {
 		t.Logf("Got error (expected): %v", err)
 	}
 }

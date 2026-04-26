@@ -318,19 +318,30 @@ func (c *Cluster) incrementTerm() uint64 {
 
 // resetElectionTimer resets the election timer with randomized jitter.
 // Uses ElectionTick to 3*ElectionTick range for split vote prevention.
+// Reuses the same timer via Reset() so the channel reference in run()'s
+// select stays valid even when called concurrently from transport goroutines.
 func (c *Cluster) resetElectionTimer() {
 	c.timerMu.Lock()
-	if c.electionTimer != nil {
-		c.electionTimer.Stop()
-	}
+	defer c.timerMu.Unlock()
 
 	base := c.config.ElectionTick
 	if base <= 0 {
 		base = 300 * time.Millisecond
 	}
 	jitter := time.Duration(rand.Int63n(int64(2 * base)))
-	c.electionTimer = time.NewTimer(base + jitter)
-	c.timerMu.Unlock()
+
+	if c.electionTimer != nil {
+		if !c.electionTimer.Stop() {
+			// Timer already fired; drain the channel to satisfy Reset precondition.
+			select {
+			case <-c.electionTimer.C:
+			default:
+			}
+		}
+		c.electionTimer.Reset(base + jitter)
+	} else {
+		c.electionTimer = time.NewTimer(base + jitter)
+	}
 }
 
 // getElectionTimerChan returns the election timer channel.

@@ -49,6 +49,16 @@ type ServerConfig struct {
 	MaxConnectionsPerBackend int `yaml:"max_connections_per_backend" json:"max_connections_per_backend"`
 	// DrainTimeout is the maximum duration to wait for connections to close during shutdown (default: "30s").
 	DrainTimeout string `yaml:"drain_timeout" json:"drain_timeout"`
+	// ShutdownTimeout is the maximum duration for graceful shutdown via signal handlers (default: "30s").
+	ShutdownTimeout string `yaml:"shutdown_timeout" json:"shutdown_timeout"`
+	// ListenerStopTimeout is the maximum duration to wait when stopping a listener (default: "5s").
+	ListenerStopTimeout string `yaml:"listener_stop_timeout" json:"listener_stop_timeout"`
+	// ProxyDrainWindow is the duration to wait before closing the old proxy during reload (default: "5s").
+	ProxyDrainWindow string `yaml:"proxy_drain_window" json:"proxy_drain_window"`
+	// RollbackCheckInterval is the interval after reload to perform the first rollback health check (default: "15s").
+	RollbackCheckInterval string `yaml:"rollback_check_interval" json:"rollback_check_interval"`
+	// RollbackMonitorDuration is the total duration to monitor for rollback after reload (default: "30s").
+	RollbackMonitorDuration string `yaml:"rollback_monitor_duration" json:"rollback_monitor_duration"`
 }
 
 // ProfilingConfig represents profiling/debugging configuration.
@@ -701,13 +711,15 @@ type Backend struct {
 
 // HealthCheck represents health check configuration.
 type HealthCheck struct {
-	Type             string   `yaml:"type" json:"type"`
-	Path             string   `yaml:"path" json:"path"`
-	Interval         string   `yaml:"interval" json:"interval"`
-	Timeout          string   `yaml:"timeout" json:"timeout"`
-	Command          string   `yaml:"command" json:"command"`
-	Args             []string `yaml:"args" json:"args"`
-	GRPCTLSSkipVerify bool    `yaml:"grpc_tls_skip_verify" json:"grpc_tls_skip_verify"`
+	Type                string   `yaml:"type" json:"type"`
+	Path                string   `yaml:"path" json:"path"`
+	Interval            string   `yaml:"interval" json:"interval"`
+	Timeout             string   `yaml:"timeout" json:"timeout"`
+	Command             string   `yaml:"command" json:"command"`
+	Args                []string `yaml:"args" json:"args"`
+	GRPCTLSSkipVerify   bool     `yaml:"grpc_tls_skip_verify" json:"grpc_tls_skip_verify"`
+	HealthyThreshold    int      `yaml:"healthy_threshold" json:"healthy_threshold"`
+	UnhealthyThreshold  int      `yaml:"unhealthy_threshold" json:"unhealthy_threshold"`
 }
 
 // TLSConfig represents TLS configuration.
@@ -887,6 +899,7 @@ func (c *Config) Validate() error {
 	}
 
 	// Validate listeners
+	validProtocols := map[string]bool{"http": true, "https": true, "tcp": true, "udp": true}
 	listenerNames := make(map[string]bool)
 	for i, l := range c.Listeners {
 		if l.Name == "" {
@@ -901,12 +914,30 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("listener %s: address is required", l.Name)
 		}
 
-		// Validate address format (must be parseable as host:port)
+		if !strings.Contains(l.Address, ":") {
+			return fmt.Errorf("listener %s: invalid address %q: must contain port", l.Name, l.Address)
+		}
+
 		if _, _, err := parseAddress(l.Address); err != nil {
 			return fmt.Errorf("listener %s: invalid address %q: %w", l.Name, l.Address, err)
 		}
 
-		// Validate routes reference pools
+		if l.Protocol != "" && !validProtocols[l.Protocol] {
+			return fmt.Errorf("listener %s: invalid protocol %q (valid: http, https, tcp, udp)", l.Name, l.Protocol)
+		}
+
+		if l.TLS != nil {
+			if (l.TLS.CertFile != "") != (l.TLS.KeyFile != "") {
+				return fmt.Errorf("listener %s: tls cert_file and key_file must both be set or both be empty", l.Name)
+			}
+		}
+
+		if l.MTLS != nil && l.MTLS.Enabled {
+			if len(l.MTLS.ClientCAs) == 0 {
+				return fmt.Errorf("listener %s: mtls client_cas is required when mtls is enabled", l.Name)
+			}
+		}
+
 		for j, route := range l.Routes {
 			if route.Pool == "" {
 				return fmt.Errorf("listener %s: route %d: pool is required", l.Name, j)
@@ -930,6 +961,16 @@ func (c *Config) Validate() error {
 			if b.Address == "" {
 				return fmt.Errorf("pool %s: backend %d: address is required", p.Name, j)
 			}
+			if !strings.Contains(b.Address, ":") {
+				return fmt.Errorf("pool %s: backend %d: invalid address %q: must be host:port", p.Name, j, b.Address)
+			}
+			if b.Weight < 0 {
+				return fmt.Errorf("pool %s: backend %d: weight must be non-negative, got %d", p.Name, j, b.Weight)
+			}
+		}
+
+		if err := validateHealthCheck(p); err != nil {
+			return err
 		}
 	}
 
@@ -952,6 +993,38 @@ func (c *Config) Validate() error {
 
 	// Validate server configuration
 	if err := c.validateServer(); err != nil {
+		return err
+	}
+
+	if err := c.validateAdmin(); err != nil {
+		return err
+	}
+
+	if err := c.validateLogging(); err != nil {
+		return err
+	}
+
+	if err := c.validateCluster(); err != nil {
+		return err
+	}
+
+	if err := c.validateTLS(); err != nil {
+		return err
+	}
+
+	if err := c.validateWAF(); err != nil {
+		return err
+	}
+
+	if err := c.validateProfiling(); err != nil {
+		return err
+	}
+
+	if err := c.validateGeoDNS(); err != nil {
+		return err
+	}
+
+	if err := c.validateShadow(); err != nil {
 		return err
 	}
 
@@ -1131,6 +1204,36 @@ func (c *Config) validateServer() error {
 		}
 	}
 
+	if c.Server.ShutdownTimeout != "" {
+		if _, err := time.ParseDuration(c.Server.ShutdownTimeout); err != nil {
+			return fmt.Errorf("server: invalid shutdown_timeout %q: %w", c.Server.ShutdownTimeout, err)
+		}
+	}
+
+	if c.Server.ListenerStopTimeout != "" {
+		if _, err := time.ParseDuration(c.Server.ListenerStopTimeout); err != nil {
+			return fmt.Errorf("server: invalid listener_stop_timeout %q: %w", c.Server.ListenerStopTimeout, err)
+		}
+	}
+
+	if c.Server.ProxyDrainWindow != "" {
+		if _, err := time.ParseDuration(c.Server.ProxyDrainWindow); err != nil {
+			return fmt.Errorf("server: invalid proxy_drain_window %q: %w", c.Server.ProxyDrainWindow, err)
+		}
+	}
+
+	if c.Server.RollbackCheckInterval != "" {
+		if _, err := time.ParseDuration(c.Server.RollbackCheckInterval); err != nil {
+			return fmt.Errorf("server: invalid rollback_check_interval %q: %w", c.Server.RollbackCheckInterval, err)
+		}
+	}
+
+	if c.Server.RollbackMonitorDuration != "" {
+		if _, err := time.ParseDuration(c.Server.RollbackMonitorDuration); err != nil {
+			return fmt.Errorf("server: invalid rollback_monitor_duration %q: %w", c.Server.RollbackMonitorDuration, err)
+		}
+	}
+
 	if c.Server.MaxConnections < 0 {
 		return fmt.Errorf("server: max_connections must be non-negative")
 	}
@@ -1141,6 +1244,246 @@ func (c *Config) validateServer() error {
 
 	if c.Server.MaxRetries < 0 {
 		return fmt.Errorf("server: max_retries must be non-negative")
+	}
+
+	return nil
+}
+
+
+// validateHealthCheck validates health check configuration for a pool.
+func validateHealthCheck(p *Pool) error {
+	hc := p.HealthCheck
+	if hc == nil {
+		return nil
+	}
+
+	validTypes := map[string]bool{"http": true, "tcp": true, "grpc": true, "exec": true}
+	if hc.Type != "" && !validTypes[hc.Type] {
+		return fmt.Errorf("pool %s: invalid health_check type %q (valid: http, tcp, grpc, exec)", p.Name, hc.Type)
+	}
+
+	if hc.Type == "http" && hc.Path == "" {
+		return fmt.Errorf("pool %s: health_check path is required for http type", p.Name)
+	}
+
+	if hc.Interval != "" {
+		interval, err := time.ParseDuration(hc.Interval)
+		if err != nil {
+			return fmt.Errorf("pool %s: invalid health_check interval %q: %w", p.Name, hc.Interval, err)
+		}
+		if hc.Timeout != "" {
+			timeout, err := time.ParseDuration(hc.Timeout)
+			if err != nil {
+				return fmt.Errorf("pool %s: invalid health_check timeout %q: %w", p.Name, hc.Timeout, err)
+			}
+			if timeout >= interval {
+				return fmt.Errorf("pool %s: health_check timeout must be less than interval", p.Name)
+			}
+		}
+	} else if hc.Timeout != "" {
+		if _, err := time.ParseDuration(hc.Timeout); err != nil {
+			return fmt.Errorf("pool %s: invalid health_check timeout %q: %w", p.Name, hc.Timeout, err)
+		}
+	}
+
+	return nil
+}
+
+// validateAdmin validates admin configuration.
+func (c *Config) validateAdmin() error {
+	if c.Admin == nil {
+		return nil
+	}
+
+	if c.Admin.Address != "" && !strings.Contains(c.Admin.Address, ":") {
+		return fmt.Errorf("admin: invalid address %q: must contain port", c.Admin.Address)
+	}
+
+	if c.Admin.RateLimitMaxRequests < 0 {
+		return fmt.Errorf("admin: rate_limit_max_requests must be non-negative")
+	}
+
+	if c.Admin.RateLimitWindow != "" {
+		if _, err := time.ParseDuration(c.Admin.RateLimitWindow); err != nil {
+			return fmt.Errorf("admin: invalid rate_limit_window %q: %w", c.Admin.RateLimitWindow, err)
+		}
+	}
+
+	return nil
+}
+
+// validateLogging validates logging configuration.
+func (c *Config) validateLogging() error {
+	if c.Logging == nil {
+		return nil
+	}
+
+	validLevels := map[string]bool{"debug": true, "info": true, "warn": true, "error": true}
+	if c.Logging.Level != "" && !validLevels[c.Logging.Level] {
+		return fmt.Errorf("logging: invalid level %q (valid: debug, info, warn, error)", c.Logging.Level)
+	}
+
+	validFormats := map[string]bool{"json": true, "text": true}
+	if c.Logging.Format != "" && !validFormats[c.Logging.Format] {
+		return fmt.Errorf("logging: invalid format %q (valid: json, text)", c.Logging.Format)
+	}
+
+	return nil
+}
+
+// validateCluster validates cluster configuration.
+func (c *Config) validateCluster() error {
+	if c.Cluster == nil || !c.Cluster.Enabled {
+		return nil
+	}
+
+	if c.Cluster.BindPort < 0 || c.Cluster.BindPort > 65535 {
+		return fmt.Errorf("cluster: bind_port must be between 0 and 65535")
+	}
+
+	for i, peer := range c.Cluster.Peers {
+		if peer == "" {
+			return fmt.Errorf("cluster: peer %d: address is required", i)
+		}
+		if !strings.Contains(peer, ":") {
+			return fmt.Errorf("cluster: peer %d: invalid address %q: must be host:port", i, peer)
+		}
+	}
+
+	if c.Cluster.ElectionTick != "" {
+		if _, err := time.ParseDuration(c.Cluster.ElectionTick); err != nil {
+			return fmt.Errorf("cluster: invalid election_tick %q: %w", c.Cluster.ElectionTick, err)
+		}
+	}
+
+	if c.Cluster.HeartbeatTick != "" {
+		if _, err := time.ParseDuration(c.Cluster.HeartbeatTick); err != nil {
+			return fmt.Errorf("cluster: invalid heartbeat_tick %q: %w", c.Cluster.HeartbeatTick, err)
+		}
+	}
+
+	return nil
+}
+
+// validateTLS validates TLS configuration.
+func (c *Config) validateTLS() error {
+	if c.TLS == nil {
+		return nil
+	}
+
+	if (c.TLS.CertFile != "") != (c.TLS.KeyFile != "") {
+		return fmt.Errorf("tls: cert_file and key_file must both be set or both be empty")
+	}
+
+	if c.TLS.ACME != nil && c.TLS.ACME.Enabled {
+		if c.TLS.ACME.Email == "" {
+			return fmt.Errorf("tls.acme: email is required when enabled")
+		}
+		if len(c.TLS.ACME.Domains) == 0 {
+			return fmt.Errorf("tls.acme: at least one domain is required when enabled")
+		}
+	}
+
+	return nil
+}
+
+// validateWAF validates WAF configuration.
+func (c *Config) validateWAF() error {
+	if c.WAF == nil || !c.WAF.Enabled {
+		return nil
+	}
+
+	validModes := map[string]bool{"enforce": true, "blocking": true, "block": true, "monitor": true, "disabled": true}
+	if c.WAF.Mode != "" && !validModes[c.WAF.Mode] {
+		return fmt.Errorf("waf: invalid mode %q (valid: enforce, blocking, block, monitor, disabled)", c.WAF.Mode)
+	}
+
+	if c.WAF.Detection != nil && c.WAF.Detection.Enabled {
+		validDetModes := map[string]bool{"enforce": true, "monitor": true}
+		if c.WAF.Detection.Mode != "" && !validDetModes[c.WAF.Detection.Mode] {
+			return fmt.Errorf("waf.detection: invalid mode %q (valid: enforce, monitor)", c.WAF.Detection.Mode)
+		}
+	}
+
+	if c.WAF.RateLimit != nil {
+		for i, rule := range c.WAF.RateLimit.Rules {
+			if rule.ID == "" {
+				return fmt.Errorf("waf.rate_limit: rule %d: id is required", i)
+			}
+			if rule.Window != "" {
+				if _, err := time.ParseDuration(rule.Window); err != nil {
+					return fmt.Errorf("waf.rate_limit: rule %s: invalid window %q: %w", rule.ID, rule.Window, err)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// validateProfiling validates profiling configuration.
+func (c *Config) validateProfiling() error {
+	if c.Profiling == nil || !c.Profiling.Enabled {
+		return nil
+	}
+
+	if c.Profiling.PprofAddr != "" && !strings.Contains(c.Profiling.PprofAddr, ":") {
+		return fmt.Errorf("profiling: invalid pprof_addr %q: must contain port", c.Profiling.PprofAddr)
+	}
+
+	if c.Profiling.BlockProfileRate < 0 {
+		return fmt.Errorf("profiling: block_profile_rate must be non-negative")
+	}
+
+	if c.Profiling.MutexProfileFraction < 0 {
+		return fmt.Errorf("profiling: mutex_profile_fraction must be non-negative")
+	}
+
+	return nil
+}
+
+// validateGeoDNS validates GeoDNS configuration.
+func (c *Config) validateGeoDNS() error {
+	if c.GeoDNS == nil || !c.GeoDNS.Enabled {
+		return nil
+	}
+
+	if c.GeoDNS.DBPath == "" {
+		return fmt.Errorf("geodns: db_path is required when enabled")
+	}
+
+	for i, rule := range c.GeoDNS.Rules {
+		if rule.Pool == "" {
+			return fmt.Errorf("geodns: rule %d: pool is required", i)
+		}
+	}
+
+	return nil
+}
+
+// validateShadow validates shadow/mirroring configuration.
+func (c *Config) validateShadow() error {
+	if c.Shadow == nil || !c.Shadow.Enabled {
+		return nil
+	}
+
+	if len(c.Shadow.Targets) == 0 {
+		return fmt.Errorf("shadow: at least one target is required when enabled")
+	}
+
+	for i, t := range c.Shadow.Targets {
+		if t.Pool == "" {
+			return fmt.Errorf("shadow: target %d: pool is required", i)
+		}
+		if t.Percentage < 0 || t.Percentage > 100 {
+			return fmt.Errorf("shadow: target %d: percentage must be between 0 and 100", i)
+		}
+	}
+
+	if c.Shadow.Timeout != "" {
+		if _, err := time.ParseDuration(c.Shadow.Timeout); err != nil {
+			return fmt.Errorf("shadow: invalid timeout %q: %w", c.Shadow.Timeout, err)
+		}
 	}
 
 	return nil

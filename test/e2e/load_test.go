@@ -281,7 +281,7 @@ pools:
 %s    health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendYAML.String())
 
@@ -491,7 +491,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), toForwardSlash(certFile), toForwardSlash(keyFile), proxyPH.Port(), backendAddr)
 
@@ -590,7 +590,7 @@ pools:
     health_check:
       type: http
       interval: 1s
-      timeout: 1s
+      timeout: 500ms
       path: /health
 `, adminPH.Port(), proxyPH.Port(), backendAddrs[0], backendAddrs[1], backendAddrs[2])
 

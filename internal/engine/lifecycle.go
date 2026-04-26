@@ -372,7 +372,13 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 		}
 	}
 
-	// 0g. Stop TLS certificate expiry monitor
+	// 0g. Stop ACME client
+	if e.acmeClient != nil {
+		e.acmeClient.Close()
+		e.logger.Info("ACME client stopped")
+	}
+
+	// 0h. Stop TLS certificate expiry monitor
 	e.tlsManager.StopExpiryMonitor()
 
 	// 1. Stop accepting new connections (close listeners)
@@ -401,7 +407,7 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 	// 2. Drain active connections
 	if ctx == nil {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel = context.WithTimeout(context.Background(), e.listenerStopTimeout)
 		defer cancel()
 	}
 	if err := e.connManager.Drain(ctx); err != nil {

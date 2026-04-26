@@ -1,0 +1,15 @@
+# TLS certificates (bring your own)
+certs/
+*.crt
+*.key
+
+# Data volumes
+prometheus-data/
+grafana-data/
+alertmanager-data/
+redis-data/
+olb-logs/
+
+# Environment files
+.env
+.env.local

@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/openloadbalancer/olb/internal/logging"
 )
@@ -43,7 +42,7 @@ func (e *Engine) setupSignalHandlers() {
 
 				case syscall.SIGTERM, syscall.SIGINT:
 					e.logger.Info("Received shutdown signal", logging.String("signal", sig.String()))
-					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+					ctx, cancel := context.WithTimeout(context.Background(), e.shutdownTimeout)
 					err := e.Shutdown(ctx)
 					cancel()
 					if err != nil {

@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/openloadbalancer/olb/internal/config"
 	"github.com/openloadbalancer/olb/internal/listener"
@@ -45,7 +44,7 @@ func (e *Engine) startListeners() error {
 
 // stopListeners stops the first n listeners that were started.
 func (e *Engine) stopListeners(n int) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), e.listenerStopTimeout)
 	defer cancel()
 	for i := 0; i < n && i < len(e.listeners); i++ {
 		e.listeners[i].Stop(ctx)

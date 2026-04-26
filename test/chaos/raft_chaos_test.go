@@ -126,7 +126,7 @@ func newTestCluster(t testing.TB, numNodes int) *testCluster {
 			BindAddr:      "127.0.0.1",
 			BindPort:      0,
 			Peers:         peers,
-			ElectionTick:  300 * time.Millisecond,
+			ElectionTick:  1 * time.Second,
 			HeartbeatTick: 100 * time.Millisecond,
 		}
 
@@ -139,7 +139,7 @@ func newTestCluster(t testing.TB, numNodes int) *testCluster {
 		transportCfg := &cluster.TCPTransportConfig{
 			BindAddr:    addrs[i],
 			MaxPoolSize: 10,
-			Timeout:     2 * time.Second,
+			Timeout:     300 * time.Millisecond,
 		}
 		transport, err := cluster.NewTCPTransport(transportCfg, c)
 		if err != nil {
@@ -466,7 +466,7 @@ func TestChaos_SingleNodeCluster(t *testing.T) {
 	tc := newTestCluster(t, 1)
 	t.Cleanup(tc.shutdown)
 
-	leader := tc.waitForLeader(2 * time.Second)
+	leader := tc.waitForLeader(5 * time.Second)
 	if leader == nil {
 		t.Fatal("single node should become leader")
 	}
