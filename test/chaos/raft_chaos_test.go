@@ -24,11 +24,10 @@ import (
 
 // testCluster manages a multi-node Raft cluster for chaos testing.
 type testCluster struct {
-	t        testing.TB
-	nodes    []*chaosNode
-	mu       sync.Mutex
-	stopped  bool
-	nextPort int
+	t       testing.TB
+	nodes   []*chaosNode
+	mu      sync.Mutex
+	stopped bool
 }
 
 // chaosNode wraps a Raft cluster node with chaos capabilities.
@@ -247,35 +246,6 @@ func (tc *testCluster) killNode(idx int) {
 	node.stopped.Store(true)
 	node.transport.Stop()
 	node.cluster.Stop()
-}
-
-// restartNode simulates a node restart after a crash.
-func (tc *testCluster) restartNode(idx int) {
-	tc.t.Helper()
-	if idx >= len(tc.nodes) {
-		tc.t.Fatalf("restartNode: index %d out of range (len=%d)", idx, len(tc.nodes))
-	}
-	node := tc.nodes[idx]
-	node.partition.Store(false)
-	node.stopped.Store(false)
-
-	// Create new transport on a fresh port
-	transportCfg := &cluster.TCPTransportConfig{
-		BindAddr:    fmt.Sprintf("127.0.0.1:%d", allocPorts(1)),
-		MaxPoolSize: 10,
-		Timeout:     2 * time.Second,
-	}
-	transport, err := cluster.NewTCPTransport(transportCfg, node.cluster)
-	if err != nil {
-		tc.t.Fatalf("restartNode transport %s: %v", node.ID, err)
-	}
-	if err := transport.Start(); err != nil {
-		tc.t.Fatalf("restartNode transport start %s: %v", node.ID, err)
-	}
-	node.transport = transport
-	node.addr = transport.Addr()
-	node.cluster.SetTransport(transport)
-	node.cluster.Start()
 }
 
 // ---------------------------------------------------------------------------

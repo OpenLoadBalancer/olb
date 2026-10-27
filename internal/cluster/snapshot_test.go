@@ -56,12 +56,6 @@ func (kv *kvStateMachine) get(key string) string {
 	return kv.data[key]
 }
 
-func (kv *kvStateMachine) size() int {
-	kv.mu.Lock()
-	defer kv.mu.Unlock()
-	return len(kv.data)
-}
-
 // --------------------------------------------------------------------------
 // Helper: create a test cluster
 // --------------------------------------------------------------------------

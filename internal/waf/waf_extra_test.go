@@ -3,7 +3,6 @@ package waf
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http/httptest"
 	"strings"
@@ -90,12 +89,6 @@ func TestDefaultLogger_UsedInProcess(t *testing.T) {
 }
 
 // --- waf.go coverage: JSONLogger.Log with marshal failure (line 413 branch) ---
-
-type marshalFailValue struct{}
-
-func (marshalFailValue) MarshalJSON() ([]byte, error) {
-	return nil, errors.New("marshal failure")
-}
 
 func TestJSONLogger_Log_MarshalError(t *testing.T) {
 	var buf bytes.Buffer

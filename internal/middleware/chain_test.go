@@ -204,7 +204,7 @@ func TestChainMiddlewares(t *testing.T) {
 	}
 
 	// Modifying returned slice should not affect chain
-	middlewares = append(middlewares, &testMiddleware{name: "three", priority: 300})
+	_ = append(middlewares, &testMiddleware{name: "three", priority: 300})
 	if chain.Len() != 2 {
 		t.Errorf("chain should still have 2 middleware, got %d", chain.Len())
 	}

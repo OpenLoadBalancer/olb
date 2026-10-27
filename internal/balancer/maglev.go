@@ -273,7 +273,7 @@ func (m *Maglev) rebuildLocked() {
 
 	next := make([]int, n)
 	for range MaglevTableSize {
-		minPos := uint64(^uint64(0))
+		minPos := ^uint64(0)
 		minBackend := -1
 
 		for j := range n {

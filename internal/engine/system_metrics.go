@@ -141,13 +141,13 @@ func (sm *systemMetrics) updateSystemMetrics(
 
 		// Increment counters by delta since last refresh
 		if delta := hitsTotal - sm.lastPoolHits; delta > 0 {
-			sm.poolHitsTotal.Add(int64(delta))
+			sm.poolHitsTotal.Add(delta)
 		}
 		if delta := missesTotal - sm.lastPoolMisses; delta > 0 {
-			sm.poolMissesTotal.Add(int64(delta))
+			sm.poolMissesTotal.Add(delta)
 		}
 		if delta := evictionsTotal - sm.lastPoolEvictions; delta > 0 {
-			sm.poolEvictionsTotal.Add(int64(delta))
+			sm.poolEvictionsTotal.Add(delta)
 		}
 		sm.lastPoolHits = hitsTotal
 		sm.lastPoolMisses = missesTotal

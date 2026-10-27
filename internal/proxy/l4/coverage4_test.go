@@ -11,7 +11,6 @@ import (
 	"net"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1529,18 +1528,6 @@ func TestCov_UDPProxy_ForwardToBackend_SuccessfulWriteWithBackend(t *testing.T) 
 // (This ensures the CAS loop works under contention for SNIBasedProxy)
 // ============================================================================
 
-type testNoDialBalancer struct {
-	atomic.Uint64
-}
-
-func (b *testNoDialBalancer) Next(ctx *backend.RequestContext, backends []*backend.Backend) *backend.Backend {
-	if len(backends) == 0 {
-		return nil
-	}
-	idx := b.Add(1) % uint64(len(backends))
-	return backends[idx]
-}
-
 // ============================================================================
 // proxyConnections - verify both directions close their respective conns
 // ============================================================================
@@ -1923,7 +1910,7 @@ func TestCov_UDPProxy_ReceiveFromBackend_ZeroReadFromBackend(t *testing.T) {
 
 	clientConn.SetReadDeadline(time.Now().Add(3 * time.Second))
 	readBuf := make([]byte, 1024)
-	_, _, err = clientConn.ReadFrom(readBuf)
+	_, _, _ = clientConn.ReadFrom(readBuf)
 	// We're just trying to exercise the n==0 path; the main point is the
 	// receiveFromBackend goroutine runs through its loop
 

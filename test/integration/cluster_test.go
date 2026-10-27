@@ -58,12 +58,6 @@ func (sm *testStateMachine) get(key string) (string, bool) {
 	return v, ok
 }
 
-func (sm *testStateMachine) appliedCount() int {
-	sm.mu.RLock()
-	defer sm.mu.RUnlock()
-	return sm.applied
-}
-
 // clusterNode bundles a Cluster with its state machine for test bookkeeping.
 type clusterNode struct {
 	id      string

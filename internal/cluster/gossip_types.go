@@ -225,19 +225,6 @@ const (
 // EventHandler is a callback for membership changes.
 type EventHandler func(event EventType, node *GossipNode)
 
-// message is the internal representation of a gossip message.
-type message struct {
-	Type        MessageType
-	SeqNo       uint32
-	SenderID    string
-	TargetID    string
-	Incarnation uint32
-	NodeID      string
-	Address     string
-	Port        uint16
-	Metadata    map[string]string
-}
-
 // broadcast represents a queued broadcast with retransmit tracking.
 type broadcast struct {
 	msg        []byte

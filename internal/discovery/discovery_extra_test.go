@@ -2304,15 +2304,12 @@ func craftDNSResponse(query []byte) []byte {
 
 	// Parse the question section to get the domain name
 	offset := 12
-	var qname []byte
 	for offset < len(query) {
 		labelLen := int(query[offset])
 		if labelLen == 0 {
-			qname = append(qname, 0)
 			offset++
 			break
 		}
-		qname = append(qname, query[offset:offset+labelLen+1]...)
 		offset += labelLen + 1
 	}
 	if offset+4 > len(query) {
