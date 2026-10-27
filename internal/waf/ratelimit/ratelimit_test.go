@@ -1,6 +1,7 @@
 package ratelimit
 
 import (
+	"fmt"
 	"net/http/httptest"
 	"sync"
 	"testing"
@@ -606,5 +607,20 @@ func TestCov_Allow_ShortWindowRetryAfter(t *testing.T) {
 	// With a 100ms window, retryAfter should be clamped to 1 (minimum)
 	if retryAfter != 1 {
 		t.Errorf("expected retryAfter=1 for sub-second window, got %d", retryAfter)
+	}
+}
+
+func TestTrackViolation_Bounded(t *testing.T) {
+	m := make(map[string]int)
+	for i := 0; i < maxTrackedViolations+10; i++ {
+		trackViolation(m, fmt.Sprintf("ip:%d", i))
+	}
+	if len(m) > maxTrackedViolations {
+		t.Fatalf("len = %d, want <= %d", len(m), maxTrackedViolations)
+	}
+	trackViolation(m, "ip:repeat")
+	trackViolation(m, "ip:repeat")
+	if m["ip:repeat"] != 2 {
+		t.Fatalf("existing key count = %d, want 2", m["ip:repeat"])
 	}
 }

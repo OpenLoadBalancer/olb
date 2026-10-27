@@ -675,3 +675,30 @@ func TestCov_Distributed_Allow_ShortWindowRetryAfter(t *testing.T) {
 		t.Errorf("expected retryAfter=1 for sub-second window, got %d", retryAfter)
 	}
 }
+
+// AutoBanAfter is a violation count: the distributed limiter used to ban on
+// the first violation regardless of it.
+func TestDistributedRateLimiter_AutoBanAfterViolations(t *testing.T) {
+	rl := NewDistributed(DistributedConfig{
+		Rules: []Rule{{ID: "r", Scope: "ip", Limit: 1, Window: time.Minute, AutoBanAfter: 3}},
+		Store: NewMockStore(),
+	})
+	defer rl.Stop()
+
+	var bans int
+	rl.OnAutoBan = func(ip, reason string) { bans++ }
+
+	req := &http.Request{RemoteAddr: "192.168.1.1:12345"}
+	if allowed, _ := rl.Allow(req); !allowed {
+		t.Fatal("first request should be allowed")
+	}
+	for i := 1; i <= 5; i++ {
+		if allowed, _ := rl.Allow(req); allowed {
+			t.Fatalf("request %d over the limit was allowed", i+1)
+		}
+		want := i / 3 // a ban on every 3rd violation, then the count resets
+		if bans != want {
+			t.Fatalf("after %d violations: bans = %d, want %d", i, bans, want)
+		}
+	}
+}
