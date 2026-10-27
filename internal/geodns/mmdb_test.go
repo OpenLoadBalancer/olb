@@ -28,8 +28,7 @@ func writeTestMMDB(t *testing.T, recordSize uint16) string {
 	// Data record values: nodeCount + 16 + dataOffset
 	// In MMDB: record value > nodeCount means data record
 	// data offset = (record - nodeCount) - 16
-	dataRecordUS := nodeCount + uint32(len(dataUS)) + 16 + uint32(len(dataAU))
-	dataRecordAU := nodeCount + uint32(len(dataUS)) + 16
+	var dataRecordUS, dataRecordAU uint32
 
 	// Actually, let me reconsider. The MMDB spec says:
 	// If record > nodeCount: dataOffset = (record - nodeCount - 16)
@@ -240,15 +239,6 @@ func insertPrefix(t *testing.T, nodes [][2]uint32, allocatedNodes *uint32, empty
 	}
 }
 
-func allocateNodeHelper(nodes *[][2]uint32, allocatedNodes *uint32, emptyRecord uint32) uint32 {
-	n := *allocatedNodes
-	*allocatedNodes++
-	if n >= uint32(len(*nodes)) {
-		*nodes = append(*nodes, [2]uint32{emptyRecord, emptyRecord})
-	}
-	return n
-}
-
 func writeNodeRecord(buf *bytes.Buffer, left, right uint32, recordSize uint16) {
 	switch recordSize {
 	case 24:
@@ -353,7 +343,7 @@ func testMMDBLookups(t *testing.T, path string) {
 	}
 
 	// Lookup 8.0.0.1 -> should be US (same /8)
-	iso, name, ok = reader.lookupCountry(net.ParseIP("8.0.0.1"))
+	iso, _, ok = reader.lookupCountry(net.ParseIP("8.0.0.1"))
 	if !ok {
 		t.Error("Expected to find 8.0.0.1")
 	} else if iso != "US" {

@@ -282,9 +282,3 @@ func TestCopyBidirectional_IdleTimeout(t *testing.T) {
 		t.Fatal("CopyBidirectional did not exit within timeout")
 	}
 }
-
-type closedConnError struct{}
-
-func (e *closedConnError) Error() string   { return "use of closed network connection" }
-func (e *closedConnError) Timeout() bool   { return false }
-func (e *closedConnError) Temporary() bool { return false }

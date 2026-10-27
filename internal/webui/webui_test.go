@@ -462,14 +462,3 @@ func TestServeHTTP_DirWithoutIndexHTML_FallsBack(t *testing.T) {
 		t.Errorf("expected 500, got %d", rec.Code)
 	}
 }
-
-// statFailOnSecondOpenFS succeeds on first Open, Stat succeeds, then serveIndex Open succeeds but Stat fails.
-type statFailOnSecondFS struct{ opens int }
-
-func (fs *statFailOnSecondFS) Open(name string) (http.File, error) {
-	fs.opens++
-	if fs.opens == 1 {
-		return &normalFile{data: []byte("ok"), name: "subdir", modTime: testModTime}, nil
-	}
-	return &statFailFile{data: []byte("<html>test</html>")}, nil
-}

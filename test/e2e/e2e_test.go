@@ -2931,64 +2931,6 @@ pools:
 	return path, proxyPH, adminPH
 }
 
-// writeConfigReserved is like writeConfig but uses reserved ports to prevent
-// TOCTOU races under parallel execution. The caller must call the returned
-// release function before calling eng.Start().
-func writeConfigReserved(t *testing.T, b1, b2, b3 string) (configPath string, release func()) {
-	t.Helper()
-	proxyPH := reservePort(t)
-	adminPH := reservePort(t)
-
-	yaml := fmt.Sprintf(`global:
-  workers: 2
-
-admin:
-  address: "127.0.0.1:%d"
-
-listeners:
-  - name: http
-    address: "127.0.0.1:%d"
-    protocol: http
-    routes:
-      - path: /
-        pool: test-pool
-
-pools:
-  - name: test-pool
-    algorithm: round_robin
-    backends:
-      - address: "%s"
-      - address: "%s"
-      - address: "%s"
-    health_check:
-      type: http
-      enabled: true
-      interval: 1s
-      timeout: 500ms
-      path: /health
-`, adminPH.Port(), proxyPH.Port(), b1, b2, b3)
-
-	dir := t.TempDir()
-	path := filepath.Join(dir, "olb.yaml")
-	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
-		t.Fatalf("Failed to write config: %v", err)
-	}
-	return path, func() { releasePorts(proxyPH, adminPH) }
-}
-
-// Deprecated: Use reservePort(t) + startEngineWithPorts to prevent TOCTOU port races.
-// getFreePort is only acceptable for backend listeners that bind immediately.
-func getFreePort(t *testing.T) int {
-	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("getFreePort: %v", err)
-	}
-	port := l.Addr().(*net.TCPAddr).Port
-	l.Close()
-	return port
-}
-
 // portHolder reserves a port by holding a listener open. Call Release()
 // before the engine tries to bind the port (i.e., before eng.Start()).
 type portHolder struct {

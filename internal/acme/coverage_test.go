@@ -1,12 +1,10 @@
 package acme
 
 import (
-	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -748,30 +746,3 @@ func TestCov_RecordOrder_DomainLimitReached(t *testing.T) {
 // But the sign error is not from ecdsa.Sign (that should work).
 // We test the sign path where the key is wrapped.
 // --------------------------------------------------------------------------
-
-// failingSigner wraps an ECDSA public key but returns errors on Sign.
-type failingSigner struct {
-	pub ecdsa.PublicKey
-}
-
-func (f *failingSigner) Public() crypto.PublicKey {
-	return &f.pub
-}
-
-func (f *failingSigner) Sign(_ io.Reader, _ []byte, _ crypto.SignerOpts) ([]byte, error) {
-	return nil, errors.New("sign operation failed")
-}
-
-// failingSignerThumbprint returns non-ecdsa public key for thumbprint test.
-type failingSignerThumbprint struct {
-	pub ecdsa.PublicKey
-}
-
-func (f *failingSignerThumbprint) Public() crypto.PublicKey {
-	// Return something that is not *ecdsa.PublicKey for type assertion
-	return f.pub
-}
-
-func (f *failingSignerThumbprint) Sign(_ io.Reader, _ []byte, _ crypto.SignerOpts) ([]byte, error) {
-	return nil, errors.New("not implemented")
-}

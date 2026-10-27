@@ -116,30 +116,6 @@ func writeCertFiles(t *testing.T, tmpDir, certName, keyName string, certPEM, key
 	return certPath, keyPath
 }
 
-// startEngineWithConfig is a helper that creates and starts an engine from config YAML.
-func startEngineWithConfig(t *testing.T, yamlCfg string) *engine.Engine {
-	t.Helper()
-	cfgPath := writeYAML(t, yamlCfg)
-	cfg, err := config.Load(cfgPath)
-	if err != nil {
-		t.Fatalf("Failed to load config: %v", err)
-	}
-
-	eng, err := engine.New(cfg, "")
-	if err != nil {
-		t.Fatalf("Failed to create engine: %v", err)
-	}
-	if err := eng.Start(); err != nil {
-		t.Fatalf("Failed to start engine: %v", err)
-	}
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		eng.Shutdown(ctx)
-	})
-	return eng
-}
-
 // TestE2E_MTLS_Handshake verifies mutual TLS: client cert is required and verified.
 func TestE2E_MTLS_Handshake(t *testing.T) {
 	var hits atomic.Int64
