@@ -1049,3 +1049,45 @@ func TestCacheMiddleware_RevalidateDuplicatePrevention(t *testing.T) {
 		t.Errorf("expected at least 2 calls, got %d", total)
 	}
 }
+
+// TestCacheMiddleware_NoSetCookieReplay guards against cross-user session
+// replay: a response that sets a cookie must never be stored in (and later
+// served from) a shared cache (RFC 9111 §3.5).
+func TestCacheMiddleware_NoSetCookieReplay(t *testing.T) {
+	var hits atomic.Int64
+	backend := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		c, _ := r.Cookie("session")
+		u := "none"
+		if c != nil {
+			u = c.Value
+		}
+		// Backend echoes the caller's own identity.
+		w.Header().Set("Set-Cookie", "session="+u+"; Path=/; HttpOnly")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("PAGE FOR " + u))
+	})
+	h := NewCacheMiddleware(DefaultCacheConfig()).Wrap(backend)
+
+	// ALICE primes the cache.
+	req1 := httptest.NewRequest("GET", "http://lb/profile", nil)
+	req1.Header.Set("Cookie", "session=ALICE")
+	rec1 := httptest.NewRecorder()
+	h.ServeHTTP(rec1, req1)
+
+	// BOB must not receive ALICE's cached body or cookie.
+	req2 := httptest.NewRequest("GET", "http://lb/profile", nil)
+	req2.Header.Set("Cookie", "session=BOB")
+	rec2 := httptest.NewRecorder()
+	h.ServeHTTP(rec2, req2)
+
+	if rec2.Header().Get("X-Cache") == "HIT" {
+		t.Error("response with Set-Cookie must not be cached, but BOB got a HIT")
+	}
+	if strings.Contains(rec2.Body.String(), "ALICE") {
+		t.Errorf("BOB received ALICE's body: %q", rec2.Body.String())
+	}
+	if got := hits.Load(); got != 2 {
+		t.Errorf("backend should be hit twice (Set-Cookie responses are not cached), got %d", got)
+	}
+}
