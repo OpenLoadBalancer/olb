@@ -339,3 +339,27 @@ func TestMetricsMiddleware_GetMetricValue(t *testing.T) {
 		t.Error("expected error for unknown metric")
 	}
 }
+
+// Config reload rebuilds the middleware chain against the same registry.
+// The second NewMetricsMiddleware must feed the registered vectors, or
+// /metrics freezes at its pre-reload values.
+func TestMetricsMiddleware_ReusesRegisteredVectorsAfterReload(t *testing.T) {
+	registry := metrics.NewRegistry()
+	_ = NewMetricsMiddleware(registry)
+	reloaded := NewMetricsMiddleware(registry)
+
+	handler := reloaded.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	for i := 0; i < 3; i++ {
+		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/test", nil))
+	}
+
+	registered := registry.GetCounterVec("http_requests_total")
+	if registered == nil {
+		t.Fatal("http_requests_total not registered")
+	}
+	if got := registered.With("GET", "unknown", "2xx").Get(); got != 3 {
+		t.Errorf("registered http_requests_total = %d after reload, want 3", got)
+	}
+}

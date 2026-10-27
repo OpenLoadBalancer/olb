@@ -34,42 +34,37 @@ func NewMetricsMiddleware(registry *metrics.Registry) *MetricsMiddleware {
 	}
 
 	// Create or get metric vectors
-	m.requestsTotal = metrics.NewCounterVec(
+	m.requestsTotal = registry.CounterVecOrRegister(metrics.NewCounterVec(
 		"http_requests_total",
 		"Total number of HTTP requests",
 		[]string{"method", "route", "status"},
-	)
-	registry.RegisterCounterVec(m.requestsTotal)
+	))
 
-	m.durationSeconds = metrics.NewHistogramVec(
+	m.durationSeconds = registry.HistogramVecOrRegister(metrics.NewHistogramVec(
 		"http_request_duration_seconds",
 		"HTTP request duration in seconds",
 		[]string{"method", "route"},
-	)
-	registry.RegisterHistogramVec(m.durationSeconds)
+	))
 
-	m.requestSizeBytes = metrics.NewHistogramVecWithBuckets(
+	m.requestSizeBytes = registry.HistogramVecOrRegister(metrics.NewHistogramVecWithBuckets(
 		"http_request_size_bytes",
 		"HTTP request size in bytes",
 		[]string{"method", "route"},
 		[]float64{100, 1000, 10000, 100000, 1000000, 10000000}, // 100B to 10MB
-	)
-	registry.RegisterHistogramVec(m.requestSizeBytes)
+	))
 
-	m.responseSizeBytes = metrics.NewHistogramVecWithBuckets(
+	m.responseSizeBytes = registry.HistogramVecOrRegister(metrics.NewHistogramVecWithBuckets(
 		"http_response_size_bytes",
 		"HTTP response size in bytes",
 		[]string{"method", "route"},
 		[]float64{100, 1000, 10000, 100000, 1000000, 10000000}, // 100B to 10MB
-	)
-	registry.RegisterHistogramVec(m.responseSizeBytes)
+	))
 
-	m.activeRequests = metrics.NewGaugeVec(
+	m.activeRequests = registry.GaugeVecOrRegister(metrics.NewGaugeVec(
 		"http_active_requests",
 		"Number of active HTTP requests",
 		[]string{"method"},
-	)
-	registry.RegisterGaugeVec(m.activeRequests)
+	))
 
 	return m
 }
