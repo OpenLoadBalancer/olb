@@ -222,6 +222,11 @@ func (sh *SSEHandler) streamSSEResponseWithContext(w http.ResponseWriter, r *htt
 				frag, ferr := reader.ReadSlice('\n')
 				line = append(line, frag...)
 				if ferr == nil {
+					// A line that fit in the read buffer can still exceed
+					// a MaxEventSize smaller than the buffer.
+					if int64(len(line)) > maxLineSize {
+						line = append(line[:maxLineSize], '\n')
+					}
 					err = nil
 					break
 				}
