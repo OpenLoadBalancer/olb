@@ -60,6 +60,17 @@ func decodeValue(src reflect.Value, dst reflect.Value) error {
 
 // decodeStruct decodes a map into a struct.
 func decodeStruct(src reflect.Value, dst reflect.Value) error {
+	// Blocks are collected as lists so that repeated blocks can fill a
+	// slice; a struct target takes exactly one block.
+	if src.Kind() == reflect.Slice || src.Kind() == reflect.Array {
+		if src.Len() != 1 {
+			return fmt.Errorf("block defined %d times, expected exactly one", src.Len())
+		}
+		src = src.Index(0)
+		for src.Kind() == reflect.Interface && !src.IsNil() {
+			src = src.Elem()
+		}
+	}
 	if src.Kind() != reflect.Map {
 		return fmt.Errorf("cannot decode %v into struct %v", src.Type(), dst.Type())
 	}
