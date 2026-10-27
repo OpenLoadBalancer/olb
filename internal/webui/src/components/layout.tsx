@@ -15,7 +15,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const previouslyFocusedElement = useRef<HTMLElement | null>(null)
 
   // Close sidebar on route change (mobile)
-  useEffect(() => { setSidebarOpen(false) }, [location.pathname])
+  const [prevPathname, setPrevPathname] = useState(location.pathname)
+  if (prevPathname !== location.pathname) {
+    setPrevPathname(location.pathname)
+    setSidebarOpen(false)
+  }
 
   // Focus trap and restore for mobile sidebar
   useEffect(() => {
