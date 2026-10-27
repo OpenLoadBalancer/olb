@@ -117,7 +117,7 @@ func NewRetryMiddleware(config RetryConfig) *RetryMiddleware {
 		config:    config,
 		retryOn:   retryOnMap,
 		methods:   methodsMap,
-		rand:      rand.New(rand.NewSource(time.Now().UnixNano())),
+		rand:      rand.New(rand.NewSource(time.Now().UnixNano())), // #nosec G404 -- retry jitter, not a security value
 		sleepFunc: time.Sleep,
 	}
 }

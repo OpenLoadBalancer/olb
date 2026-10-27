@@ -330,7 +330,7 @@ func (c *Cluster) resetElectionTimer() {
 	if base <= 0 {
 		base = 300 * time.Millisecond
 	}
-	jitter := time.Duration(rand.Int63n(int64(2 * base)))
+	jitter := time.Duration(rand.Int63n(int64(2 * base))) // #nosec G404 -- election timeout jitter, not a security value
 
 	if c.electionTimer != nil {
 		if !c.electionTimer.Stop() {

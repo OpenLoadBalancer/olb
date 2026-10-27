@@ -472,7 +472,7 @@ func BuildClientTLSConfig(config *MTLSConfig) (*tls.Config, error) {
 
 	tlsConfig := &tls.Config{
 		MinVersion:         tls.VersionTLS12,
-		InsecureSkipVerify: config.InsecureSkipVerify,
+		InsecureSkipVerify: config.InsecureSkipVerify, // #nosec G402 -- opt-in via config
 		ServerName:         config.ServerName,
 	}
 

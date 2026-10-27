@@ -210,7 +210,7 @@ func (sm *ShadowManager) sendShadow(req *http.Request, backendAddr string, targe
 	}
 
 	// Create shadow request
-	shadowReq, err := http.NewRequestWithContext(ctx, req.Method, shadowURL.String(), nil)
+	shadowReq, err := http.NewRequestWithContext(ctx, req.Method, shadowURL.String(), nil) // #nosec G704 -- shadow target comes from config
 	if err != nil {
 		return
 	}
@@ -246,7 +246,7 @@ func (sm *ShadowManager) sendShadow(req *http.Request, backendAddr string, targe
 
 	// Send request (fire and forget)
 	sm.requestsTotal.Inc()
-	resp, err := sm.client.Do(shadowReq)
+	resp, err := sm.client.Do(shadowReq) // #nosec G704 -- shadow target comes from config
 	if err != nil {
 		sm.errorsTotal.Inc()
 		return

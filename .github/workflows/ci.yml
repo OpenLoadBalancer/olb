@@ -479,7 +479,9 @@ jobs:
       - name: Run Gosec Security Scanner
         uses: securego/gosec@v2.30.0
         with:
-          args: '-severity high -quiet ./...'
+          # G115 (int conversion overflow) only fires on encode-side casts of
+          # local values here; triaged in #68. Other HIGH sites carry #nosec.
+          args: '-severity high -exclude=G115 -quiet ./...'
 
       - name: Verify module checksums
         run: go mod verify
