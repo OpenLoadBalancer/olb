@@ -63,6 +63,11 @@ linters:
         linters:
           - staticcheck
         text: SA5011
+      # These tests feed deliberately misspelled config keys to the
+      # unknown-key detector.
+      - path: internal/config/unknown_keys_test\.go
+        linters:
+          - misspell
     paths:
       # Go sources shipped inside npm packages.
       - internal/webui/node_modules

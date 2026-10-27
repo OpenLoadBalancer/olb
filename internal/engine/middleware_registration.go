@@ -57,6 +57,24 @@ func orDefault(v, def string) string {
 	return v
 }
 
+// boolDefault returns *p, or def when the key was omitted.
+func boolDefault(p *bool, def bool) bool {
+	if p == nil {
+		return def
+	}
+	return *p
+}
+
+// headersOrDefault returns h, or the real IP middleware's default header
+// list when none is configured. A real_ip block with only trusted_proxies
+// used to match no header at all and change nothing.
+func headersOrDefault(h []string) []string {
+	if len(h) > 0 {
+		return h
+	}
+	return realip.DefaultConfig().Headers
+}
+
 // fail records that an enabled middleware could not be built.
 func (ctx *middlewareRegistrationContext) fail(name string, err error) {
 	ctx.errs = append(ctx.errs, fmt.Errorf("middleware %s: %w", name, err))
@@ -150,7 +168,7 @@ func registerRealIPMiddleware(ctx *middlewareRegistrationContext) {
 	r := ctx.cfg.Middleware.RealIP
 	ctx.chain.Use(realip.New(realip.Config{
 		Enabled:         r.Enabled,
-		Headers:         r.Headers,
+		Headers:         headersOrDefault(r.Headers),
 		TrustedProxies:  r.TrustedProxies,
 		RejectUntrusted: r.RejectUntrusted,
 	}))
@@ -223,9 +241,9 @@ func registerRequestIDMiddleware(ctx *middlewareRegistrationContext) {
 	ctx.chain.Use(requestid.New(requestid.Config{
 		Enabled:      r.Enabled,
 		Header:       r.Header,
-		Generate:     r.Generate,
+		Generate:     boolDefault(r.Generate, true),
 		Length:       r.Length,
-		Response:     r.Response,
+		Response:     boolDefault(r.Response, true),
 		ExcludePaths: r.ExcludePaths,
 	}))
 }
@@ -570,11 +588,12 @@ func registerBasicAuthMiddleware(ctx *middlewareRegistrationContext) {
 	}
 	b := ctx.cfg.Middleware.BasicAuth
 	basicMW, err := basic.New(basic.Config{
-		Enabled:      b.Enabled,
-		Users:        b.Users,
-		Realm:        b.Realm,
-		ExcludePaths: b.ExcludePaths,
-		Hash:         orDefault(b.Hash, "sha256"),
+		Enabled:        b.Enabled,
+		Users:          b.Users,
+		Realm:          b.Realm,
+		ExcludePaths:   b.ExcludePaths,
+		Hash:           orDefault(b.Hash, "sha256"),
+		AllowPlaintext: b.AllowPlaintext,
 	})
 	if err != nil {
 		ctx.fail("basic_auth", err)

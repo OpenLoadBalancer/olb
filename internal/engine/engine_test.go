@@ -3650,9 +3650,9 @@ func TestCreateMiddlewareChainWithRequestID(t *testing.T) {
 		RequestID: &config.RequestIDConfig{
 			Enabled:      true,
 			Header:       "X-Request-ID",
-			Generate:     true,
+			Generate:     func() *bool { b := true; return &b }(),
 			Length:       16,
-			Response:     true,
+			Response:     func() *bool { b := true; return &b }(),
 			ExcludePaths: []string{"/health"},
 		},
 	}

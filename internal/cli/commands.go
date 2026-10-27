@@ -431,7 +431,8 @@ func (c *ConfigCommand) runValidate(args []string) error {
 	}
 
 	// Load and parse config
-	cfg, err := config.Load(configPath)
+	loader := config.NewLoader()
+	cfg, err := loader.Load(configPath)
 	if err != nil {
 		return fmt.Errorf("config validation failed: %w", err)
 	}
@@ -440,6 +441,12 @@ func (c *ConfigCommand) runValidate(args []string) error {
 	fmt.Printf("  Version:   %s\n", cfg.Version)
 	fmt.Printf("  Listeners: %d\n", len(cfg.Listeners))
 	fmt.Printf("  Pools:     %d\n", len(cfg.Pools))
+	if len(loader.Warnings) > 0 {
+		fmt.Printf("  Warnings:  %d (these keys are ignored)\n", len(loader.Warnings))
+		for _, w := range loader.Warnings {
+			fmt.Printf("    - %s\n", w)
+		}
+	}
 	return nil
 }
 
