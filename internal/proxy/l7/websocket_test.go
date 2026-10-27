@@ -420,8 +420,10 @@ func TestWriteUpgradeRequest(t *testing.T) {
 		if !strings.Contains(result, "Host: example.com") {
 			t.Errorf("expected Host header, got: %s", result)
 		}
-		if strings.Contains(result, "Connection:") {
-			t.Error("hop-by-hop Connection header should be stripped")
+		// The client-supplied Connection header is stripped (hop-by-hop), but
+		// RFC 6455 §4.2.1 requires the proxy to re-add "Connection: Upgrade".
+		if !strings.Contains(result, "Connection: Upgrade") {
+			t.Error("forwarded handshake must contain Connection: Upgrade")
 		}
 		<-done
 	})

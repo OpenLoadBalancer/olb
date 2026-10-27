@@ -262,6 +262,11 @@ func (wh *WebSocketHandler) writeUpgradeRequest(conn net.Conn, r *http.Request, 
 		}
 	}
 
+	// Re-add the mandatory upgrade header: Connection is hop-by-hop and was
+	// stripped above, but RFC 6455 §4.2.1 requires "Connection: Upgrade" in the
+	// forwarded handshake (compliant backends answer non-101 otherwise).
+	buf.WriteString("Connection: Upgrade\r\n")
+
 	// Add X-Forwarded headers
 	clientIP := wh.extractClientIP(r)
 	if clientIP != "" {
