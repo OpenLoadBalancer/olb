@@ -275,9 +275,51 @@ func (p *Parser) parseSequence(minIndent int) (*Node, error) {
 	return seq, nil
 }
 
+// parseValueAfterColon parses the value of a "key:" whose colon has just been
+// consumed. A value on the next line belongs to the key only if that line is
+// indented further (INDENT) or starts a same-level sequence ("key:\n- a");
+// anything else — a sibling key, a DEDENT, EOF — means the value is empty.
+// Without this, "users:  # comment" followed by a sibling "realm:" made realm
+// the value of users.
+func (p *Parser) parseValueAfterColon(minIndent int) (*Node, error) {
+	if p.current().Type == TokenComment {
+		p.advance()
+	}
+	if p.current().Type == TokenNewline {
+		sawIndent := false
+		for p.current().Type == TokenNewline || p.current().Type == TokenComment || p.current().Type == TokenIndent {
+			if p.current().Type == TokenIndent {
+				sawIndent = true
+			}
+			p.advance()
+		}
+		if !sawIndent && p.current().Type != TokenDash {
+			return &Node{Type: NodeScalar, Value: ""}, nil
+		}
+	}
+	for p.current().Type == TokenIndent {
+		p.advance()
+	}
+	if p.current().Type == TokenEOF || p.current().Type == TokenDedent || p.current().Type == TokenNewline {
+		return &Node{Type: NodeScalar, Value: ""}, nil
+	}
+	v, err := p.parseValue(minIndent)
+	if err != nil {
+		return nil, err
+	}
+	if v == nil {
+		v = &Node{Type: NodeScalar, Value: ""}
+	}
+	return v, nil
+}
+
 // parseMapping parses a mapping (dictionary).
 func (p *Parser) parseMapping(minIndent int) (*Node, error) {
 	mapping := &Node{Type: NodeMapping}
+
+	// The caller has consumed the INDENT that opened this block, so p.indent
+	// is the column of its keys.
+	mapIndent := p.indent
 
 	for {
 		// Skip newlines and comments
@@ -292,8 +334,17 @@ func (p *Parser) parseMapping(minIndent int) (*Node, error) {
 
 		tok := p.current()
 
-		// Check for mapping end (dedent or EOF)
-		if tok.Type == TokenEOF || tok.Type == TokenDedent {
+		if tok.Type == TokenEOF {
+			break
+		}
+		// A DEDENT back to this block's level (or deeper) closes a child
+		// block; the next key is our sibling. One that goes shallower ends
+		// this mapping and belongs to the caller.
+		if tok.Type == TokenDedent {
+			if p.dedentLevel() >= mapIndent {
+				p.advance()
+				continue
+			}
 			break
 		}
 
@@ -312,29 +363,10 @@ func (p *Parser) parseMapping(minIndent int) (*Node, error) {
 		}
 		p.advance() // consume colon
 
-		// Skip whitespace after colon
-		for p.current().Type == TokenIndent || p.current().Type == TokenNewline {
-			p.advance()
+		value, err := p.parseValueAfterColon(minIndent)
+		if err != nil {
+			return nil, err
 		}
-
-		// Parse value
-		var value *Node
-		var err error
-
-		if p.current().Type == TokenEOF || p.current().Type == TokenNewline || p.current().Type == TokenDedent {
-			// Empty value
-			value = &Node{Type: NodeScalar, Value: ""}
-		} else {
-			value, err = p.parseValue(minIndent)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		if value == nil {
-			value = &Node{Type: NodeScalar, Value: ""}
-		}
-
 		value.Key = key
 		mapping.Children = append(mapping.Children, value)
 	}
@@ -357,52 +389,9 @@ func (p *Parser) parseScalarOrMapping(minIndent int) (*Node, error) {
 		// Record the indent level of this mapping
 		mappingIndent := p.indent
 
-		// Skip whitespace but preserve the value if present on same line
-		if p.current().Type == TokenIndent {
-			p.advance()
-		}
-
-		// Parse value
-		var valNode *Node
-		var err error
-
-		if p.current().Type == TokenEOF || p.current().Type == TokenDedent {
-			valNode = &Node{Type: NodeScalar, Value: ""}
-		} else if p.current().Type == TokenString || p.current().Type == TokenNumber || p.current().Type == TokenBool || p.current().Type == TokenNull {
-			// Simple value on same line
-			valNode = &Node{Type: NodeScalar, Value: p.current().Value}
-			p.advance()
-		} else if p.current().Type == TokenNewline {
-			// Value might be on next line - check for sequence or nested mapping
-			p.advance() // consume newline
-			for p.current().Type == TokenNewline || p.current().Type == TokenIndent {
-				p.advance()
-			}
-			if p.current().Type == TokenDash {
-				// It's a sequence
-				valNode, err = p.parseSequence(minIndent)
-				if err != nil {
-					return nil, err
-				}
-			} else if p.current().Type == TokenString && p.peek().Type == TokenColon {
-				// It's a nested mapping
-				valNode, err = p.parseMapping(minIndent)
-				if err != nil {
-					return nil, err
-				}
-			} else {
-				// Empty or unknown
-				valNode = &Node{Type: NodeScalar, Value: ""}
-			}
-		} else {
-			valNode, err = p.parseValue(minIndent)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		if valNode == nil {
-			valNode = &Node{Type: NodeScalar, Value: ""}
+		valNode, err := p.parseValueAfterColon(minIndent)
+		if err != nil {
+			return nil, err
 		}
 
 		valNode.Key = value
@@ -417,20 +406,16 @@ func (p *Parser) parseScalarOrMapping(minIndent int) (*Node, error) {
 				p.advance()
 			}
 
-			// Check for dedent (end of mapping)
-			if p.current().Type == TokenDedent || p.current().Type == TokenEOF {
-				// Only consume this DEDENT if it returns us to or above our mapping level.
-				// If it goes below our level, don't consume it - let the caller handle it.
-				if p.current().Type == TokenDedent {
-					dl := p.dedentLevel()
-					if dl <= mappingIndent {
-						// This DEDENT takes us back to or past our mapping's level.
-						// Consume it so the parent sees we're done.
-						p.advance()
-					}
-					// If dl > mappingIndent, the DEDENT goes to a level deeper
-					// than our mapping started, which shouldn't happen, but
-					// just break anyway.
+			if p.current().Type == TokenEOF {
+				break
+			}
+			// Same rule as parseMapping: a DEDENT to this mapping's level (or
+			// deeper) closes a child and the next key is a sibling; a
+			// shallower one ends the mapping and is left for the caller.
+			if p.current().Type == TokenDedent {
+				if p.dedentLevel() >= mappingIndent {
+					p.advance()
+					continue
 				}
 				break
 			}
@@ -441,22 +426,9 @@ func (p *Parser) parseScalarOrMapping(minIndent int) (*Node, error) {
 				p.advance()
 				p.advance() // consume colon
 
-				for p.current().Type == TokenIndent || p.current().Type == TokenNewline {
-					p.advance()
-				}
-
-				var nextVal *Node
-				if p.current().Type == TokenEOF || p.current().Type == TokenNewline || p.current().Type == TokenDedent {
-					nextVal = &Node{Type: NodeScalar, Value: ""}
-				} else {
-					nextVal, err = p.parseValue(minIndent)
-					if err != nil {
-						return nil, err
-					}
-				}
-
-				if nextVal == nil {
-					nextVal = &Node{Type: NodeScalar, Value: ""}
+				nextVal, err := p.parseValueAfterColon(minIndent)
+				if err != nil {
+					return nil, err
 				}
 				nextVal.Key = key
 				mapping.Children = append(mapping.Children, nextVal)

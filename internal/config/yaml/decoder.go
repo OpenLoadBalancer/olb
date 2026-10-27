@@ -39,6 +39,17 @@ func (d *Decoder) decode(node *Node, v reflect.Value) error {
 		return nil
 	}
 
+	// "key:" with no value (or an explicit null) leaves a collection or
+	// struct at its zero value, as in YAML, instead of failing to decode a
+	// scalar into it. Example configs use this for "users:" with the entries
+	// commented out.
+	if node.Type == NodeScalar && isNullScalar(node.Value) {
+		switch v.Kind() {
+		case reflect.Map, reflect.Slice, reflect.Struct, reflect.Pointer:
+			return nil
+		}
+	}
+
 	// Handle pointers
 	if v.Kind() == reflect.Pointer {
 		if v.IsNil() {
@@ -430,4 +441,8 @@ func Unmarshal(data []byte, v any) error {
 // UnmarshalString parses YAML string and stores the result in v.
 func UnmarshalString(s string, v any) error {
 	return Unmarshal([]byte(s), v)
+}
+
+func isNullScalar(s string) bool {
+	return s == "" || s == "~" || s == "null" || s == "Null" || s == "NULL"
 }
