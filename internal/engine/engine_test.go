@@ -668,11 +668,22 @@ func TestListenersChanged(t *testing.T) {
 			name: "TLS changed",
 			newCfg: &config.Config{
 				Listeners: []*config.Listener{
+					{Name: "l1", Address: ":80", Protocol: "http", TLS: &config.ListenerTLS{Enabled: true}},
+					{Name: "l2", Address: ":443", Protocol: "https", TLS: &config.ListenerTLS{Enabled: true}},
+				},
+			},
+			want: true,
+		},
+		{
+			// protocol: https is TLS with or without a tls block.
+			name: "https without tls block is not a TLS change",
+			newCfg: &config.Config{
+				Listeners: []*config.Listener{
 					{Name: "l1", Address: ":80", Protocol: "http"},
 					{Name: "l2", Address: ":443", Protocol: "https", TLS: nil},
 				},
 			},
-			want: true,
+			want: false,
 		},
 	}
 

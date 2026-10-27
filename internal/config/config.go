@@ -673,7 +673,9 @@ type Listener struct {
 
 // IsTLS returns true if TLS is enabled for this listener.
 func (l *Listener) IsTLS() bool {
-	return l.TLS != nil && l.TLS.Enabled
+	// protocol: https means TLS; it used to serve plain HTTP unless
+	// tls.enabled was set as well.
+	return l.Protocol == "https" || (l.TLS != nil && l.TLS.Enabled)
 }
 
 // MTLSConfig represents mTLS configuration for a listener.
