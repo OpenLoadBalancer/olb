@@ -170,22 +170,22 @@ func NewWAFMiddleware(cfg WAFMiddlewareConfig) (*WAFMiddleware, error) {
 
 	// Register all detectors (check enabled flags if detection config exists)
 	dc := wafCfg.Detection
-	if dc == nil || dc.Detectors.SQLi.Enabled {
+	if dc == nil || boolOr(dc.Detectors.SQLi.Enabled, true) {
 		engine.Register(sqli.New())
 	}
-	if dc == nil || dc.Detectors.XSS.Enabled {
+	if dc == nil || boolOr(dc.Detectors.XSS.Enabled, true) {
 		engine.Register(xss.New())
 	}
-	if dc == nil || dc.Detectors.PathTraversal.Enabled {
+	if dc == nil || boolOr(dc.Detectors.PathTraversal.Enabled, true) {
 		engine.Register(pathtraversal.New())
 	}
-	if dc == nil || dc.Detectors.CMDi.Enabled {
+	if dc == nil || boolOr(dc.Detectors.CMDi.Enabled, true) {
 		engine.Register(cmdi.New())
 	}
-	if dc == nil || dc.Detectors.XXE.Enabled {
+	if dc == nil || boolOr(dc.Detectors.XXE.Enabled, true) {
 		engine.Register(xxe.New())
 	}
-	if dc == nil || dc.Detectors.SSRF.Enabled {
+	if dc == nil || boolOr(dc.Detectors.SSRF.Enabled, true) {
 		engine.Register(ssrf.New())
 	}
 	mw.detection = engine
@@ -623,9 +623,11 @@ func buildSanitizerConfig(cfg *config.WAFSanitizerConfig) sanitizer.Config {
 	if cfg.MaxCookieCount > 0 {
 		sc.MaxCookieCount = cfg.MaxCookieCount
 	}
-	sc.BlockNullBytes = cfg.BlockNullBytes
-	sc.NormalizeEncoding = cfg.NormalizeEncoding
-	sc.StripHopByHop = cfg.StripHopByHop
+	// Unset booleans keep the safe defaults; they used to become false as
+	// soon as a sanitizer block was present.
+	sc.BlockNullBytes = boolOr(cfg.BlockNullBytes, sc.BlockNullBytes)
+	sc.NormalizeEncoding = boolOr(cfg.NormalizeEncoding, sc.NormalizeEncoding)
+	sc.StripHopByHop = boolOr(cfg.StripHopByHop, sc.StripHopByHop)
 	if len(cfg.AllowedMethods) > 0 {
 		sc.AllowedMethods = cfg.AllowedMethods
 	}
@@ -650,4 +652,12 @@ func normalizeMode(mode string) string {
 	default:
 		return "enforce"
 	}
+}
+
+// boolOr returns *p, or def when p is nil (the key was omitted).
+func boolOr(p *bool, def bool) bool {
+	if p == nil {
+		return def
+	}
+	return *p
 }

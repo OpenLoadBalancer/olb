@@ -533,9 +533,9 @@ type WAFSanitizerConfig struct {
 	MaxURLLength      int                    `yaml:"max_url_length" json:"max_url_length"`
 	MaxCookieSize     int                    `yaml:"max_cookie_size" json:"max_cookie_size"`
 	MaxCookieCount    int                    `yaml:"max_cookie_count" json:"max_cookie_count"`
-	BlockNullBytes    bool                   `yaml:"block_null_bytes" json:"block_null_bytes"`
-	NormalizeEncoding bool                   `yaml:"normalize_encoding" json:"normalize_encoding"`
-	StripHopByHop     bool                   `yaml:"strip_hop_by_hop" json:"strip_hop_by_hop"`
+	BlockNullBytes    *bool                  `yaml:"block_null_bytes" json:"block_null_bytes,omitempty"`     // nil = on (safe default)
+	NormalizeEncoding *bool                  `yaml:"normalize_encoding" json:"normalize_encoding,omitempty"` // nil = on (safe default)
+	StripHopByHop     *bool                  `yaml:"strip_hop_by_hop" json:"strip_hop_by_hop,omitempty"`     // nil = on (safe default)
 	AllowedMethods    []string               `yaml:"allowed_methods" json:"allowed_methods"`
 	PathOverrides     []WAFSanitizerOverride `yaml:"path_overrides" json:"path_overrides"`
 }
@@ -560,7 +560,10 @@ type WAFDetectionThreshold struct {
 }
 
 type WAFDetectorConfig struct {
-	Enabled         bool    `yaml:"enabled" json:"enabled"`
+	// Enabled is a pointer so an omitted key keeps the detector on: setting
+	// only score_multiplier (or any other detection key) used to switch the
+	// detector off.
+	Enabled         *bool   `yaml:"enabled" json:"enabled,omitempty"`
 	ScoreMultiplier float64 `yaml:"score_multiplier" json:"score_multiplier"`
 }
 
