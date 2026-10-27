@@ -2241,8 +2241,18 @@ admin:
 		t.Fatalf("Failed to write config second time: %v", err)
 	}
 
-	// Wait for debounce timer to fire (500ms) and reload to complete
-	time.Sleep(2 * time.Second)
+	// Wait for the debounced reload to complete. The reload runs
+	// asynchronously in the watcher loop and the engine transiently reports
+	// StateReloading while it swaps state, so wait on the reload counter
+	// instead of sleeping a fixed interval — a fixed sleep races the reload.
+	before := engine.ReloadCount()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if engine.ReloadCount() > before && engine.IsRunning() {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 
 	if !engine.IsRunning() {
 		t.Error("Engine should still be running after debounced reload")
@@ -3470,7 +3480,7 @@ func TestCov_RegisterCORSMiddleware_Defaults(t *testing.T) {
 			},
 		},
 		logger: logging.New(logging.NewJSONOutput(os.Stdout)),
-		chain:   middleware.NewChain(),
+		chain:  middleware.NewChain(),
 	}
 	registerCORSMiddleware(ctx)
 }
@@ -3488,7 +3498,7 @@ func TestCov_RegisterLoggingMiddleware_WithCustomFormat(t *testing.T) {
 			},
 		},
 		logger: logging.New(logging.NewJSONOutput(os.Stdout)),
-		chain:   middleware.NewChain(),
+		chain:  middleware.NewChain(),
 	}
 	registerLoggingMiddleware(ctx)
 }
@@ -3719,7 +3729,7 @@ func TestCov_RegisterJWTMiddleware_WithValidEdDSAKeyFile(t *testing.T) {
 			},
 		},
 		logger: logging.New(logging.NewJSONOutput(os.Stdout)),
-		chain:   middleware.NewChain(),
+		chain:  middleware.NewChain(),
 	}
 	registerJWTMiddleware(ctx)
 }
@@ -3798,7 +3808,7 @@ func TestCov_RegisterLoggingMiddleware_TextFormat(t *testing.T) {
 			},
 		},
 		logger: logging.New(logging.NewJSONOutput(os.Stdout)),
-		chain:   middleware.NewChain(),
+		chain:  middleware.NewChain(),
 	}
 	registerLoggingMiddleware(ctx)
 }
@@ -3809,15 +3819,15 @@ func TestCov_RegisterCORSMiddleware_Error(t *testing.T) {
 		cfg: &config.Config{
 			Middleware: &config.MiddlewareConfig{
 				CORS: &config.CORSConfig{
-					Enabled:          true,
-					AllowedOrigins:   []string{"*"},
-					AllowedMethods:   []string{"GET"}, // valid, but we'll test error via invalid config
-					MaxAge:           -1,              // negative maxAge could cause issues
+					Enabled:        true,
+					AllowedOrigins: []string{"*"},
+					AllowedMethods: []string{"GET"}, // valid, but we'll test error via invalid config
+					MaxAge:         -1,              // negative maxAge could cause issues
 				},
 			},
 		},
 		logger: logging.New(logging.NewJSONOutput(os.Stdout)),
-		chain:   middleware.NewChain(),
+		chain:  middleware.NewChain(),
 	}
 	// This should not panic even if CORS middleware fails
 	registerCORSMiddleware(ctx)
@@ -3907,7 +3917,7 @@ func TestCov_New_WithACME_Email(t *testing.T) {
 func TestCov_New_WithGeoDNS_Rules(t *testing.T) {
 	cfg := createTestConfig()
 	cfg.GeoDNS = &config.GeoDNSConfig{
-		Enabled:    true,
+		Enabled:     true,
 		DefaultPool: "test-pool",
 		DBPath:      filepath.Join(t.TempDir(), "GeoLite2-Country.mmdb"),
 		Rules: []config.GeoDNSRule{
@@ -3951,16 +3961,16 @@ func TestCov_New_WithShadow_Timeout(t *testing.T) {
 func TestCov_New_WithServerTuning(t *testing.T) {
 	cfg := createTestConfig()
 	cfg.Server = &config.ServerConfig{
-		MaxConnections:          5000,
-		MaxConnectionsPerSource: 50,
+		MaxConnections:           5000,
+		MaxConnectionsPerSource:  50,
 		MaxConnectionsPerBackend: 500,
-		DrainTimeout:            "15s",
-		ProxyTimeout:            "30s",
-		DialTimeout:             "3s",
-		MaxRetries:              5,
-		MaxIdleConns:            200,
-		MaxIdleConnsPerHost:     20,
-		IdleConnTimeout:         "60s",
+		DrainTimeout:             "15s",
+		ProxyTimeout:             "30s",
+		DialTimeout:              "3s",
+		MaxRetries:               5,
+		MaxIdleConns:             200,
+		MaxIdleConnsPerHost:      20,
+		IdleConnTimeout:          "60s",
 	}
 
 	configPath := createTempConfigFile(t, cfg)
@@ -4226,7 +4236,7 @@ func TestCov_Start_WithACME(t *testing.T) {
 func TestCov_Start_WithGeoDNS(t *testing.T) {
 	cfg := createTestConfig()
 	cfg.GeoDNS = &config.GeoDNSConfig{
-		Enabled:    true,
+		Enabled:     true,
 		DefaultPool: "test-pool",
 		DBPath:      filepath.Join(t.TempDir(), "GeoLite2-Country.mmdb"),
 	}
@@ -4250,9 +4260,9 @@ func TestCov_Start_WithGeoDNS(t *testing.T) {
 func TestCov_Start_WithShadow(t *testing.T) {
 	cfg := createTestConfig()
 	cfg.Shadow = &config.ShadowConfig{
-		Enabled:     true,
-		Percentage:  0.1,
-		Targets:     []config.ShadowTarget{{Pool: "test-pool", Percentage: 1.0}},
+		Enabled:    true,
+		Percentage: 0.1,
+		Targets:    []config.ShadowTarget{{Pool: "test-pool", Percentage: 1.0}},
 	}
 
 	configPath := createTempConfigFile(t, cfg)
@@ -4303,10 +4313,10 @@ func TestCov_BuildMiddlewareStatus(t *testing.T) {
 	cfg := createTestConfig()
 	cfg.Middleware = &config.MiddlewareConfig{
 		RateLimit: &config.RateLimitConfig{Enabled: true},
-		CORS:     &config.CORSConfig{Enabled: true},
-		Cache:    &config.CacheConfig{Enabled: true},
-		JWT:      &config.JWTConfig{Enabled: true, Secret: "test-secret-key-12345"},
-		CSRF:     &config.CSRFConfig{Enabled: true},
+		CORS:      &config.CORSConfig{Enabled: true},
+		Cache:     &config.CacheConfig{Enabled: true},
+		JWT:       &config.JWTConfig{Enabled: true, Secret: "test-secret-key-12345"},
+		CSRF:      &config.CSRFConfig{Enabled: true},
 	}
 	cfg.WAF = &config.WAFConfig{Enabled: true}
 
@@ -4347,7 +4357,7 @@ func TestCov_RegisterJWTMiddleware_Base64DecodeFail(t *testing.T) {
 			},
 		},
 		logger: logging.New(logging.NewJSONOutput(os.Stdout)),
-		chain:   middleware.NewChain(),
+		chain:  middleware.NewChain(),
 	}
 	// Should not panic, just warn
 	registerJWTMiddleware(ctx)
@@ -4707,11 +4717,11 @@ func TestCov_InitCluster_WithPersister(t *testing.T) {
 func TestCov_New_WithServerRollbackTimeouts(t *testing.T) {
 	cfg := createTestConfig()
 	cfg.Server = &config.ServerConfig{
-		RollbackCheckInterval:  "10s",
+		RollbackCheckInterval:   "10s",
 		RollbackMonitorDuration: "20s",
-		ShutdownTimeout:        "45s",
-		ListenerStopTimeout:    "7s",
-		ProxyDrainWindow:       "3s",
+		ShutdownTimeout:         "45s",
+		ListenerStopTimeout:     "7s",
+		ProxyDrainWindow:        "3s",
 	}
 
 	configPath := createTempConfigFile(t, cfg)
@@ -4886,7 +4896,7 @@ func TestCov_Start_WithClusterAndRaftProposer(t *testing.T) {
 func TestCov_New_WithInvalidProfiling(t *testing.T) {
 	cfg := createTestConfig()
 	cfg.Profiling = &config.ProfilingConfig{
-		Enabled:       true,
+		Enabled:        true,
 		CPUProfilePath: "/nonexistent/dir/cpu.prof", // can't create
 	}
 
@@ -5017,7 +5027,7 @@ func TestCov_RegisterCORSMiddleware_WithMethods(t *testing.T) {
 			},
 		},
 		logger: logging.New(logging.NewJSONOutput(os.Stdout)),
-		chain:   middleware.NewChain(),
+		chain:  middleware.NewChain(),
 	}
 	registerCORSMiddleware(ctx)
 }
@@ -5328,9 +5338,9 @@ func TestCov_New_WithProfilingCPUProfile(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := createTestConfig()
 	cfg.Profiling = &config.ProfilingConfig{
-		Enabled:       true,
+		Enabled:        true,
 		CPUProfilePath: filepath.Join(tmpDir, "cpu.prof"),
-		PprofAddr:     "127.0.0.1:0",
+		PprofAddr:      "127.0.0.1:0",
 	}
 
 	configPath := createTempConfigFile(t, cfg)
@@ -5439,7 +5449,7 @@ func TestCov_New_WithClusterEnabledAndPersister(t *testing.T) {
 func TestCov_ReloadWithRollbackTimer(t *testing.T) {
 	cfg := createTestConfig()
 	cfg.Server = &config.ServerConfig{
-		RollbackCheckInterval:  "100ms",
+		RollbackCheckInterval:   "100ms",
 		RollbackMonitorDuration: "200ms",
 	}
 

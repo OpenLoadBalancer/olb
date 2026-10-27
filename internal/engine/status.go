@@ -23,6 +23,12 @@ func (e *Engine) IsRunning() bool {
 	return e.state == StateRunning
 }
 
+// ReloadCount returns the number of completed Reload() attempts. Monotonic;
+// usable to wait until an asynchronously triggered reload has finished.
+func (e *Engine) ReloadCount() uint64 {
+	return e.reloadCount.Load()
+}
+
 // Done returns a channel that is closed when the engine shuts down.
 // Callers can block on this to wait for the engine to stop.
 func (e *Engine) Done() <-chan struct{} {

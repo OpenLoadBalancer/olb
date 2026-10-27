@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/openloadbalancer/olb/internal/acme"
@@ -105,6 +106,7 @@ type Engine struct {
 
 	// Config file watcher
 	configWatcher *config.Watcher
+	reloadCount   atomic.Uint64 // completed Reload() calls (success or failure)
 
 	// Config rollback support
 	rollbackMu      sync.Mutex
