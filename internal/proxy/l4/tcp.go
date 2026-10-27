@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/openloadbalancer/olb/internal/backend"
@@ -391,12 +392,34 @@ func (l *TCPListener) Start() error {
 	return nil
 }
 
-// acceptLoop accepts incoming connections.
+// acceptLoop accepts incoming connections. Transient accept errors (fd
+// exhaustion, aborted connections, interrupts) are retried after a short
+// backoff instead of killing the listener: only a closed listener ends the
+// loop.
 func (l *TCPListener) acceptLoop() {
 	for {
 		conn, err := l.listener.Accept()
 		if err != nil {
+			// Listener closed by Stop — permanent, exit.
+			if errors.Is(err, net.ErrClosed) {
+				return
+			}
+
 			if l.running.Load() {
+				// Retry transient failures so the data plane survives fd
+				// exhaustion spikes (EMFILE/ENFILE) and aborted connections.
+				// These are NOT recorded in startErr: the listener stays
+				// healthy and a sticky error would misreport its status.
+				if errors.Is(err, syscall.EMFILE) ||
+					errors.Is(err, syscall.ENFILE) ||
+					errors.Is(err, syscall.ECONNABORTED) ||
+					errors.Is(err, syscall.EINTR) {
+					time.Sleep(5 * time.Millisecond)
+					continue
+				}
+
+				// Terminal error while running: record for StartError() and
+				// stop accepting.
 				l.mu.Lock()
 				l.startErr = err
 				l.mu.Unlock()

@@ -289,9 +289,9 @@ func TestCov_ParseClientHello_TruncatedVersion(t *testing.T) {
 func TestCov_ParseClientHello_VersionOutOfRange(t *testing.T) {
 	// Valid length but version 0x0200 is out of range
 	buf := []byte{
-		0x01,                   // ClientHello type
-		0x00, 0x00, 0x24,       // handshake length = 36
-		0x02, 0x00,             // version = 0x0200 (invalid)
+		0x01,             // ClientHello type
+		0x00, 0x00, 0x24, // handshake length = 36
+		0x02, 0x00, // version = 0x0200 (invalid)
 	}
 	buf = append(buf, make([]byte, 32)...) // random (fill to match length)
 	_, err := parseClientHello(buf)
@@ -368,12 +368,12 @@ func TestCov_ExtractSNI_ParseSNIError(t *testing.T) {
 	go func() {
 		// Valid TLS record header but with invalid handshake content
 		buf := []byte{
-			0x16,                   // Handshake
-			0x03, 0x01,             // TLS 1.0
-			0x00, 0x05,             // Length 5
-			0x01,                   // ClientHello
-			0x00, 0x00, 0x01,       // handshake length = 1
-			0x03,                   // Only 1 byte (need at least 2 for version)
+			0x16,       // Handshake
+			0x03, 0x01, // TLS 1.0
+			0x00, 0x05, // Length 5
+			0x01,             // ClientHello
+			0x00, 0x00, 0x01, // handshake length = 1
+			0x03, // Only 1 byte (need at least 2 for version)
 		}
 		client.Write(buf)
 		client.Close()
@@ -660,10 +660,10 @@ type discardConn struct {
 	net.Conn
 }
 
-func (c *discardConn) Read(b []byte) (int, error)    { return 0, io.EOF }
-func (c *discardConn) Write(b []byte) (int, error)   { return len(b), nil }
-func (c *discardConn) Close() error                   { return nil }
-func (c *discardConn) SetDeadline(t time.Time) error  { return nil }
+func (c *discardConn) Read(b []byte) (int, error)         { return 0, io.EOF }
+func (c *discardConn) Write(b []byte) (int, error)        { return len(b), nil }
+func (c *discardConn) Close() error                       { return nil }
+func (c *discardConn) SetDeadline(t time.Time) error      { return nil }
 func (c *discardConn) SetReadDeadline(t time.Time) error  { return nil }
 func (c *discardConn) SetWriteDeadline(t time.Time) error { return nil }
 
@@ -818,10 +818,10 @@ type panicWriteConn struct {
 	net.Conn
 }
 
-func (c *panicWriteConn) Read(b []byte) (int, error)    { return 0, io.EOF }
-func (c *panicWriteConn) Write(b []byte) (int, error)   { panic("write panic") }
-func (c *panicWriteConn) Close() error                   { return nil }
-func (c *panicWriteConn) SetDeadline(t time.Time) error  { return nil }
+func (c *panicWriteConn) Read(b []byte) (int, error)         { return 0, io.EOF }
+func (c *panicWriteConn) Write(b []byte) (int, error)        { panic("write panic") }
+func (c *panicWriteConn) Close() error                       { return nil }
+func (c *panicWriteConn) SetDeadline(t time.Time) error      { return nil }
 func (c *panicWriteConn) SetReadDeadline(t time.Time) error  { return nil }
 func (c *panicWriteConn) SetWriteDeadline(t time.Time) error { return nil }
 
@@ -871,10 +871,13 @@ type timeoutCollectConn struct {
 	total int64
 }
 
-func (c *timeoutCollectConn) Read(b []byte) (int, error)    { return 0, io.EOF }
-func (c *timeoutCollectConn) Write(b []byte) (int, error)   { c.total += int64(len(b)); return len(b), nil }
-func (c *timeoutCollectConn) Close() error                   { return nil }
-func (c *timeoutCollectConn) SetDeadline(t time.Time) error  { return nil }
+func (c *timeoutCollectConn) Read(b []byte) (int, error) { return 0, io.EOF }
+func (c *timeoutCollectConn) Write(b []byte) (int, error) {
+	c.total += int64(len(b))
+	return len(b), nil
+}
+func (c *timeoutCollectConn) Close() error                       { return nil }
+func (c *timeoutCollectConn) SetDeadline(t time.Time) error      { return nil }
 func (c *timeoutCollectConn) SetReadDeadline(t time.Time) error  { return nil }
 func (c *timeoutCollectConn) SetWriteDeadline(t time.Time) error { return nil }
 
@@ -1244,11 +1247,11 @@ func TestCov_ParseSNIList_ValidHostWithInvalidChars(t *testing.T) {
 func TestCov_ParseClientHelloSNI_IncompleteHandshakeBody(t *testing.T) {
 	// Valid record header, ClientHello type, but body too short
 	data := []byte{
-		0x16,                   // Handshake
-		0x03, 0x01,             // TLS 1.0
-		0x00, 0x04,             // Length 4
-		0x01,                   // ClientHello type
-		0x00, 0x00, 0x00,       // handshake length = 0
+		0x16,       // Handshake
+		0x03, 0x01, // TLS 1.0
+		0x00, 0x04, // Length 4
+		0x01,             // ClientHello type
+		0x00, 0x00, 0x00, // handshake length = 0
 	}
 	_, err := ParseClientHelloSNI(data)
 	if err == nil {
@@ -1273,7 +1276,7 @@ func TestCov_ParseClientHelloSNI_ValidButNoSNI(t *testing.T) {
 
 	// Extensions with a non-SNI extension
 	extStart := buf.Len()
-	binary.Write(buf, binary.BigEndian, uint16(0)) // placeholder for extensions length
+	binary.Write(buf, binary.BigEndian, uint16(0))      // placeholder for extensions length
 	binary.Write(buf, binary.BigEndian, uint16(0x0001)) // Extension type: not SNI
 	binary.Write(buf, binary.BigEndian, uint16(3))      // Extension length
 	buf.WriteString("abc")
@@ -1765,10 +1768,10 @@ type collectConn struct {
 	buf bytes.Buffer
 }
 
-func (c *collectConn) Read(b []byte) (int, error)    { return 0, io.EOF }
-func (c *collectConn) Write(b []byte) (int, error)   { c.buf.Write(b); return len(b), nil }
-func (c *collectConn) Close() error                   { return nil }
-func (c *collectConn) SetDeadline(t time.Time) error  { return nil }
+func (c *collectConn) Read(b []byte) (int, error)         { return 0, io.EOF }
+func (c *collectConn) Write(b []byte) (int, error)        { c.buf.Write(b); return len(b), nil }
+func (c *collectConn) Close() error                       { return nil }
+func (c *collectConn) SetDeadline(t time.Time) error      { return nil }
 func (c *collectConn) SetReadDeadline(t time.Time) error  { return nil }
 func (c *collectConn) SetWriteDeadline(t time.Time) error { return nil }
 
@@ -2040,11 +2043,11 @@ func TestCov_PeekClientHello_ReadRecordError(t *testing.T) {
 
 func TestCov_ParseClientHelloSNI_ShortHandshakeHeader(t *testing.T) {
 	data := []byte{
-		0x16,                   // Handshake
-		0x03, 0x01,             // TLS 1.0
-		0x00, 0x02,             // Length 2
-		0x01,                   // ClientHello type
-		0x00,                   // Only 1 byte of handshake data (need 4)
+		0x16,       // Handshake
+		0x03, 0x01, // TLS 1.0
+		0x00, 0x02, // Length 2
+		0x01, // ClientHello type
+		0x00, // Only 1 byte of handshake data (need 4)
 	}
 	_, err := ParseClientHelloSNI(data)
 	if err == nil {
@@ -2069,7 +2072,7 @@ func TestCov_ParseClientHello_AllTruncationPaths(t *testing.T) {
 		}()},
 		{"data too short for session ID length", func() []byte {
 			buf := []byte{0x01, 0x00, 0x00, 0x24}
-			buf = append(buf, 0x03, 0x03) // version
+			buf = append(buf, 0x03, 0x03)          // version
 			buf = append(buf, make([]byte, 32)...) // random
 			// Missing session ID length byte
 			return buf[:len(buf)-1]
@@ -2086,7 +2089,7 @@ func TestCov_ParseClientHello_AllTruncationPaths(t *testing.T) {
 			buf := []byte{0x01, 0x00, 0x00, 0x2A}
 			buf = append(buf, 0x03, 0x03)
 			buf = append(buf, make([]byte, 32)...)
-			buf = append(buf, 0x00) // session ID length
+			buf = append(buf, 0x00)       // session ID length
 			buf = append(buf, 0x00, 0x02) // cipher suites length
 			buf = append(buf, 0x00, 0x2f) // cipher suite
 			// Missing compression length
