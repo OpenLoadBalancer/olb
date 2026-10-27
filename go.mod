@@ -2,7 +2,7 @@ module github.com/openloadbalancer/olb
 
 go 1.26.2
 
-toolchain go1.26.10
+toolchain go1.27.3
 
 require (
 	golang.org/x/crypto v0.58.0

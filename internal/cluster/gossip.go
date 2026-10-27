@@ -43,7 +43,7 @@ func NewGossip(config *GossipConfig) (*Gossip, error) {
 		ackHandlers:     make(map[uint32]*ackHandler),
 		suspicionTimers: make(map[string]*time.Timer),
 		stopCh:          make(chan struct{}),
-		rng:             rand.New(rand.NewSource(time.Now().UnixNano())),
+		rng:             rand.New(rand.NewSource(time.Now().UnixNano())), // #nosec G404 -- gossip peer selection, not a security value
 		nowFn:           time.Now,
 	}
 

@@ -174,7 +174,7 @@ func (c *Checker) SetGRPCTLSSkipVerify(skip bool) {
 	c.grpcClient = &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig:   &tls.Config{InsecureSkipVerify: skip}, //nolint:gosec
+			TLSClientConfig:   &tls.Config{InsecureSkipVerify: skip}, // #nosec G402 -- opt-in via config
 			ForceAttemptHTTP2: true,
 		},
 	}

@@ -529,7 +529,7 @@ func (p *HTTPProxy) proxyRequest(w http.ResponseWriter, r *http.Request, reqCtx 
 	start := time.Now()
 
 	// Execute request
-	resp, err := p.client.Do(outReq)
+	resp, err := p.client.Do(outReq) // #nosec G704 -- forwarding to the selected backend is the proxy's job
 	if err != nil {
 		return err
 	}

@@ -8,7 +8,7 @@ COPY internal/webui/ ./
 RUN npm run build
 
 # Go build stage
-FROM golang:1.26-alpine@sha256:c2a1f7b2095d046ae14b286b18413a05bb82c9bca9b25fe7ff5efef0f0826166 AS builder
+FROM golang:1.27-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git make
@@ -34,7 +34,7 @@ RUN CGO_ENABLED=0 go build -trimpath \
     -o bin/olb ./cmd/olb
 
 # Runtime stage
-FROM alpine:3.20@sha256:a4f4213abb84c497377b8544c81b3564f313746700372ec4fe84653e4fb03805
+FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
 
 # Install runtime dependencies
 RUN apk add --no-cache ca-certificates tzdata

@@ -344,7 +344,7 @@ func (wh *WebSocketHandler) dialBackend(r *http.Request, b *backend.Backend) (ne
 			// Backend TLS verification is skipped by default for internal
 			// backends using self-signed certificates. For public backends,
 			// configure proper CA certificates via the TLS manager.
-			InsecureSkipVerify: wh.config.TLSInsecureSkipVerify, //nolint:gosec
+			InsecureSkipVerify: wh.config.TLSInsecureSkipVerify, // #nosec G402 -- opt-in via config
 		}
 		return tls.DialWithDialer(wh.dialer, "tcp", address, tlsConfig)
 	}
