@@ -361,9 +361,13 @@ type SecureHeadersConfig struct {
 
 // HSTSConfig configures HTTP Strict Transport Security.
 type HSTSConfig struct {
-	MaxAge            int  `yaml:"max_age" json:"max_age"`                       // max-age in seconds
-	IncludeSubdomains bool `yaml:"include_subdomains" json:"include_subdomains"` // includeSubDomains
-	Preload           bool `yaml:"preload" json:"preload"`                       // preload
+	// Enabled switches the header off when false. Unset keeps the historical
+	// behaviour (present block = header sent), so existing configs that only
+	// set max_age keep working.
+	Enabled           *bool `yaml:"enabled" json:"enabled,omitempty"`
+	MaxAge            int   `yaml:"max_age" json:"max_age"`                       // max-age in seconds
+	IncludeSubdomains bool  `yaml:"include_subdomains" json:"include_subdomains"` // includeSubDomains
+	Preload           bool  `yaml:"preload" json:"preload"`                       // preload
 }
 
 // CoalesceConfig represents request coalescing configuration.
