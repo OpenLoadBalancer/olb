@@ -30,6 +30,20 @@ type Rule struct {
 	AutoBanAfter int    // violations before auto-ban (0 = disabled)
 }
 
+// maxTrackedViolations bounds the per-key violation maps. Keys are client
+// derived (IP, path), so without a bound a spray of distinct clients that
+// each stay under AutoBanAfter would grow the map without limit.
+const maxTrackedViolations = 100000
+
+// trackViolation increments key's count, resetting the map first when a new
+// key would exceed maxTrackedViolations. The caller holds the lock.
+func trackViolation(m map[string]int, key string) {
+	if _, ok := m[key]; !ok && len(m) >= maxTrackedViolations {
+		clear(m)
+	}
+	m[key]++
+}
+
 // RateLimiter implements multi-rule rate limiting with per-key token buckets.
 type RateLimiter struct {
 	mu         sync.RWMutex
@@ -185,7 +199,7 @@ func (rl *RateLimiter) recordViolation(key, ip string, rule Rule) {
 	}
 
 	rl.mu.Lock()
-	rl.violations[key]++
+	trackViolation(rl.violations, key)
 	count := rl.violations[key]
 	rl.mu.Unlock()
 

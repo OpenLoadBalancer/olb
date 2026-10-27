@@ -579,14 +579,23 @@ func parseECPublicKey(xStr, yStr, crv string) (*ecdsa.PublicKey, error) {
 		return nil, fmt.Errorf("unsupported curve: %s", crv)
 	}
 
-	x := new(big.Int).SetBytes(xBytes)
-	y := new(big.Int).SetBytes(yBytes)
-
-	if !curve.IsOnCurve(x, y) {
-		return nil, errors.New("EC point not on curve")
+	// JWK coordinates are fixed-width big-endian (RFC 7518 §6.2.1.2); left-pad
+	// short ones and build the SEC 1 uncompressed point 0x04 || X || Y.
+	size := (curve.Params().BitSize + 7) / 8
+	if len(xBytes) > size || len(yBytes) > size {
+		return nil, errors.New("EC coordinate too long for curve")
 	}
+	point := make([]byte, 1+2*size)
+	point[0] = 4
+	copy(point[1+size-len(xBytes):1+size], xBytes)
+	copy(point[1+2*size-len(yBytes):], yBytes)
 
-	return &ecdsa.PublicKey{Curve: curve, X: x, Y: y}, nil
+	// ParseUncompressedPublicKey rejects points that are not on the curve.
+	key, err := ecdsa.ParseUncompressedPublicKey(curve, point)
+	if err != nil {
+		return nil, fmt.Errorf("invalid EC public key: %w", err)
+	}
+	return key, nil
 }
 
 // introspectToken validates a token using RFC 7662 token introspection.

@@ -373,6 +373,9 @@ func TestParsePortEdgeCases(t *testing.T) {
 		// Invalid ports
 		{"0", 0},     // Port 0 is invalid
 		{"65536", 0}, // Out of range
+		{"65537", 0}, // Out of range; wrapped to 1 in a uint16 accumulator
+		{"70000", 0}, // Out of range; wrapped to 4464
+		{"99999999999999999999", 0},
 		{"-1", 0},    // Negative
 		{"abc", 0},   // Non-numeric
 		{"80abc", 0}, // Mixed

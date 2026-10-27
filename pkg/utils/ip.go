@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/binary"
+	"math"
 	"net"
 	"strings"
 	"sync"
@@ -189,18 +190,20 @@ func parseUint16(s string) (uint16, error) {
 		return 0, nil
 	}
 
-	var n uint16
+	// Accumulate in a wider type: a uint16 wraps silently, so "70000"
+	// would parse as 4464 instead of being rejected.
+	var n uint32
 	for i := range len(s) {
 		c := s[i]
 		if c < '0' || c > '9' {
 			return 0, nil
 		}
-		n = n*10 + uint16(c-'0')
-		if n > 65535 {
+		n = n*10 + uint32(c-'0')
+		if n > math.MaxUint16 {
 			return 0, nil
 		}
 	}
-	return n, nil
+	return uint16(n), nil
 }
 
 // IsPrivateIP checks if an IP address is in a private range.

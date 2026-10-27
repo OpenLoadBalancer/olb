@@ -33,6 +33,10 @@ type DistributedRateLimiter struct {
 	local  *RateLimiter // fallback local rate limiter
 	stopCh chan struct{}
 
+	// violations counts rule violations per key for AutoBanAfter. It is
+	// node-local; the store only holds request counters.
+	violations map[string]int
+
 	// Callbacks
 	OnAutoBan    func(ip string, reason string)
 	OnSyncError  func(error)
@@ -59,6 +63,7 @@ func NewDistributed(cfg DistributedConfig) *DistributedRateLimiter {
 		useLocalFallback: cfg.UseLocalFallback,
 		syncInterval:     cfg.SyncInterval,
 		stopCh:           make(chan struct{}),
+		violations:       make(map[string]int),
 	}
 
 	if cfg.UseLocalFallback {
@@ -195,12 +200,15 @@ func (rl *DistributedRateLimiter) recordViolation(key, ip string, rule Rule) {
 		return
 	}
 
-	// For distributed mode, we'd need to track violations in the store
-	// For now, use local tracking
 	rl.mu.Lock()
-	// Simplified - in production, use store for distributed violation tracking
+	trackViolation(rl.violations, key)
+	count := rl.violations[key]
+	if count >= rule.AutoBanAfter {
+		delete(rl.violations, key)
+	}
 	rl.mu.Unlock()
 
-	// Trigger auto-ban
-	rl.OnAutoBan(ip, "rate limit exceeded: "+rule.ID)
+	if count >= rule.AutoBanAfter {
+		rl.OnAutoBan(ip, "rate limit exceeded: "+rule.ID)
+	}
 }

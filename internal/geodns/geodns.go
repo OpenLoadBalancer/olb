@@ -320,7 +320,7 @@ func (g *GeoDNS) matchesRule(loc *Location, rule *GeoRule) bool {
 
 	// Check country match
 	if rule.Country != "" && rule.Country != "*" {
-		if strings.ToUpper(loc.Country) != strings.ToUpper(rule.Country) {
+		if !strings.EqualFold(loc.Country, rule.Country) {
 			return false
 		}
 	}
