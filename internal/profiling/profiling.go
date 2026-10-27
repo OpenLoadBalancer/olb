@@ -333,6 +333,8 @@ func Apply(cfg ProfileConfig) (cleanup func(), err error) {
 		srv := &http.Server{
 			Addr:    addr,
 			Handler: handler,
+			// Bound header reads (Slowloris).
+			ReadHeaderTimeout: 10 * time.Second,
 		}
 		go func() {
 			defer func() {

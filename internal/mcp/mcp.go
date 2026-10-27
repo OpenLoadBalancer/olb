@@ -1494,6 +1494,8 @@ func (t *HTTPTransport) Start() error {
 	t.httpSrv = &http.Server{
 		Addr:    t.addr,
 		Handler: mux,
+		// Bound header reads (Slowloris); streaming bodies are unaffected.
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	ln, err := net.Listen("tcp", t.addr)
