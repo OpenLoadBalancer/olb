@@ -377,6 +377,10 @@ jobs:
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@v4
+        with:
+          # Full history: the job checks out both the base branch and the PR
+          # head SHA, which a depth-1 merge-ref clone does not contain.
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@v6
