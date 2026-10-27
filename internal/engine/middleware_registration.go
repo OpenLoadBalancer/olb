@@ -483,6 +483,9 @@ func registerJWTMiddleware(ctx *middlewareRegistrationContext) {
 		ClaimsValidation: jwt.ClaimsValidation{
 			Issuer:   j.ClaimsValidation.Issuer,
 			Audience: j.ClaimsValidation.Audience,
+			// Secure by default, as in jwt.DefaultConfig: a token without
+			// exp would otherwise be valid forever.
+			RequireExpiration: j.ClaimsValidation.RequireExpiration == nil || *j.ClaimsValidation.RequireExpiration,
 		},
 	})
 	if err != nil {
