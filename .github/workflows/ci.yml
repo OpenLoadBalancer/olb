@@ -32,6 +32,11 @@ jobs:
             exit 1
           fi
 
+      # internal/webui embeds assets/ (built by the frontend job); lint
+      # only needs it to exist for type-checking.
+      - name: Create placeholder frontend assets
+        run: mkdir -p internal/webui/assets && touch internal/webui/assets/.placeholder
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
