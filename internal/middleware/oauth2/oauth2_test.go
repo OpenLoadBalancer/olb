@@ -1,6 +1,7 @@
 package oauth2
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -1977,5 +1978,45 @@ func TestWrap_ExcludedSubPath(t *testing.T) {
 
 	if !called {
 		t.Error("Handler should be called for excluded sub-path")
+	}
+}
+
+// Some JWKS publishers strip leading zero bytes from EC coordinates; the
+// parser must left-pad them back to the curve size.
+func TestParseECPublicKey_ShortCoordinate(t *testing.T) {
+	var ecKey *ecdsa.PrivateKey
+	var point []byte
+	for i := 0; i < 10000; i++ {
+		k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p, err := k.PublicKey.Bytes()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p[1] == 0 { // X has a leading zero byte
+			ecKey, point = k, p
+			break
+		}
+	}
+	if ecKey == nil {
+		t.Skip("no key with a short X coordinate generated")
+	}
+	x := base64urlEncode(bytes.TrimLeft(point[1:33], "\x00"))
+	y := base64urlEncode(point[33:])
+	pub, err := parseECPublicKey(x, y, "P-256")
+	if err != nil {
+		t.Fatalf("parseECPublicKey: %v", err)
+	}
+	if !pub.Equal(&ecKey.PublicKey) {
+		t.Error("parsed key does not match the original")
+	}
+}
+
+func TestParseECPublicKey_CoordinateTooLong(t *testing.T) {
+	long := base64urlEncode(make([]byte, 33))
+	if _, err := parseECPublicKey(long, long, "P-256"); err == nil {
+		t.Error("expected error for a 33-byte P-256 coordinate")
 	}
 }
