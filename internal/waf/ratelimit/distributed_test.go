@@ -121,7 +121,7 @@ func TestDistributedRateLimiter_Allow(t *testing.T) {
 	}
 
 	// Second request should be allowed
-	allowed, retryAfter = rl.Allow(req)
+	allowed, _ = rl.Allow(req)
 	if !allowed {
 		t.Error("second request should be allowed")
 	}

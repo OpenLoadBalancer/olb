@@ -149,7 +149,7 @@ func NewFileSnapshotStore(dir string, retain int) (*FileSnapshotStore, error) {
 		retain = 1
 	}
 
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create snapshot dir: %w", err)
 	}
 
@@ -183,7 +183,7 @@ func (f *FileSnapshotStore) Save(snapshot *Snapshot) error {
 	}
 
 	path := f.snapshotPath(snapshot.LastIncludedIndex)
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("write snapshot: %w", err)
 	}
 
@@ -202,7 +202,7 @@ func (f *FileSnapshotStore) Save(snapshot *Snapshot) error {
 	}
 
 	metaPath := f.metaPath(snapshot.LastIncludedIndex)
-	if err := os.WriteFile(metaPath, metaData, 0o644); err != nil {
+	if err := os.WriteFile(metaPath, metaData, 0o600); err != nil {
 		return fmt.Errorf("write metadata: %w", err)
 	}
 

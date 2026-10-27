@@ -44,7 +44,7 @@ func NewFilePersister(dir string) (*FilePersister, error) {
 		return nil, errors.New("cluster: persister dir is empty")
 	}
 	logDir := filepath.Join(dir, "log")
-	if err := os.MkdirAll(logDir, 0755); err != nil {
+	if err := os.MkdirAll(logDir, 0o700); err != nil {
 		return nil, fmt.Errorf("cluster: create persister dir: %w", err)
 	}
 	return &FilePersister{dir: dir}, nil
@@ -62,7 +62,7 @@ func (p *FilePersister) SaveRaftState(state RaftStateV1) error {
 
 	path := filepath.Join(p.dir, "raft_state.json")
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return fmt.Errorf("write raft state: %w", err)
 	}
 	// Atomic rename
@@ -115,7 +115,7 @@ func (p *FilePersister) saveLogEntryLocked(entry *LogEntry) error {
 	}
 
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return fmt.Errorf("write log entry %d: %w", entry.Index, err)
 	}
 	if err := os.Rename(tmp, path); err != nil {

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 )
 
@@ -273,7 +272,6 @@ type MembershipChangeEntry struct {
 
 // membershipConfig tracks the membership state during joint consensus.
 type membershipConfig struct {
-	mu            sync.RWMutex
 	pending       *MembershipChange
 	inTransition  bool
 	jointCommitID uint64 // log index of the C_old,new entry

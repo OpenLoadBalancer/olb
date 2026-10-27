@@ -1,4 +1,5 @@
-import { ArrowRight, Github } from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import { Github } from "./github-icon";
 import { cn } from "@/lib/utils";
 
 export function CTA() {

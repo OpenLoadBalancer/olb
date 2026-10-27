@@ -886,7 +886,7 @@ func buildTestMMDBWithRootData(t *testing.T, rootData []byte, recordSize uint16)
 	nodeCount := uint32(1)
 	// Build tree: 1 node, both records point to data
 	var nodeBytes []byte
-	dataOffset := uint32(nodeCount) + 16 // data record = nodeCount + 16 + offset
+	dataOffset := nodeCount + 16 // data record = nodeCount + 16 + offset
 
 	switch recordSize {
 	case 24:

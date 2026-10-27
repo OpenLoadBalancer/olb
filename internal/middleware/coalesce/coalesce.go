@@ -78,7 +78,6 @@ type inflight struct {
 	done     chan struct{}
 	response *http.Response
 	body     []byte
-	err      error
 	waiters  int
 }
 

@@ -399,7 +399,7 @@ func (t *SSETransport) broadcastToClient(sessionID string, data []byte) {
 		case client.messages <- data:
 		default:
 			// Client buffer full — drop message to prevent blocking
-			log.Printf("mcp: SSE client %s buffer full, dropping message", sessionID)
+			log.Printf("mcp: SSE client %q buffer full, dropping message", sessionID) //nolint:gosec // %q escapes control characters
 		}
 	}
 }

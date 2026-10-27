@@ -512,28 +512,6 @@ func BenchmarkChecker_checkHTTP(b *testing.B) {
 	}
 }
 
-// mockBalancer is a simple mock balancer for integration tests
-type mockBalancer struct {
-	name string
-}
-
-func (m *mockBalancer) Name() string {
-	return m.name
-}
-
-func (m *mockBalancer) Next(_ *backend.RequestContext, backends []*backend.Backend) *backend.Backend {
-	if len(backends) > 0 {
-		return backends[0]
-	}
-	return nil
-}
-
-func (m *mockBalancer) Add(b *backend.Backend) {}
-
-func (m *mockBalancer) Remove(id string) {}
-
-func (m *mockBalancer) Update(b *backend.Backend) {}
-
 // --- New tests to improve coverage ---
 
 func TestNewChecker_CheckRedirect(t *testing.T) {

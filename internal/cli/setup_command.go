@@ -121,7 +121,8 @@ func (s *SetupCommand) Run(args []string) error {
 		enableCompression: enableCompression,
 	})
 
-	if err := os.WriteFile(outputPath, []byte(config), 0644); err != nil {
+	// The generated config can hold the admin password, so keep it private.
+	if err := os.WriteFile(outputPath, []byte(config), 0o600); err != nil {
 		return fmt.Errorf("failed to write %s: %w", outputPath, err)
 	}
 

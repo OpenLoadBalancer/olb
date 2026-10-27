@@ -869,7 +869,6 @@ func TestCopyWithBuffer_ZeroIdleTimeout(t *testing.T) {
 
 type shortWriteConn struct {
 	net.Conn
-	writeErr error
 }
 
 func (c *shortWriteConn) Write(b []byte) (int, error) {

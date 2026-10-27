@@ -401,7 +401,7 @@ func (r *mmdbReader) decodeFieldDepth(offset, depth uint32) (result, uint32) {
 			bits := binary.BigEndian.Uint32(r.data[offset:])
 			val := math.Float32frombits(bits)
 			// Store float as uint64 bits for deterministic handling
-			return result{typ: mmdbTypeFloat, num: uint64(math.Float64bits(float64(val)))}, consumed + 4
+			return result{typ: mmdbTypeFloat, num: math.Float64bits(float64(val))}, consumed + 4
 		}
 		return result{}, consumed
 	}

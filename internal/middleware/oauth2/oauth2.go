@@ -68,7 +68,6 @@ type Middleware struct {
 	config     Config
 	jwksCache  *jwksCache
 	httpClient *http.Client
-	mu         sync.RWMutex
 }
 
 // jwksCache caches JWKS keys.

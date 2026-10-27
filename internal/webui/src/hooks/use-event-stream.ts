@@ -29,7 +29,9 @@ export function useEventStream(options?: UseEventStreamOptions): UseEventStreamR
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortController = useRef<AbortController | null>(null)
   const onEventRef = useRef(options?.onEvent)
-  onEventRef.current = options?.onEvent
+  useEffect(() => {
+    onEventRef.current = options?.onEvent
+  })
 
   const connect = useCallback(() => {
     // Clean up any existing connection

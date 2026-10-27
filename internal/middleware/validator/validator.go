@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"sync"
 )
 
 // Config configures request/response validation.
@@ -50,7 +49,6 @@ type ValidationError struct {
 type Middleware struct {
 	config   Config
 	patterns map[string]*regexp.Regexp
-	mu       sync.RWMutex
 }
 
 // New creates a new validation middleware.

@@ -12,8 +12,6 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
-
-	"golang.org/x/crypto/ocsp"
 )
 
 func TestDefaultOCSPConfig(t *testing.T) {
@@ -664,25 +662,6 @@ func TestCreateOCSPRequest_Wrapper(t *testing.T) {
 	if err == nil && len(requestBytes) == 0 {
 		t.Error("Expected non-empty request bytes when no error")
 	}
-}
-
-func createTestOCSPResponse(t *testing.T, cert *x509.Certificate, issuer *x509.Certificate) []byte {
-	t.Helper()
-
-	// Create a basic OCSP response
-	template := ocsp.Response{
-		Status:       ocsp.Good,
-		SerialNumber: cert.SerialNumber,
-		ThisUpdate:   time.Now(),
-		NextUpdate:   time.Now().Add(24 * time.Hour),
-	}
-
-	// We need the issuer's private key to sign the OCSP response
-	// For testing, we'll just create a dummy response
-	_ = template
-
-	// Return a minimal OCSP response structure (this won't verify but is sufficient for testing)
-	return []byte{0x30, 0x03, 0x0A, 0x01, 0x00} // SEQUENCE { ENUMERATED 0 }
 }
 
 func TestOCSPManager_FetchResponse_WithOCSPServers(t *testing.T) {

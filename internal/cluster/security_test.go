@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
@@ -168,8 +169,8 @@ func TestBuildNodeTLSConfig_WithAllowedNodeIDs(t *testing.T) {
 		t.Fatalf("BuildNodeTLSConfig error: %v", err)
 	}
 
-	if tlsConfig.VerifyPeerCertificate == nil {
-		t.Error("Expected VerifyPeerCertificate to be set when AllowedNodeIDs is provided")
+	if tlsConfig.VerifyConnection == nil {
+		t.Error("Expected VerifyConnection to be set when AllowedNodeIDs is provided")
 	}
 }
 
@@ -955,7 +956,7 @@ func TestAuthenticateToNode_ReadError(t *testing.T) {
 }
 
 func TestBuildNodeTLSConfig_AllowedNodeIDsVerifyFunc(t *testing.T) {
-	// Test that the VerifyPeerCertificate function set by AllowedNodeIDs works correctly
+	// Test that the VerifyConnection function set by AllowedNodeIDs works correctly
 	tmpDir := t.TempDir()
 	caKey, caCert, err := generateTestCA()
 	if err != nil {
@@ -986,10 +987,17 @@ func TestBuildNodeTLSConfig_AllowedNodeIDsVerifyFunc(t *testing.T) {
 		t.Fatalf("BuildNodeTLSConfig: %v", err)
 	}
 
+	verify := func(der []byte) error {
+		cert, err := x509.ParseCertificate(der)
+		if err != nil {
+			t.Fatalf("ParseCertificate: %v", err)
+		}
+		return tlsConfig.VerifyConnection(tls.ConnectionState{PeerCertificates: []*x509.Certificate{cert}})
+	}
+
 	// Call the verify function with the allowed node's cert
-	err = tlsConfig.VerifyPeerCertificate([][]byte{nodeCert}, nil)
-	if err != nil {
-		t.Errorf("VerifyPeerCertificate with allowed node: %v", err)
+	if err := verify(nodeCert); err != nil {
+		t.Errorf("VerifyConnection with allowed node: %v", err)
 	}
 
 	// Call with a cert that's NOT allowed
@@ -997,8 +1005,7 @@ func TestBuildNodeTLSConfig_AllowedNodeIDsVerifyFunc(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generateTestNodeCert: %v", err)
 	}
-	err = tlsConfig.VerifyPeerCertificate([][]byte{otherCert}, nil)
-	if err == nil {
+	if err := verify(otherCert); err == nil {
 		t.Error("expected error for disallowed node")
 	}
 }

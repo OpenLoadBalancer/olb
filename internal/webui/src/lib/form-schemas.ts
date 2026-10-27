@@ -20,7 +20,7 @@ export const addBackendSchema = z.object({
     .string()
     .min(1, "Backend address is required")
     .regex(/^[\w.-]+:\d+$/, "Address must be in host:port format (e.g., 10.0.1.10:8080)"),
-  weight: z.coerce.number().int().min(1).max(100),
+  weight: z.coerce.number<number>().int().min(1).max(100),
 })
 
 export type CreatePoolFormValues = z.infer<typeof createPoolSchema>
@@ -48,7 +48,7 @@ export const addRouteSchema = z.object({
     .regex(/^\//, "Path must start with /"),
   pool: z.string().min(1, "Target pool is required"),
   methods: z.array(z.string()).min(1, "At least one HTTP method is required"),
-  priority: z.coerce.number().int().min(0).max(100),
+  priority: z.coerce.number<number>().int().min(0).max(100),
   strip_prefix: z.boolean(),
 })
 

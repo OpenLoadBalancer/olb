@@ -2714,15 +2714,6 @@ func (e *errorWriter) Read(p []byte) (n int, err error) {
 	return 0, io.EOF
 }
 
-// failingJSONRPCServer wraps a Server and forces HandleJSONRPC to return an error.
-type failingJSONRPCServer struct {
-	*Server
-}
-
-func (f *failingJSONRPCServer) HandleJSONRPC(request []byte) ([]byte, error) {
-	return nil, fmt.Errorf("internal JSON-RPC failure")
-}
-
 // TestStdioTransport_Run_ContextCancelledDuringRead tests Run when context is
 // cancelled between scanner iterations (line 1205-1206).
 func TestStdioTransport_Run_ContextCancelledDuringRead(t *testing.T) {

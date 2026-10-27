@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTheme } from "@/hooks/use-theme";
-import { Menu, X, Sun, Moon, Github } from "lucide-react";
+import { Menu, X, Sun, Moon } from "lucide-react";
+import { Github } from "./github-icon";
 import { cn } from "@/lib/utils";
 
 const navLinks = [

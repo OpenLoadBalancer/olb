@@ -1038,6 +1038,16 @@ func TestCov_SetupCommand_Run_WithAuth(t *testing.T) {
 	if !strings.Contains(content, `password: "secret123"`) {
 		t.Error("expected password in output")
 	}
+	// The file holds the admin password: it must not be group/world readable.
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(outputPath)
+		if err != nil {
+			t.Fatalf("stat output: %v", err)
+		}
+		if perm := info.Mode().Perm(); perm&0o077 != 0 {
+			t.Errorf("setup config mode = %o, want no group/other access", perm)
+		}
+	}
 	if !strings.Contains(content, "ip_hash") {
 		t.Error("expected ip_hash algorithm")
 	}
