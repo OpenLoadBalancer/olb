@@ -25,9 +25,9 @@ func DefaultWAFConfig() *config.WAFConfig {
 			MaxURLLength:      8192,
 			MaxCookieSize:     4096,
 			MaxCookieCount:    50,
-			BlockNullBytes:    true,
-			NormalizeEncoding: true,
-			StripHopByHop:     true,
+			BlockNullBytes:    boolPtr(true),
+			NormalizeEncoding: boolPtr(true),
+			StripHopByHop:     boolPtr(true),
 		},
 		Detection: &config.WAFDetectionConfig{
 			Enabled: true,
@@ -37,12 +37,12 @@ func DefaultWAFConfig() *config.WAFConfig {
 				Log:   25,
 			},
 			Detectors: config.WAFDetectorsConfig{
-				SQLi:          config.WAFDetectorConfig{Enabled: true, ScoreMultiplier: 1.0},
-				XSS:           config.WAFDetectorConfig{Enabled: true, ScoreMultiplier: 1.0},
-				PathTraversal: config.WAFDetectorConfig{Enabled: true, ScoreMultiplier: 1.0},
-				CMDi:          config.WAFDetectorConfig{Enabled: true, ScoreMultiplier: 1.0},
-				XXE:           config.WAFDetectorConfig{Enabled: true, ScoreMultiplier: 1.0},
-				SSRF:          config.WAFDetectorConfig{Enabled: true, ScoreMultiplier: 1.0},
+				SQLi:          config.WAFDetectorConfig{Enabled: boolPtr(true), ScoreMultiplier: 1.0},
+				XSS:           config.WAFDetectorConfig{Enabled: boolPtr(true), ScoreMultiplier: 1.0},
+				PathTraversal: config.WAFDetectorConfig{Enabled: boolPtr(true), ScoreMultiplier: 1.0},
+				CMDi:          config.WAFDetectorConfig{Enabled: boolPtr(true), ScoreMultiplier: 1.0},
+				XXE:           config.WAFDetectorConfig{Enabled: boolPtr(true), ScoreMultiplier: 1.0},
+				SSRF:          config.WAFDetectorConfig{Enabled: boolPtr(true), ScoreMultiplier: 1.0},
 			},
 		},
 		BotDetection: &config.WAFBotConfig{
@@ -90,3 +90,5 @@ func DefaultWAFConfig() *config.WAFConfig {
 		},
 	}
 }
+
+func boolPtr(b bool) *bool { return &b }
