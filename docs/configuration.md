@@ -891,7 +891,7 @@ waf:
     threshold:
       block: 50                    # Default 50
       log: 25                      # Default 25
-    detectors:                     # When `detection` is present, only detectors with enabled: true run
+    detectors:                     # Omitted detectors stay on; set enabled: false to turn one off
       sqli:
         enabled: true
         score_multiplier: 1.0
@@ -949,7 +949,7 @@ waf:
     log_allowed: false
 ```
 
-When the `sanitizer` block is present, its boolean keys default to `false`; set `block_null_bytes`, `normalize_encoding` and `strip_hop_by_hop` explicitly. Without a `sanitizer` block, the defaults shown above apply.
+`block_null_bytes`, `normalize_encoding` and `strip_hop_by_hop` default to `true`; omitting them keeps that default, and only an explicit `false` turns one off.
 
 Keys that exist in the schema but currently have no effect:
 - `waf.logging.log_body`, `waf.logging.level`, `waf.logging.format`
