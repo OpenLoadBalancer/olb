@@ -771,7 +771,7 @@ func registerSecureHeadersMiddleware(ctx *middlewareRegistrationContext) {
 	}
 	s := ctx.cfg.Middleware.SecureHeaders
 	var hsts *secureheaders.HSTSConfig
-	if s.StrictTransportPolicy != nil {
+	if p := s.StrictTransportPolicy; p != nil && (p.Enabled == nil || *p.Enabled) {
 		hsts = &secureheaders.HSTSConfig{
 			MaxAge:            s.StrictTransportPolicy.MaxAge,
 			IncludeSubdomains: s.StrictTransportPolicy.IncludeSubdomains,

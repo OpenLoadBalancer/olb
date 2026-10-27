@@ -115,6 +115,42 @@ func hs256TokenWithClaims(t *testing.T, secret string, c map[string]any) string 
 	return header + "." + payload + "." + enc.EncodeToString(mac.Sum(nil))
 }
 
+// strict_transport_policy.enabled: false must turn HSTS off. The field did
+// not exist, so the shipped example's "enabled: false" still sent a one-year
+// includeSubDomains HSTS header.
+func TestSecureHeaders_HSTSEnabledFlag(t *testing.T) {
+	off, on := false, true
+	for _, tc := range []struct {
+		name    string
+		enabled *bool
+		want    bool
+	}{
+		{"enabled false", &off, false},
+		{"enabled true", &on, true},
+		{"enabled unset (back-compat)", nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := createTestConfig()
+			cfg.Middleware = &config.MiddlewareConfig{
+				SecureHeaders: &config.SecureHeadersConfig{
+					Enabled:               true,
+					StrictTransportPolicy: &config.HSTSConfig{Enabled: tc.enabled, MaxAge: 31536000},
+				},
+			}
+			chain, err := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+			if err != nil {
+				t.Fatalf("createMiddlewareChain: %v", err)
+			}
+			rec := httptest.NewRecorder()
+			chain.Then(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})).
+				ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+			if got := rec.Header().Get("Strict-Transport-Security") != ""; got != tc.want {
+				t.Errorf("HSTS header present = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 // A token without exp used to be accepted forever because the engine never
 // passed RequireExpiration to the JWT middleware.
 func TestJWTMiddleware_RequiresExpirationByDefault(t *testing.T) {

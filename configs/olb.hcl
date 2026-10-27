@@ -5,45 +5,16 @@
 version = 1
 
 # ---------------------------------------------------------------------------
-# Global settings
-# ---------------------------------------------------------------------------
-global {
-  # Worker settings
-  workers {
-    count = "auto"  # "auto" = number of CPUs
-  }
-
-  # Connection limits
-  limits {
-    max_connections            = 10000
-    max_connections_per_source = 100
-    max_connections_per_backend = 1000
-  }
-
-  # Timeouts (duration strings)
-  timeouts {
-    read   = "30s"
-    write  = "30s"
-    idle   = "120s"
-    header = "10s"
-    drain  = "30s"
-  }
-}
-
-# ---------------------------------------------------------------------------
 # Admin API configuration
 # ---------------------------------------------------------------------------
 admin {
   enabled = true
   address = "127.0.0.1:8081"
 
-  auth {
-    type     = "basic"
-    username = "admin"
-    # IMPORTANT: Change this password before deploying!
-    # Generate a bcrypt hash: go run -mod=mod github.com/tyler-smith/go-bcrypt-cli <password>
-    password = "$2a$10$CHANGEME_REPLACE_WITH_YOUR_OWN_BCRYPT_HASH"
-  }
+  # Admin API basic auth. IMPORTANT: change this before deploying!
+  # Generate a bcrypt hash, e.g.: htpasswd -nbBC 10 admin <password> | cut -d: -f2
+  username = "admin"
+  password = "$2a$10$CHANGEME_REPLACE_WITH_YOUR_OWN_BCRYPT_HASH"
 }
 
 # ---------------------------------------------------------------------------
@@ -59,39 +30,39 @@ metrics {
 # ---------------------------------------------------------------------------
 
 # HTTP listener on port 8080
-listener "http" {
+listeners {
+  name = "http"
   protocol = "http"
   address  = ":8080"
 
   # API routes with specific backend
-  route "api" {
-    host    = "api.example.com"
+  routes {
+    name = "api"
+    host    = "api.openloadbalancer.dev"
     path    = "/api/"
     methods = ["GET", "POST", "PUT", "DELETE"]
     pool    = "api-backend"
   }
 
   # Static file serving (direct backend)
-  route "static" {
-    host = "static.example.com"
+  routes {
+    name = "static"
+    host = "static.openloadbalancer.dev"
     path = "/files/"
     pool = "static-backend"
   }
 
   # Default route for everything else
-  route "default" {
+  routes {
+    name = "default"
     path = "/"
     pool = "web-backend"
-
-    middleware "rate_limit" {
-      requests_per_second = 100
-      burst_size          = 200
-    }
   }
 }
 
 # HTTPS listener on port 8443
-listener "https" {
+listeners {
+  name = "https"
   protocol = "https"
   address  = ":8443"
 
@@ -100,7 +71,8 @@ listener "https" {
     key_file  = "/etc/olb/certs/server.key"
   }
 
-  route "secure-api" {
+  routes {
+    name = "secure-api"
     path = "/"
     pool = "api-backend"
   }
@@ -111,7 +83,8 @@ listener "https" {
 # ---------------------------------------------------------------------------
 
 # Web pool - round robin for general traffic
-pool "web-backend" {
+pools {
+  name = "web-backend"
   algorithm = "round_robin"
 
   health_check {
@@ -123,24 +96,28 @@ pool "web-backend" {
     unhealthy_threshold = 3
   }
 
-  backend "web-1" {
+  backends {
+    id = "web-1"
     address = "10.0.1.10:8080"
     weight  = 1
   }
 
-  backend "web-2" {
+  backends {
+    id = "web-2"
     address = "10.0.1.11:8080"
     weight  = 1
   }
 
-  backend "web-3" {
+  backends {
+    id = "web-3"
     address = "10.0.1.12:8080"
     weight  = 1
   }
 }
 
 # API pool - weighted round robin for API servers
-pool "api-backend" {
+pools {
+  name = "api-backend"
   algorithm = "weighted_round_robin"
 
   health_check {
@@ -148,22 +125,24 @@ pool "api-backend" {
     path            = "/api/health"
     interval        = "5s"
     timeout         = "3s"
-    expected_status = 200
   }
 
-  backend "api-1" {
+  backends {
+    id = "api-1"
     address = "10.0.2.10:8080"
     weight  = 3  # More capacity
   }
 
-  backend "api-2" {
+  backends {
+    id = "api-2"
     address = "10.0.2.11:8080"
     weight  = 2
   }
 }
 
 # Static files pool - least connections for large files
-pool "static-backend" {
+pools {
+  name = "static-backend"
   algorithm = "round_robin"
 
   health_check {
@@ -172,7 +151,8 @@ pool "static-backend" {
     timeout  = "5s"
   }
 
-  backend "static-1" {
+  backends {
+    id = "static-1"
     address = "10.0.3.10:8080"
   }
 }
@@ -181,74 +161,57 @@ pool "static-backend" {
 # Middleware configuration
 # ---------------------------------------------------------------------------
 
-# Request ID injection
-middleware "request_id" {
-  enabled = true
-
-  config {
-    header_name    = "X-Request-ID"
-    trust_incoming = false
+# Each middleware is its own block inside `middleware { }` and is off
+# unless enabled = true.
+middleware {
+  # Request ID injection
+  request_id {
+    enabled  = true
+    header   = "X-Request-ID"
+    generate = true
   }
-}
 
-# Real IP extraction
-middleware "real_ip" {
-  enabled = true
-
-  config {
+  # Real IP extraction (only trust X-Forwarded-For from these proxies)
+  real_ip {
+    enabled         = true
     trusted_proxies = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
   }
-}
 
-# CORS handling
-middleware "cors" {
-  enabled = true
-
-  config {
+  # CORS handling
+  cors {
+    enabled         = true
     allowed_origins = ["*"]
     allowed_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     allowed_headers = ["Content-Type", "Authorization", "X-Request-ID"]
     max_age         = 3600
   }
-}
 
-# Security headers
-middleware "headers" {
-  enabled = true
-
-  config {
-    security_preset = "strict"
-
-    response_set = {
-      X-Frame-Options        = "DENY"
-      X-Content-Type-Options = "nosniff"
+  # Extra response headers
+  headers {
+    enabled = true
+    response_add = {
+      "X-Frame-Options"        = "DENY"
+      "X-Content-Type-Options" = "nosniff"
     }
   }
-}
 
-# Compression
-middleware "compression" {
-  enabled = true
-
-  config {
+  # Compression
+  compression {
+    enabled  = true
     min_size = 1024
-    level    = "default"  # -1 = default compression
+    level    = 6 # 1 (fastest) - 9 (smallest)
   }
-}
 
-# Access logging
-middleware "access_log" {
-  enabled = true
-
-  config {
-    format = "json"
-    output = "/var/log/olb/access.log"
+  # Access logging
+  logging {
+    enabled = true
+    format  = "json"
   }
-}
 
-# Metrics collection
-middleware "metrics" {
-  enabled = true
+  # Metrics collection
+  metrics {
+    enabled = true
+  }
 }
 
 # ---------------------------------------------------------------------------

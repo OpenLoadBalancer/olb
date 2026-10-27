@@ -434,10 +434,11 @@ func (l *Lexer) readNumber() Token {
 		}
 	}
 
-	// Check for duration suffix (s, m, h, d, ms, us, ns, etc.)
-	// If we see a letter after a number, treat the whole thing as a string
-	if isLetter(l.ch) {
-		for isLetter(l.ch) {
+	// Anything that continues the plain scalar makes it a string: duration
+	// suffixes ("5s"), IPs and CIDRs ("10.0.0.0/8"), host:port ("8.8.8.8:53").
+	// Without this, "10.0.0.0/8" lexed as the number 10.0 followed by junk.
+	if l.continuesPlainScalar() {
+		for l.continuesPlainScalar() {
 			l.readChar()
 		}
 		tok.Type = TokenString
@@ -445,6 +446,22 @@ func (l *Lexer) readNumber() Token {
 
 	tok.Value = l.input[pos:l.pos]
 	return tok
+}
+
+// continuesPlainScalar reports whether the current character extends an
+// unquoted scalar that started with a digit. A ':' only continues it when
+// not followed by whitespace, so "8080: x" still ends the key at the colon.
+func (l *Lexer) continuesPlainScalar() bool {
+	switch {
+	case isLetter(l.ch), isDigit(l.ch):
+		return true
+	case l.ch == '.' || l.ch == '/' || l.ch == '-' || l.ch == '_' || l.ch == '@' || l.ch == '+':
+		return true
+	case l.ch == ':':
+		next := l.peek()
+		return next != ' ' && next != '\t' && next != '\n' && next != '\r' && next != 0
+	}
+	return false
 }
 
 // readDoubleQuotedString reads a double-quoted string.

@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/openloadbalancer/olb/internal/backend"
@@ -138,12 +139,19 @@ func NewChecker() *Checker {
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
+		Transport: &http.Transport{
+			DialContext:         newHealthDialer(10 * time.Second).DialContext,
+			TLSHandshakeTimeout: 10 * time.Second,
+			MaxIdleConnsPerHost: 2,
+			IdleConnTimeout:     90 * time.Second,
+		},
 	}
 
 	// Shared HTTP client for gRPC health checks (TLS with InsecureSkipVerify + HTTP/2).
 	grpcClient := &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
+			DialContext:       newHealthDialer(10 * time.Second).DialContext,
 			TLSClientConfig:   &tls.Config{InsecureSkipVerify: false},
 			ForceAttemptHTTP2: true,
 		},
@@ -153,6 +161,7 @@ func NewChecker() *Checker {
 	grpcPlainClient := &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
+			DialContext:       newHealthDialer(10 * time.Second).DialContext,
 			ForceAttemptHTTP2: true,
 		},
 	}
@@ -174,6 +183,7 @@ func (c *Checker) SetGRPCTLSSkipVerify(skip bool) {
 	c.grpcClient = &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
+			DialContext:       newHealthDialer(10 * time.Second).DialContext,
 			TLSClientConfig:   &tls.Config{InsecureSkipVerify: skip}, // #nosec G402 -- opt-in via config
 			ForceAttemptHTTP2: true,
 		},
@@ -536,7 +546,7 @@ func truncateString(s string, maxLen int) string {
 
 // checkTCP performs a TCP health check.
 func (c *Checker) checkTCP(b *backend.Backend, config *Check) Result {
-	conn, err := net.DialTimeout("tcp", b.Address, config.Timeout)
+	conn, err := newHealthDialer(config.Timeout).Dial("tcp", b.Address)
 	if err != nil {
 		return Result{Healthy: false, Error: err}
 	}
@@ -596,11 +606,8 @@ func (c *Checker) CountUnhealthy() int {
 // be health check destinations.
 // Note: localhost/RFC1918 are NOT blocked since legitimate backends commonly
 // run on internal addresses. Health check addresses are admin-controlled.
-//
-// TODO: DNS rebinding attacks are not yet handled. A health check target could
-// resolve to an internal address at check time even if the hostname itself is
-// not blocked. Future improvement should resolve the hostname and validate the
-// resulting IP addresses.
+// This catches literal hosts early; guardHealthDial re-checks the resolved
+// address at connect time, which covers hostnames and DNS rebinding.
 func isInternalAddress(host string) bool {
 	switch host {
 	case "169.254.169.254", "metadata.google.internal", "metadata.google",
@@ -621,4 +628,27 @@ func isInternalAddress(host string) bool {
 	}
 
 	return false
+}
+
+// guardHealthDial is a net.Dialer Control hook. It runs after DNS
+// resolution with the concrete IP being dialled, so a hostname that
+// resolves (or rebinds) to a metadata or link-local address is refused for
+// every health check type.
+func guardHealthDial(_, address string, _ syscall.RawConn) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		host = address
+	}
+	if isInternalAddress(host) {
+		return fmt.Errorf("health check target %s is an internal/private address (SSRF protection)", host)
+	}
+	if ip := net.ParseIP(host); ip != nil && (ip.IsLinkLocalUnicast() || ip.IsUnspecified()) {
+		return fmt.Errorf("health check target %s is an internal/private address (SSRF protection)", host)
+	}
+	return nil
+}
+
+// newHealthDialer returns a dialer that applies guardHealthDial.
+func newHealthDialer(timeout time.Duration) *net.Dialer {
+	return &net.Dialer{Timeout: timeout, Control: guardHealthDial}
 }

@@ -84,15 +84,17 @@ Requires Go 1.26+. Only stdlib + golang.org/x/{crypto,net,text}.
 
 **Load Balancing:** 16 algorithms — Round Robin, Weighted RR, Least Connections, Weighted Least Connections, Least Response Time, Weighted Least Response Time, IP Hash, Consistent Hash (Ketama), Maglev, Ring Hash, Power of Two, Random, Weighted Random, Rendezvous Hash, Peak EWMA, Sticky Sessions
 
-**Geo-DNS Routing:** Geographic location-based traffic routing (country, region, city)
+**Geo-DNS Routing (experimental):** a GeoIP rule engine (country, region, city) is included and its `geodns` config is parsed, but it does not affect routing yet.
 
 **Security:** TLS termination + SNI, ACME/Let's Encrypt, mTLS, OCSP stapling, 6-layer WAF (IP ACL, rate limiting, request sanitizer, detection engine with SQLi/XSS/path traversal/CMDi/XXE/SSRF, bot detection with JA3 fingerprinting, response protection with security headers + data masking), circuit breaker
 
-**Middleware:** 16 components — Recovery, body limit, WAF (6-layer pipeline), IP filter, real IP, request ID, timeout, rate limit, circuit breaker, CORS, headers, compression (gzip), retry, cache, metrics, access log
+**Middleware:** 30 config-gated components plus always-on recovery and access log — trace, real IP, request logging, force SSL, metrics, request ID, IP filter, bot detection, max body size, cache, WAF (6-layer pipeline), rewrite, strip prefix, validator, request coalescing, JWT, HMAC, API key, basic auth, CSRF, timeout, rate limit, circuit breaker, CORS, CSP, headers, compression (gzip), transformer, retry, secure headers. An enabled middleware with an invalid config stops the engine from starting instead of being skipped.
 
 **Observability:** Web UI dashboard (8 pages), TUI (`olb top`), Prometheus metrics, structured JSON logging, admin REST API (15+ endpoints), Grafana dashboard
 
-**Operations:** Hot config reload (SIGHUP or API), Raft clustering + SWIM gossip, service discovery (Static/DNS/Consul/Docker/File), MCP server for AI integration, plugin system, 30+ CLI commands, distributed rate limiting, request shadowing/mirroring
+**Operations:** Hot config reload (SIGHUP or API), Raft clustering, MCP server for AI integration, plugin system, 30+ CLI commands, request shadowing/mirroring
+
+**Not wired yet (experimental libraries):** SWIM gossip membership, service discovery providers (Static/DNS/Consul/Docker/File) and the distributed rate limiter exist under `internal/` with tests, but the engine does not use them and they have no config. Backends are listed statically under `pools[].backends`.
 
 ## MCP Integration (AI-Powered Management)
 
@@ -111,7 +113,9 @@ admin:
   mcp_audit: true                   # Log all tool calls
 ```
 
-### 17 MCP Tools
+### MCP Tools
+
+8 core tools, plus 9 WAF tools when the WAF is enabled.
 
 | Category | Tools |
 |----------|-------|
@@ -261,25 +265,9 @@ pools:
 
 See [docs/configuration.md](docs/configuration.md) for all options.
 
-### Geo-DNS Routing Example
+### Geo-DNS Routing (experimental)
 
-```yaml
-geodns:
-  enabled: true
-  default_pool: default-pool
-  rules:
-    - id: us-traffic
-      country: US
-      pool: us-pool
-      fallback: default-pool
-    - id: eu-traffic
-      country: EU
-      pool: eu-pool
-    - id: asia-traffic
-      country: JP
-      region: Tokyo
-      pool: asia-pool
-```
+The `geodns` section is parsed and validated, but GeoDNS rules do not influence routing yet. Use separate listeners/routes per region until it is wired in.
 
 ### Request Shadowing Example
 
@@ -336,10 +324,10 @@ olb cluster status                   # Cluster info
                     │              OpenLoadBalancer                    │
   Clients ─────────┤                                                  │
   HTTP/S, WS,      │  Listeners → Middleware → Router → Balancer → Backends
-  gRPC, TCP, UDP   │  (L4/L7)     (16 types)   (trie)   (16 algos)  │
+  gRPC, TCP, UDP   │  (L4/L7)     (30 types)   (trie)   (16 algos)  │
                     │                                                  │
                     │  WAF (6 layers) │ TLS │ Cluster │ MCP │ Web UI  │
-                    │  GeoDNS │ Shadow │ Discovery │ Prometheus      │
+                    │  Shadow │ Prometheus │ Plugins │ ACME          │
                     └─────────────────────────────────────────────────┘
 ```
 

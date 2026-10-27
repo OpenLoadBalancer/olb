@@ -84,6 +84,16 @@ func (p *parser) parse() (map[string]any, error) {
 				fullKey := strings.Join(keys, ".")
 				p.arrayTables[fullKey] = true
 
+				// A new element starts: sub-tables such as [pools.health_check]
+				// defined under the previous element belong to it, so they may
+				// be defined again for this one.
+				prefix := fullKey + "."
+				for k := range p.definedTables {
+					if strings.HasPrefix(k, prefix) {
+						delete(p.definedTables, k)
+					}
+				}
+
 				// Create the array entry
 				target, err := p.ensureArrayTable(keys)
 				if err != nil {

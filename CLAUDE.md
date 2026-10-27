@@ -87,8 +87,8 @@ internal/middleware/      → Config-gated middleware (see list below)
 internal/router/          → Radix trie router (router.go + radix.go)
 internal/config/          → YAML/TOML/HCL/JSON config + hot reload + env var substitution
 internal/admin/           → REST API + Web UI serving (30+ endpoints)
-internal/cluster/         → Raft consensus + SWIM gossip
-internal/mcp/             → MCP server for AI integration (SSE + HTTP + stdio, 17 tools)
+internal/cluster/         → Raft consensus (SWIM gossip code exists but is not wired into the engine)
+internal/mcp/             → MCP server for AI integration (SSE + HTTP + stdio, 8 tools + 9 WAF tools when WAF is on)
 internal/tls/             → TLS, mTLS, OCSP stapling
 internal/acme/            → ACME/Let's Encrypt client
 internal/health/          → Active + passive health checking (HTTP, TCP, gRPC)
@@ -96,8 +96,8 @@ internal/waf/             → WAF: 6-layer security pipeline (SQLi, XSS, CMDi, X
 internal/security/        → Request smuggling, header injection protection
 internal/webui/           → Embedded SPA (React 19 + TypeScript + Tailwind CSS + Radix UI)
 internal/plugin/          → Plugin system with event bus
-internal/discovery/       → Service discovery (static/DNS/file/Docker/Consul)
-internal/geodns/          → Geographic DNS routing
+internal/discovery/       → Service discovery providers (static/DNS/file/Docker/Consul) — library only, not wired, no config
+internal/geodns/          → GeoIP rule engine — built from config but does not affect routing yet
 internal/conn/            → Connection management + pooling
 internal/logging/         → Structured JSON logging with rotating file output
 internal/metrics/         → Prometheus metrics registry (40+ metrics)
@@ -184,5 +184,5 @@ admin:
 ```
 
 ## CI Pipeline
-`.github/workflows/ci.yml` — 11 jobs: lint → build-frontend → test (3 OS matrix) → test-race → build → integration → benchmark (PR only) → docker → security (gosec + govulncheck) → binary-analysis → image-scan (Trivy).
+`.github/workflows/ci.yml` — 14 checks: lint → build-frontend → test (3 OS matrix) → test-race → build → integration → benchmark (PR only) → docker → security (gosec + govulncheck) → binary-analysis → image-scan (Trivy).
 Release workflow: `.github/workflows/release.yml` (binaries, GitHub Release, SBOM, GHCR Docker publish).
