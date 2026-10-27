@@ -2,6 +2,7 @@ package logging
 
 import (
 	"bufio"
+	"bytes"
 	"compress/gzip"
 	"fmt"
 	"io"
@@ -272,6 +273,11 @@ type RotatingFileOutput struct {
 	file   *os.File
 	writer *bufio.Writer
 	size   int64
+
+	// jsonFmt, when set, formats entries as JSON lines into jsonBuf instead
+	// of the plain text layout.
+	jsonFmt *JSONOutput
+	jsonBuf bytes.Buffer
 }
 
 // RotatingFileOptions configures the rotating file output.
@@ -280,6 +286,9 @@ type RotatingFileOptions struct {
 	MaxSize    int64 // bytes
 	MaxBackups int
 	Compress   bool
+	// Format is "json" for one JSON object per line; anything else (the
+	// default) keeps the plain text layout.
+	Format string
 }
 
 // NewRotatingFileOutput creates a new rotating file output.
@@ -296,6 +305,9 @@ func NewRotatingFileOutput(opts RotatingFileOptions) (*RotatingFileOutput, error
 		maxSize:    opts.MaxSize,
 		maxBackups: opts.MaxBackups,
 		compress:   opts.Compress,
+	}
+	if opts.Format == "json" {
+		o.jsonFmt = NewJSONOutput(&o.jsonBuf)
 	}
 
 	if err := o.open(); err != nil {
@@ -346,6 +358,15 @@ func (o *RotatingFileOutput) Write(level Level, msg string, fields []Field) {
 			// Write to stderr as fallback
 			fmt.Fprintf(os.Stderr, "log rotation failed: %v\n", err)
 		}
+	}
+
+	if o.jsonFmt != nil {
+		o.jsonBuf.Reset()
+		o.jsonFmt.Write(level, msg, fields)
+		o.size += int64(o.jsonBuf.Len())
+		_, _ = o.writer.Write(o.jsonBuf.Bytes())
+		_ = o.writer.Flush()
+		return
 	}
 
 	// Format and write

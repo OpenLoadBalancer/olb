@@ -50,6 +50,9 @@ func createLoggerWithOutput(cfg *config.Logging) (*logging.Logger, *logging.Rota
 				MaxSize:    100 * 1024 * 1024, // 100MB
 				MaxBackups: 10,
 				Compress:   true,
+				// The file used to ignore logging.format and always write
+				// text; json is the documented default.
+				Format: fileLogFormat(cfg.Format),
 			})
 			if err != nil {
 				// Fallback to stdout
@@ -320,4 +323,13 @@ func proxySettingsFromConfig(cfg *config.Config) proxySettings {
 		ps.idleConnTimeout = d
 	}
 	return ps
+}
+
+// fileLogFormat returns the format for file log output: text only when asked
+// for, json otherwise (the default for stdout and stderr too).
+func fileLogFormat(format string) string {
+	if format == "text" {
+		return "text"
+	}
+	return "json"
 }

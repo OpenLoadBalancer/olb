@@ -783,7 +783,7 @@ logging:
   output: stdout                   # "stdout", "stderr", or a file path
 ```
 
-When `output` is a file path, the file is rotated at 100MB, keeping 10 compressed backups; these rotation settings are not configurable. `format` applies to `stdout` and `stderr`; file output is always plain text (`timestamp LEVEL message key=value ...`).
+When `output` is a file path, the file is rotated at 100MB, keeping 10 compressed backups; these rotation settings are not configurable. `format` applies to all three: `json` (the default) writes one JSON object per line, `text` writes `timestamp LEVEL message key=value ...`.
 
 Log files can be reopened for external rotation tools by sending `SIGUSR1`:
 
