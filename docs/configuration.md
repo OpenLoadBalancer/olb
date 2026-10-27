@@ -2,6 +2,12 @@
 
 Complete reference for all OLB configuration options.
 
+Every example below is a complete document rooted at the top of the config
+file, and every key in it is a real config field. Unknown keys are **silently
+ignored** by the decoders, so a misspelled or invented key does nothing; this
+document is checked against the schema by
+`internal/config/docs_reference_test.go`.
+
 ## File Formats
 
 OLB supports four configuration formats, all parsed from scratch with zero external dependencies:
@@ -9,7 +15,7 @@ OLB supports four configuration formats, all parsed from scratch with zero exter
 | Format | Extension | Notes |
 |--------|-----------|-------|
 | YAML | `.yaml`, `.yml` | Recommended. Full YAML 1.2 subset. |
-| JSON | `.json` | Uses Go stdlib `encoding/json`. |
+| JSON | `.json` | Parsed by the built-in YAML parser (JSON is a YAML subset). |
 | TOML | `.toml` | TOML v1.0. Tables, arrays, inline tables. |
 | HCL | `.hcl` | HashiCorp Configuration Language subset. |
 
@@ -19,31 +25,20 @@ Specify the config file at startup:
 olb start --config /etc/olb/olb.yaml
 ```
 
-OLB auto-detects the format from the file extension. If no config file is specified, OLB searches for `olb.yaml`, `olb.toml`, `olb.hcl`, or `olb.json` in the current directory and `/etc/olb/`.
+OLB detects the format from the file extension (unknown extensions are parsed as YAML). If `--config` is not given, OLB loads `olb.yaml` from the current directory.
 
-## Environment Variable Overlay
+## Environment Variables
 
-Every configuration key can be overridden via environment variables using the `OLB_` prefix with `__` (double underscore) as a path separator:
-
-```bash
-# Override log level
-export OLB_LOGGING__LEVEL=debug
-
-# Override admin API address
-export OLB_ADMIN__ADDRESS=0.0.0.0:9090
-
-# Override max connections
-export OLB_GLOBAL__LIMITS__MAX_CONNECTIONS=50000
-```
-
-Within config files, reference environment variables using `${VAR}` or `${VAR:-default}` syntax:
+Within config files, reference environment variables using `${VAR}` or `${VAR:-default}` syntax. Substitution happens on the raw file text before parsing:
 
 ```yaml
 admin:
   address: "${OLB_ADMIN_ADDR:-127.0.0.1:8081}"
-  auth:
-    password: "${OLB_ADMIN_PASSWORD}"
+  username: admin
+  password: "${OLB_ADMIN_PASSWORD_HASH}"
 ```
+
+There is no `OLB_SECTION__KEY` style environment overlay; to override a value from the environment, reference the variable in the file as shown above.
 
 ## Hot Reload
 
@@ -62,42 +57,48 @@ curl -X POST http://localhost:8081/api/v1/system/reload
 
 **Hot-reloadable settings:**
 - Routes (add, remove, modify)
-- Backends (add, remove, change weights)
-- TLS certificates
-- Middleware configuration
-- Rate limit parameters
+- Pools and backends (add, remove, change weights)
 - Health check parameters
-- Logging configuration
+- Middleware and WAF configuration
+- The certificate in `tls.cert_file` / `tls.key_file`
 
 **Requires restart:**
-- Listener addresses and ports
+- Listener addresses, protocols and TLS on/off
+- Admin API settings
 - Cluster configuration
-- Admin API bind address
-- Worker count and buffer sizes
+- Logging configuration
+- `server` settings
+
+After a reload OLB watches the new config for `server.rollback_monitor_duration` (default 30s) and reverts to the previous config if every backend becomes unhealthy.
 
 ---
 
-## Global Settings
+## Server Settings
+
+Process-wide limits and timeouts live under `server`. All keys are optional; the defaults are shown.
 
 ```yaml
-version: 1
+version: "1"
 
-global:
-  workers:
-    count: auto              # "auto" = number of CPUs (GOMAXPROCS)
-
-  limits:
-    max_connections: 10000             # Total max concurrent connections
-    max_connections_per_source: 100    # Per client IP
-    max_connections_per_backend: 1000  # Per backend server
-
-  timeouts:
-    read: 30s        # Max time to read entire request
-    write: 30s       # Max time to write entire response
-    idle: 120s       # Max idle connection duration
-    header: 10s      # Max time to read request headers
-    drain: 30s       # Graceful shutdown drain timeout
+server:
+  max_connections: 10000             # Total max concurrent connections
+  max_connections_per_source: 100    # Per client IP
+  max_connections_per_backend: 1000  # Per backend server
+  proxy_timeout: 60s                 # Max time for a proxied request
+  dial_timeout: 10s                  # Backend connect timeout
+  max_retries: 3                     # Proxy retries on another backend
+  max_idle_conns: 100                # Idle upstream connections (total)
+  max_idle_conns_per_host: 10        # Idle upstream connections per backend
+  idle_conn_timeout: 90s             # Close idle upstream connections after this
+  drain_timeout: 30s                 # Connection drain time on shutdown
+  shutdown_timeout: 30s              # Overall graceful shutdown deadline
+  listener_stop_timeout: 5s          # Per-listener stop deadline
+  proxy_drain_window: 5s             # How long an old proxy lives after a reload
+  rollback_check_interval: 15s       # Health check cadence after a reload
+  rollback_monitor_duration: 30s     # How long to watch for auto-rollback
 ```
+
+HTTP listener read/write/header/idle timeouts are fixed hardened defaults (slow-loris protection) and are not configurable.
 
 ### Duration Format
 
@@ -117,46 +118,40 @@ All timeout/interval values accept Go-style duration strings:
 
 ```yaml
 admin:
-  enabled: true
-  address: "127.0.0.1:8081"       # Bind address (localhost-only by default)
+  address: "127.0.0.1:8081"       # Bind address (default ":8080")
 
-  auth:
-    type: basic                    # "basic", "token", or "none"
-    username: admin
-    password: "$2a$10$..."         # bcrypt-hashed password
+  # Basic auth: the password must be a bcrypt hash
+  username: admin
+  password: "$2a$10$replace.with.a.real.bcrypt.hash"
 
-    # Or use token auth:
-    # type: token
-    # token: "your-secret-token"
+  # And/or a static bearer token
+  bearer_token: "${OLB_ADMIN_TOKEN}"
 
-  tls:
-    enabled: false
-    cert_file: /etc/olb/admin.crt
-    key_file: /etc/olb/admin.key
+  trust_proxy_headers: false      # Use X-Forwarded-For for auth rate limiting
+  rate_limit_max_requests: 60     # Requests per window per client (default 60)
+  rate_limit_window: 1m           # Default 1m
 
-  webui:
-    enabled: true
-    path_prefix: /ui              # Web UI served at this path
+  # MCP server (AI integration, SSE + HTTP transports)
+  mcp_address: "127.0.0.1:8082"   # Default: admin port + 1
+  mcp_token: "${OLB_MCP_TOKEN}"   # Required: the MCP server only starts when set
+  mcp_audit: true                 # Log every MCP tool call
 ```
+
+Auth is enabled when `username` or `bearer_token` is set. Without auth, the admin server refuses to bind to a non-loopback host; note that an address without a host (such as the default `:8080`) is not rejected and listens on all interfaces, so always set an explicit host or configure auth. The Web UI is served by the admin server and has no separate settings; admin TLS is not configurable. The `admin.enabled` field exists in the schema but the admin server always starts.
 
 ---
 
 ## Metrics
 
+Prometheus metrics are always exposed at `http://<admin-address>/metrics`, and JSON metrics at `/api/v1/metrics`. The top-level `metrics` section exists in the schema (`enabled`, `path`) but currently has no effect; metric retention and resolution are not configurable.
+
 ```yaml
 metrics:
   enabled: true
-  path: /metrics                  # Prometheus endpoint on admin API
-
-  prometheus:
-    enabled: true
-    path: /metrics
-
-  retention: 1h                   # In-memory metrics retention
-  resolution: 10s                 # Metrics aggregation interval
+  path: /metrics
 ```
 
-Prometheus metrics are exposed at `http://<admin-address>/metrics`. JSON metrics are available at `/api/v1/metrics`.
+For per-request HTTP metrics with custom names and buckets, see the `middleware.metrics` middleware.
 
 ---
 
@@ -169,65 +164,94 @@ Listeners define frontend entry points where OLB accepts connections.
 ```yaml
 listeners:
   - name: http
-    protocol: http
+    protocol: http                # http (default), https, tcp, udp
     address: ":80"
-    redirect_https: false         # Redirect all traffic to HTTPS
-
     routes:
-      - name: default
-        path: /
+      - path: /
         pool: backend
+
+pools:
+  - name: backend
+    backends:
+      - address: "10.0.1.10:8080"
 ```
+
+To redirect HTTP to HTTPS, enable the `middleware.forcessl` middleware; there is no per-listener redirect option.
 
 ### HTTPS Listener
 
+A listener serves TLS when `tls.enabled` is true. The certificate comes from the top-level `tls` section (see [TLS](#tls)).
+
 ```yaml
+tls:
+  cert_file: /etc/olb/certs/server.crt
+  key_file: /etc/olb/certs/server.key
+
+listeners:
   - name: https
     protocol: https
     address: ":443"
-
     tls:
-      cert_file: /etc/olb/certs/server.crt
-      key_file: /etc/olb/certs/server.key
-      min_version: "1.2"          # Minimum TLS version
-
+      enabled: true
     routes:
-      - name: secure-app
-        path: /
+      - path: /
         pool: backend
+
+pools:
+  - name: backend
+    backends:
+      - address: "10.0.1.10:8080"
 ```
+
+`listeners[].tls.cert_file` and `key_file` are accepted and validated but not used; the certificate is always the one from the top-level `tls` section. The minimum TLS version, cipher suites and curves are fixed secure defaults (TLS 1.2+). Note that `protocol: https` alone does not turn TLS on; `tls.enabled: true` does.
 
 ### TCP Listener (L4)
 
+TCP and UDP listeners forward to a single pool, named by `pool` (or, if unset, the first route's pool).
+
 ```yaml
+listeners:
   - name: mysql
     protocol: tcp
     address: ":3306"
-    proxy_protocol: v2            # Send PROXY protocol to backends
+    pool: mysql-pool
 
-    routes:
-      - name: mysql-route
-        pool: mysql-pool
+pools:
+  - name: mysql-pool
+    health_check:
+      type: tcp
+      interval: 10s
+    backends:
+      - address: "10.0.2.10:3306"
 ```
+
+PROXY protocol and SNI-based routing exist in the L4 proxy code but are not configurable yet.
 
 ### UDP Listener (L4)
 
 ```yaml
+listeners:
   - name: dns
     protocol: udp
     address: ":53"
-    session_timeout: 30s          # UDP session tracking timeout
+    pool: dns-pool
 
-    routes:
-      - name: dns-route
-        pool: dns-pool
+pools:
+  - name: dns-pool
+    health_check:
+      type: tcp
+      interval: 10s
+    backends:
+      - address: "10.0.3.10:53"
 ```
+
+The UDP session timeout is not configurable.
 
 ---
 
 ## Routes
 
-Routes match incoming requests and direct them to backend pools.
+Routes match incoming HTTP requests and direct them to backend pools.
 
 ```yaml
 listeners:
@@ -236,14 +260,18 @@ listeners:
     routes:
       # Match by host and path
       - name: api
-        host: api.example.com
-        path: /api/
-        methods: [GET, POST, PUT, DELETE]
+        host: api.openloadbalancer.dev
+        path: /api
+        methods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
         pool: api-backend
 
       # Match by path prefix
       - name: static
-        path: /static/
+        path: /static
         pool: static-backend
 
       # Default catch-all
@@ -251,36 +279,33 @@ listeners:
         path: /
         pool: web-backend
 
-        # Per-route middleware
-        middleware:
-          - name: rate_limit
-            config:
-              requests_per_second: 100
-              burst_size: 200
+pools:
+  - name: api-backend
+    backends:
+      - address: "10.0.1.20:8080"
+  - name: static-backend
+    backends:
+      - address: "10.0.1.30:8080"
+  - name: web-backend
+    backends:
+      - address: "10.0.1.10:8080"
 ```
+
+`routes[].middleware` exists in the schema but is not applied; all middleware is global (see [Middleware](#middleware)).
 
 ### Route Matching Fields
 
 | Field | Description | Example |
 |-------|-------------|---------|
-| `host` | Match hostname (exact or wildcard) | `api.example.com`, `*.example.com` |
-| `path` | Match URL path (prefix) | `/api/`, `/static/*` |
+| `host` | Match hostname (exact or `*.` wildcard) | `api.openloadbalancer.dev`, `*.openloadbalancer.dev` |
+| `path` | Match URL path by segment prefix; `:name` and `*name` parameters are supported | `/api`, `/users/:id`, `/files/*path` |
 | `methods` | Match HTTP methods | `[GET, POST]` |
-| `headers` | Match request headers | `Upgrade: websocket` |
 
-Routes are evaluated in order. The first matching route wins.
+Routes are matched by specificity, not by order: an exact `host` beats a wildcard host, which beats routes without a host; within a host, the longest matching path prefix wins. Header matching is not supported.
 
 ### Traffic Splitting (Canary)
 
-```yaml
-      - name: canary
-        path: /feature/
-        split:
-          - pool: web-app
-            weight: 90
-          - pool: web-app-canary
-            weight: 10
-```
+Weighted traffic splitting between pools is not configurable. To mirror traffic to a canary instead, see [Shadow Traffic](#shadow-traffic); to shift load inside a pool, use backend `weight` with a weighted algorithm.
 
 ---
 
@@ -291,42 +316,54 @@ Backend pools define groups of upstream servers and how traffic is distributed a
 ```yaml
 pools:
   - name: web-backend
-    algorithm: round_robin         # Load balancing algorithm
+    algorithm: round_robin         # Default: round_robin
 
     backends:
       - id: web-1
         address: "10.0.1.10:8080"
-        weight: 1                  # Relative weight (for weighted algorithms)
+        weight: 100                # Relative weight (default 100)
       - id: web-2
         address: "10.0.1.11:8080"
-        weight: 1
+        weight: 100
       - id: web-3
-        address: "10.0.1.12:8080"
-        weight: 2                  # Gets 2x traffic with weighted algorithms
+        address: "10.0.1.12:8443"
+        weight: 200                # Gets 2x traffic with weighted algorithms
+        scheme: https              # "http" (default) or "https" to the backend
 ```
 
 ### Available Algorithms
 
-`round_robin`, `weighted_round_robin`, `least_connections`, `least_response_time`, `ip_hash`, `consistent_hash`, `maglev`, `power_of_two`, `random`, `weighted_random`, `ring_hash`, `sticky_session`
+`round_robin` (`rr`), `weighted_round_robin` (`wrr`), `least_connections` (`lc`), `weighted_least_connections` (`wlc`), `least_response_time` (`lrt`), `weighted_least_response_time` (`wlrt`), `ip_hash` (`iphash`), `consistent_hash` (`ch`, `ketama`), `maglev`, `ring_hash` (`ringhash`), `power_of_two` (`p2c`), `random`, `weighted_random` (`wrandom`), `rendezvous` (`rendezvous_hash`), `peak_ewma` (`pewma`), `sticky`
 
-See [algorithms.md](algorithms.md) for details on each algorithm.
+An unknown algorithm name is rejected on reload, but at startup the pool silently falls back to round robin, so check the spelling. See [algorithms.md](algorithms.md) for details on each algorithm.
 
 ### Health Checks
 
+If a pool has no `health_check`, OLB uses an HTTP check of `/health` every 10s with a 5s timeout.
+
 ```yaml
+pools:
+  - name: web
+    backends:
+      - address: "10.0.1.10:8080"
     health_check:
-      type: http                   # "http", "https", "tcp", "grpc", or "exec"
-      path: /health                # HTTP health check path
-      interval: 10s                # Check interval
-      timeout: 5s                  # Check timeout
-      healthy_threshold: 2         # Consecutive successes to mark healthy
-      unhealthy_threshold: 3       # Consecutive failures to mark unhealthy
-      expected_status: 200         # Expected HTTP status code
+      type: http                   # "http", "tcp", "grpc", or "exec"
+      path: /health                # Required for http
+      interval: 10s                # Check interval (default 10s)
+      timeout: 5s                  # Check timeout (default 5s, must be < interval)
+      healthy_threshold: 2         # Consecutive successes to mark healthy (default 2)
+      unhealthy_threshold: 3       # Consecutive failures to mark unhealthy (default 3)
 ```
+
+HTTP checks treat any 2xx response as healthy; the expected status code is not configurable.
 
 TCP health check (connection-only):
 
 ```yaml
+pools:
+  - name: tcp-pool
+    backends:
+      - address: "10.0.2.10:5432"
     health_check:
       type: tcp
       interval: 10s
@@ -336,19 +373,30 @@ TCP health check (connection-only):
 gRPC health check (uses grpc.health.v1.Health/Check protocol):
 
 ```yaml
+pools:
+  - name: grpc-pool
+    backends:
+      - address: "10.0.4.10:50051"
     health_check:
       type: grpc
       interval: 10s
       timeout: 5s
+      grpc_tls_skip_verify: false  # Skip TLS verification for gRPC checks
 ```
 
 Exec health check (runs an external command; exit code 0 = healthy):
 
 ```yaml
+pools:
+  - name: custom-pool
+    backends:
+      - address: "10.0.5.10:9000"
     health_check:
       type: exec
       command: /usr/local/bin/check-backend
-      args: ["{{.Host}}", "{{.Port}}"]
+      args:
+        - "{{.Host}}"
+        - "{{.Port}}"
       interval: 10s
       timeout: 5s
 ```
@@ -363,172 +411,270 @@ Template variables available in `command` and `args`:
 
 ### Connection Pool Settings
 
-```yaml
-    connection:
-      max_idle: 10                 # Max idle connections per backend
-      max_per_host: 100            # Max connections per backend
-      idle_timeout: 90s            # Close idle connections after this
-      connect_timeout: 5s          # Backend connection timeout
-```
+There are no per-pool connection settings. Upstream connection pooling and timeouts are set globally under `server` (`max_idle_conns`, `max_idle_conns_per_host`, `idle_conn_timeout`, `dial_timeout`, `max_connections_per_backend`); see [Server Settings](#server-settings).
 
 ### Session Affinity
 
+Session affinity is enabled with `algorithm: sticky`. It wraps round robin and pins a client to a backend with a cookie named `OLB_SRV` (Secure, HttpOnly, SameSite=Lax; sessions expire after 1h). The cookie name, mode and TTL are not configurable.
+
 ```yaml
-    sticky:
-      type: cookie                 # "cookie", "header", or "param"
-      name: OLB_BACKEND            # Cookie/header/param name
-      ttl: 1h                      # Session TTL
-      http_only: true              # Cookie HttpOnly flag
-      secure: true                 # Cookie Secure flag
+pools:
+  - name: app
+    algorithm: sticky
+    backends:
+      - address: "10.0.1.10:8080"
+      - address: "10.0.1.11:8080"
 ```
 
 ---
 
 ## Middleware
 
-Middleware is applied globally or per-route.
+Middleware is configured globally under `middleware`, one block per middleware, each with its own `enabled` switch (all are off by default). Order of execution is fixed by the engine, not by the order in the file. If an enabled middleware's config is invalid, the engine refuses to start (or rejects the reload) rather than running without it.
 
 ### Global Middleware
 
 ```yaml
 middleware:
-  - name: request_id
+  request_id:
     enabled: true
-    config:
-      header_name: X-Request-ID
-      trust_incoming: false
+    header: X-Request-ID           # Default X-Request-ID
+    generate: true                 # Generate an ID when the request has none
+    response: true                 # Echo the ID in the response
+    length: 16                     # Random bytes (default 16)
 
-  - name: real_ip
+  real_ip:
     enabled: true
-    config:
-      trusted_proxies:
-        - "10.0.0.0/8"
-        - "172.16.0.0/12"
-        - "192.168.0.0/16"
+    headers:                       # Headers to read the client IP from (required)
+      - X-Forwarded-For
+      - X-Real-IP
+    trusted_proxies:               # Default: private ranges + loopback
+      - "10.0.0.0/8"
+      - "172.16.0.0/12"
+      - "192.168.0.0/16"
+    reject_untrusted: false
 ```
+
+`generate` and `response` default to `false` when the block is present, so set them explicitly.
 
 ### Rate Limiting
 
+Token bucket per client IP (the connection's remote address).
+
 ```yaml
-  - name: rate_limit
+middleware:
+  rate_limit:
     enabled: true
-    config:
-      requests_per_second: 100
-      burst_size: 200
-      key: client_ip               # "client_ip", "header:X-API-Key", "path"
+    requests_per_second: 100       # Default 100
+    burst_size: 200                # Default 200
 ```
+
+The rate-limit key is not configurable. For per-path, per-header or global limits, use WAF rate-limit rules (`waf.rate_limit.rules[].scope`).
 
 ### CORS
 
 ```yaml
-  - name: cors
+middleware:
+  cors:
     enabled: true
-    config:
-      allowed_origins: ["*"]
-      allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-      allowed_headers: ["Content-Type", "Authorization"]
-      max_age: 3600
+    allowed_origins:               # Default ["*"]
+      - "https://openloadbalancer.dev"
+    allowed_methods:               # Default GET, POST, PUT, DELETE, OPTIONS
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    allowed_headers:
+      - Content-Type
+      - Authorization
+    allow_credentials: false
+    max_age: 3600                  # Seconds
 ```
 
 ### Compression
 
 ```yaml
-  - name: compression
+middleware:
+  compression:
     enabled: true
-    config:
-      min_size: 1024               # Minimum response size to compress (bytes)
-      level: default               # "fastest", "default", "best"
+    min_size: 1024                 # Minimum response size to compress (bytes)
+    level: 6                       # gzip level, -1..9 (0 = library default)
 ```
 
 ### Security Headers
 
 ```yaml
-  - name: headers
+middleware:
+  secure_headers:
     enabled: true
-    config:
-      security_preset: strict
-      response_set:
-        X-Frame-Options: DENY
-        X-Content-Type-Options: nosniff
-        Strict-Transport-Security: "max-age=31536000; includeSubDomains"
+    x_frame_options: DENY
+    x_content_type_options: true
+    referrer_policy: strict-origin-when-cross-origin
+    content_security_policy: "default-src 'self'"
+    strict_transport_policy:
+      enabled: true                # Set to false to turn HSTS off
+      max_age: 31536000
+      include_subdomains: true
+      preload: false
 ```
+
+Other `secure_headers` keys: `x_xss_protection`, `x_permitted_cross_domain_policies`, `x_download_options`, `x_dns_prefetch_control`, `permissions_policy`, `cross_origin_embedder_policy`, `cross_origin_opener_policy`, `cross_origin_resource_policy`, `cache_control`, `exclude_paths`. For a full Content-Security-Policy builder, use `middleware.csp`. To add arbitrary headers, use `middleware.headers` (`request_add`, `response_add`).
 
 ### Circuit Breaker
 
 ```yaml
-  - name: circuit_breaker
+middleware:
+  circuit_breaker:
     enabled: true
-    config:
-      error_threshold: 5           # Errors to open circuit
-      error_window: 10s            # Window for counting errors
-      open_duration: 30s           # How long to stay open
-      half_open_requests: 3        # Test requests in half-open state
-      failure_codes: [500, 502, 503, 504]
+    error_threshold: 5             # Errors to open the circuit (default 5)
 ```
+
+Only `error_threshold` is applied. `error_rate_threshold` (0-1) and `open_duration` exist in the schema but are not applied yet; the breaker uses a 50% error rate, a 60s window, 30s open duration and 3 half-open probes.
 
 ### Retry
 
 ```yaml
-  - name: retry
+middleware:
+  retry:
     enabled: true
-    config:
-      max_retries: 3
-      retry_on: [502, 503, 504]
-      retry_methods: [GET, HEAD, OPTIONS]
-      backoff:
-        initial: 100ms
-        max: 10s
-        multiplier: 2.0
-        jitter: 0.1
+    max_retries: 3
 ```
+
+Only `max_retries` is applied. `retry_on` exists in the schema but is not applied yet; retries happen on 502/503/504 for GET, HEAD and OPTIONS with exponential backoff (100ms to 5s, with jitter).
 
 ### Response Cache
 
 ```yaml
-  - name: cache
+middleware:
+  cache:
     enabled: true
-    config:
-      max_size: 104857600          # 100MB
-      max_age: 5m
-      methods: [GET, HEAD]
-      status_codes: [200, 301, 302]
+    max_size: 104857600            # 100MB
+    max_entries: 10000
+    default_ttl: 5m                # Default 5m
+    methods:                       # Default GET, HEAD
+      - GET
+      - HEAD
+    status_codes:
+      - 200
+      - 301
+      - 302
+    vary_headers:
+      - Accept-Encoding
+    exclude_paths:
+      - /api/private
+    cache_private: false
+    cache_cookies: false
 ```
 
 ### IP Filter
 
+Deny list is checked first, then the allow list, then `default_action`.
+
 ```yaml
-  - name: ip_filter
+middleware:
+  ip_filter:
     enabled: true
-    config:
-      mode: allow                  # "allow" or "deny"
-      rules:
-        - "10.0.0.0/8"
-        - "192.168.1.0/24"
+    allow_list:
+      - "10.0.0.0/8"
+      - "192.168.1.0/24"
+    deny_list:
+      - "10.0.66.0/24"
+    default_action: deny           # "allow" (default) or "deny"
 ```
+
+At least one of `allow_list` or `deny_list` is required when enabled.
+
+### Authentication
+
+```yaml
+middleware:
+  basic_auth:
+    enabled: true
+    realm: "OLB"
+    hash: bcrypt                   # "sha256" (default) or "bcrypt"
+    users:
+      admin: "$2a$10$replace.with.a.real.bcrypt.hash"
+    exclude_paths:
+      - /health
+
+  api_key:
+    enabled: true
+    header: X-API-Key              # Default X-API-Key
+    hash: sha256                   # "sha256" (default) or "plain"
+    keys:
+      ci-runner: "${OLB_CI_API_KEY}"
+
+  jwt:
+    enabled: true
+    secret: "${OLB_JWT_SECRET}"    # Or public_key (EdDSA: file path or base64)
+    algorithm: HS256               # HS256 (default), HS384, HS512, EdDSA
+    header: Authorization          # Default Authorization
+    prefix: "Bearer "              # Default "Bearer "
+    required: true
+    claims_validation:
+      issuer: "https://auth.openloadbalancer.dev"
+      audience: "olb"
+    exclude_paths:
+      - /health
+```
+
+With `hash: sha256` (the default for both `basic_auth` and `api_key`), the configured value is the plaintext password or key; OLB keeps only an HMAC-SHA256 of it in memory. With `hash: bcrypt`, `basic_auth` user values must be bcrypt hashes. `basic_auth` rejects `hash: plain`.
+
+Other auth middleware: `oauth2` (`issuer_url` or `jwks_url`, `client_id`, `client_secret`, `audience`, `scopes`, `introspection_url`, `cache_duration`, `header`, `prefix`, `exclude_paths`) and `hmac` (`secret`, `algorithm` sha256/sha512, `header`, `prefix`, `encoding`, `use_body`, `timestamp_header`, `max_age`, `exclude_paths`).
+
+### Other Middleware
+
+| Key | Purpose | Main fields |
+|-----|---------|-------------|
+| `timeout` | Per-request timeout | `timeout` (default 60s) |
+| `max_body_size` | Request body limit | `max_size` bytes (default 10MB) |
+| `strip_prefix` | Remove a path prefix | `prefix`, `redirect_slash` |
+| `rewrite` | Regex URL rewrite / redirect | `rules[]` (`pattern`, `replacement`, `flag`), `exclude_paths` |
+| `forcessl` | Redirect HTTP to HTTPS | `permanent`, `port`, `exclude_paths`, `exclude_hosts`, `header_key`, `header_value` |
+| `csrf` | CSRF token check | `cookie_name`, `header_name`, `field_name`, `cookie_*`, `token_length`, `exclude_*` |
+| `csp` | Content-Security-Policy builder | `default_src`, `script_src`, ..., `nonce_script`, `report_uri` |
+| `headers` | Add request/response headers | `request_add`, `response_add` |
+| `coalesce` | Collapse identical concurrent requests | `ttl` (default 100ms), `max_requests`, `exclude_paths` |
+| `bot_detection` | User-agent / header / rate bot rules | `action`, `block_known_bots`, `user_agent_rules`, `custom_headers`, ... |
+| `validator` | Request/response validation | `content_types`, `required_headers`, `query_rules`, `path_patterns`, ... |
+| `transformer` | Response header/body transform | `add_headers`, `remove_headers`, `rewrite_body`, `compress`, ... |
+| `trace` | Trace context propagation | `service_name`, `propagators` (w3c, b3, b3multi, jaeger), `sample_rate` |
+| `metrics` | Per-request Prometheus metrics | `namespace`, `subsystem`, `latency_buckets`, ... |
+| `logging` | Request logging | see [Access Logging](#access-logging) |
+
+See [configs/olb.yaml](../configs/olb.yaml) for every field of each middleware.
 
 ### WAF (Web Application Firewall)
 
+The WAF is configured at the top level under `waf`, not under `middleware`; see [WAF](#waf-web-application-firewall-1).
+
 ```yaml
-  - name: waf
-    enabled: true
-    config:
-      mode: block                  # "block" or "detect" (log only)
-      rules:
-        sqli: true                 # SQL injection detection
-        xss: true                  # Cross-site scripting detection
-        path_traversal: true       # Path traversal detection
-        command_injection: true    # Command injection detection
-      anomaly_threshold: 5         # Block if score exceeds this
+waf:
+  enabled: true
+  mode: enforce                    # "enforce" (block) or "monitor" (log only)
 ```
 
 ### Access Logging
 
+A basic access log line is always written to the main log. For a configurable request log, enable `middleware.logging`; its lines are written to the main log output (see [Logging](#logging)).
+
 ```yaml
-  - name: access_log
+middleware:
+  logging:
     enabled: true
-    config:
-      format: json                 # "json", "clf", "combined"
-      output: /var/log/olb/access.log
+    format: json                   # "combined" (default), "common", "json", "custom"
+    fields:                        # For format: json
+      - timestamp
+      - method
+      - path
+      - status
+      - duration
+      - bytes
+      - ip
+    exclude_paths:
+      - /health
+    min_duration: ""               # Only log requests slower than this, e.g. "100ms"
 ```
 
 ---
@@ -543,59 +689,59 @@ tls:
   key_file: /etc/olb/certs/server.key
 ```
 
+This certificate is used by every listener with `tls.enabled: true` and is reloaded on hot reload.
+
 ### Multiple Certificates (SNI)
 
+Serving several certificates by SNI is not configurable yet; only one certificate (`tls.cert_file` / `tls.key_file`) can be configured.
+
+### ACME / Let's Encrypt
+
 ```yaml
+tls:
+  acme:
+    enabled: true
+    email: admin@openloadbalancer.dev   # Required when enabled
+    domains:                            # At least one required when enabled
+      - openloadbalancer.dev
+      - www.openloadbalancer.dev
+```
+
+Currently `tls.acme` only initializes an ACME client at startup; certificates for `domains` are not obtained or installed automatically yet, so keep a static certificate configured. The ACME directory, challenge type, storage path and renewal window are not configurable.
+
+### Mutual TLS (mTLS)
+
+mTLS is configured per listener under `mtls`, next to `tls`:
+
+```yaml
+tls:
+  cert_file: /etc/olb/certs/server.crt
+  key_file: /etc/olb/certs/server.key
+
 listeners:
   - name: https
     protocol: https
     address: ":443"
     tls:
-      min_version: "1.2"
-      certificates:
-        - cert: /etc/olb/certs/example.com.crt
-          key: /etc/olb/certs/example.com.key
-          domains:
-            - example.com
-            - "*.example.com"
-        - cert: /etc/olb/certs/other.com.crt
-          key: /etc/olb/certs/other.com.key
-          domains:
-            - other.com
-```
-
-### ACME / Let's Encrypt
-
-```yaml
-      acme:
-        enabled: true
-        email: admin@example.com
-        domains:
-          - example.com
-          - www.example.com
-        storage: /etc/olb/acme/    # Certificate storage directory
-        # provider: letsencrypt    # "letsencrypt", "letsencrypt-staging", "zerossl"
-        # challenge: http-01       # "http-01" or "tls-alpn-01"
-        # renew_before: 720h       # Renew 30 days before expiry
-```
-
-### Mutual TLS (mTLS)
-
-```yaml
-    tls:
-      client_auth: require         # "none", "request", "require", "verify"
-      client_ca:
+      enabled: true
+    mtls:
+      enabled: true
+      client_auth: requireandverify   # none, request, requireany, verifyifgiven, requireandverify (default)
+      client_cas:                     # Required when enabled
         - /etc/olb/ca/client-ca.crt
+    routes:
+      - path: /
+        pool: backend
+
+pools:
+  - name: backend
+    backends:
+      - address: "10.0.1.10:8080"
 ```
 
 ### OCSP Stapling
 
-OCSP stapling is enabled by default for all TLS listeners. It fetches and caches OCSP responses, stapling them to TLS handshakes for faster client verification.
-
-```yaml
-    tls:
-      ocsp_stapling: true          # Default: true
-```
+The OCSP stapling manager starts automatically; it has no configuration keys.
 
 ---
 
@@ -604,23 +750,27 @@ OCSP stapling is enabled by default for all TLS listeners. It fetches and caches
 ```yaml
 cluster:
   enabled: true
-  node_name: node-1
-  bind_address: "0.0.0.0:7946"    # Gossip protocol
-  raft_address: "0.0.0.0:7947"    # Raft consensus
+  node_id: node-1
+  bind_addr: "0.0.0.0"             # Raft transport bind address
+  bind_port: 7946                  # Raft transport port
+  data_dir: /var/lib/olb/raft      # Raft state for crash recovery (optional)
+  election_tick: 2s                # Default 2s
+  heartbeat_tick: 500ms            # Default 500ms
 
   peers:
     - "10.0.0.1:7946"
     - "10.0.0.2:7946"
     - "10.0.0.3:7946"
 
-  tls:
-    enabled: true
-    cert: /etc/olb/cluster.crt
-    key: /etc/olb/cluster.key
-    ca: /etc/olb/cluster-ca.crt
+  node_auth:                       # Strongly recommended: otherwise the transport is unauthenticated
+    shared_secret: "${OLB_CLUSTER_SECRET}"
+    allowed_node_ids:
+      - node-1
+      - node-2
+      - node-3
 ```
 
-See [clustering.md](clustering.md) for setup instructions.
+Cluster transport TLS is not configurable; use `node_auth` and a private network. See [clustering.md](clustering.md) for setup instructions.
 
 ---
 
@@ -628,18 +778,12 @@ See [clustering.md](clustering.md) for setup instructions.
 
 ```yaml
 logging:
-  level: info                      # trace, debug, info, warn, error, fatal
+  level: info                      # debug, info, warn, error
   format: json                     # "json" or "text"
-  output: stdout                   # "stdout", "stderr", or file path
-
-  # File output with rotation
-  file:
-    path: /var/log/olb/olb.log
-    max_size: 100MB                # Rotate after this size
-    max_backups: 5                 # Keep this many old files
-    max_age: 30                    # Delete files older than N days
-    compress: true                 # Compress rotated files
+  output: stdout                   # "stdout", "stderr", or a file path
 ```
+
+When `output` is a file path, the file is rotated at 100MB, keeping 10 compressed backups; these rotation settings are not configurable. `format` applies to `stdout` and `stderr`; file output is always plain text (`timestamp LEVEL message key=value ...`).
 
 Log files can be reopened for external rotation tools by sending `SIGUSR1`:
 
@@ -651,35 +795,17 @@ kill -USR1 $(pidof olb)
 
 ## MCP Server
 
+There is no top-level `mcp` section. The MCP server is configured under `admin`, and it starts only when `admin.mcp_token` is set:
+
 ```yaml
-mcp:
-  enabled: true
-  transport: stdio                 # "stdio" or "http"
-
-  http:
-    address: "127.0.0.1:9091"     # Only used with http transport
-
-  tools:
-    - olb_query_metrics
-    - olb_list_backends
-    - olb_modify_backend
-    - olb_modify_route
-    - olb_diagnose
-    - olb_get_config
-    - olb_get_logs
-    - olb_cluster_status
-    - waf_status
-    - waf_add_whitelist
-    - waf_add_blacklist
-    - waf_remove_whitelist
-    - waf_remove_blacklist
-    - waf_list_rules
-    - waf_get_stats
-    - waf_get_top_blocked_ips
-    - waf_get_attack_timeline
+admin:
+  address: "127.0.0.1:8081"
+  mcp_address: "127.0.0.1:8082"    # Default: admin port + 1
+  mcp_token: "${OLB_MCP_TOKEN}"    # Bearer token clients must send
+  mcp_audit: true                  # Log every tool call
 ```
 
-See [mcp.md](mcp.md) for integration details.
+All tools (including the WAF tools when the WAF is enabled) are registered; the tool list is not configurable. Allowed browser origins for the SSE transport follow `middleware.cors.allowed_origins`. See [mcp.md](mcp.md) for integration details.
 
 ---
 
@@ -704,7 +830,7 @@ When `token` is set, all pprof endpoints require `Authorization: Bearer <token>`
 
 ## WAF (Web Application Firewall)
 
-Six-layer security pipeline: SQLi, XSS, CMDi, XXE, SSRF, and Path Traversal detection.
+Six-layer security pipeline: IP ACL, rate limiting, request sanitizer, attack detection (SQLi, XSS, CMDi, XXE, SSRF, path traversal), bot detection and response protection. See [waf.md](waf.md) for details.
 
 ```yaml
 waf:
@@ -715,66 +841,123 @@ waf:
     enabled: true
     whitelist:                     # Always allowed, bypasses all checks
       - cidr: "10.0.0.0/8"
+        reason: "internal"
     blacklist:                     # Always blocked
       - cidr: "192.168.1.100/32"
+        reason: "abuse"
+        expires: "2027-01-01T00:00:00Z"   # Optional, RFC 3339
     auto_ban:
       enabled: true
-      threshold: 100               # Requests in window before auto-ban
-      window: "60s"                # Time window for threshold counting
-      duration: "3600s"            # How long the ban lasts
+      default_ttl: 1h
+      max_ttl: 24h
 
   rate_limit:
     enabled: true
-    requests_per_second: 100       # Max requests per second per IP
-    burst: 200                     # Burst allowance
-    window: "60s"                  # Fixed window duration
+    rules:
+      - id: api-per-ip
+        scope: ip                  # ip, path, ip+path, global, header:<Name>
+        paths:
+          - /api
+        limit: 100                 # Requests per window
+        window: 1m                 # Default 1m
+        burst: 20
+        auto_ban_after: 5          # Ban the IP after this many violations
 
   sanitizer:
     enabled: true
-    strip_null_bytes: true
-    normalize_unicode: true
-    max_header_value_length: 8192
+    max_header_size: 8192
+    max_header_count: 100
+    max_body_size: 10485760
+    max_url_length: 8192
+    max_cookie_size: 4096
+    max_cookie_count: 50
+    block_null_bytes: true
+    normalize_encoding: true
+    strip_hop_by_hop: true
+    allowed_methods:
+      - GET
+      - POST
+      - PUT
+      - PATCH
+      - DELETE
+      - HEAD
+      - OPTIONS
+    path_overrides:
+      - path: /upload
+        max_body_size: 104857600
 
   detection:
     enabled: true
-    sqli:
-      enabled: true
-      mode: pattern                # "pattern" or "semantic"
-    xss:
-      enabled: true
-      mode: pattern
-    cmdi:
-      enabled: true
-    xxe:
-      enabled: true
-    ssrf:
-      enabled: true
-      blocked_cidrs:
-        - "127.0.0.0/8"
-        - "10.0.0.0/8"
-        - "172.16.0.0/12"
-        - "192.168.0.0/16"
-        - "169.254.0.0/16"
-        - "0.0.0.0/0"
-    path_traversal:
-      enabled: true
+    threshold:
+      block: 50                    # Default 50
+      log: 25                      # Default 25
+    detectors:                     # Omitted detectors stay on; set enabled: false to turn one off
+      sqli:
+        enabled: true
+        score_multiplier: 1.0
+      xss:
+        enabled: true
+      cmdi:
+        enabled: true
+      xxe:
+        enabled: true
+      ssrf:
+        enabled: true
+      path_traversal:
+        enabled: true
+    exclusions:
+      - path: /api/search
+        detectors:
+          - sqli
+        reason: "free-text search"
 
   bot_detection:
     enabled: true
-    user_agent_blacklist:
-      - "malicious-bot"
-    challenge_mode: "none"         # "none", "captcha", "javascript"
+    user_agent:
+      enabled: true
+      block_empty: true
+      block_known_scanners: true
+    tls_fingerprint:
+      enabled: true
+    behavior:
+      enabled: true
+      window: 1m
+      rps_threshold: 20
 
   response:
-    enabled: true
-    hide_server_header: true
-    hide_powered_by: true
+    security_headers:
+      enabled: true
+      x_content_type_options: true
+      x_frame_options: DENY
+      referrer_policy: strict-origin-when-cross-origin
+      hsts:
+        enabled: true
+        max_age: 31536000
+        include_subdomains: true
+    data_masking:
+      enabled: true
+      mask_credit_cards: true
+      mask_ssn: true
+      mask_api_keys: true
+      strip_stack_traces: true
+    error_pages:
+      enabled: true
+      mode: production             # "production" hides backend error details
 
   logging:
-    enabled: true
-    log_body: false                # Log request body (may contain sensitive data)
-    max_body_log_size: 1024
+    log_blocked: true
+    log_allowed: false
 ```
+
+`block_null_bytes`, `normalize_encoding` and `strip_hop_by_hop` default to `true`; omitting them keeps that default, and only an explicit `false` turns one off.
+
+Keys that exist in the schema but currently have no effect:
+- `waf.logging.log_body`, `waf.logging.level`, `waf.logging.format`
+- `waf.detection.enabled` and `waf.detection.mode` (detection always runs; it follows `waf.mode`)
+- `waf.rate_limit.sync_interval`, `waf.rate_limit.store`, and `rules[].action` (rate-limit auto-bans always last 1h)
+- `waf.bot_detection.mode`, `tls_fingerprint.known_bots_action` / `unknown_action` / `mismatch_action`, `behavior.error_rate_threshold`
+- `waf.response.security_headers.permissions_policy`
+- `exclusions[].condition`
 
 ---
 
@@ -786,7 +969,7 @@ Geographic DNS routing based on client IP location.
 geodns:
   enabled: true
   default_pool: "us-east-pool"     # Fallback pool when no rule matches
-  db_path: "/etc/olb/GeoLite2-City.mmdb"  # MaxMind GeoLite2 database
+  db_path: "/etc/olb/GeoLite2-City.mmdb"  # MaxMind GeoLite2 database (required)
 
   rules:
     - id: "eu-rule"
@@ -805,7 +988,9 @@ geodns:
       weight: 50
 ```
 
-Requires a MaxMind GeoLite2 City database (MMDB format). Download from [MaxMind](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data).
+Rules also accept `region`, `fallback` and `headers`. Requires a MaxMind GeoLite2 City database (MMDB format), available from MaxMind.
+
+The `geodns` section is validated and the GeoDNS component is created at startup, but it is not yet consulted when routing requests.
 
 ---
 
@@ -819,53 +1004,22 @@ shadow:
   percentage: 10.0                 # Percentage of traffic to mirror (0-100)
   copy_headers: true               # Copy request headers to shadow
   copy_body: true                  # Copy request body to shadow
-  timeout: "5s"                    # Shadow request timeout
+  timeout: "5s"                    # Shadow request timeout (default 30s)
 
   targets:
     - pool: "shadow-pool"          # Target pool for mirrored traffic
       percentage: 100.0            # Percentage of shadowed traffic to this target
 ```
 
-Sensitive headers (Authorization, Cookie, Proxy-Authorization, X-Session-ID, X-CSRF-Token) are automatically stripped from shadow requests.
+Sensitive headers (Authorization, Cookie, Set-Cookie, Proxy-Authorization, X-Api-Key) are stripped from shadow requests.
+
+The `shadow` section is validated and a shadow manager is created at startup, but it is not yet attached to the proxy and `targets` are not registered, so no traffic is mirrored yet.
 
 ---
 
 ## Service Discovery
 
-Service discovery is configured per-pool, not at the top level. Each pool can use one or more discovery providers.
-
-```yaml
-pools:
-  - name: "api-pool"
-    algorithm: round_robin
-
-    discovery:
-      type: "dns"                  # "dns", "docker", "consul", "static", "file"
-      interval: "30s"              # Refresh interval
-
-      # DNS discovery
-      domain: "_api._tcp.example.com"
-      nameserver: "8.8.8.8:53"
-
-      # Docker discovery
-      # docker_host: "unix:///var/run/docker.sock"
-      # docker_label_filter: "com.example.service=api"
-
-      # Consul discovery
-      # consul_addr: "http://127.0.0.1:8500"
-      # consul_service: "api"
-      # consul_tag: "production"
-
-    backends: []                   # Optional static backends merged with discovered ones
-```
-
-| Provider | Config Key | Notes |
-|----------|-----------|-------|
-| DNS | `dns` | SRV record lookup. Queries over plaintext — see warnings at startup. |
-| Docker | `docker` | Docker daemon API. Use TLS for remote connections. |
-| Consul | `consul` | Consul catalog API. HTTP only. |
-| Static | (none) | Uses `backends` list directly. No auto-discovery. |
-| File | `file` | Read backends from a JSON/YAML file. |
+Service discovery is not configurable yet; list backends under `pools[].backends`. Backends can also be added and removed at runtime through the admin API.
 
 ---
 
