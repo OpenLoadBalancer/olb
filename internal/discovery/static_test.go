@@ -622,3 +622,22 @@ func TestStaticProvider_FactoryRegistration_FileOption(t *testing.T) {
 		t.Errorf("Type() = %q, want static", provider.Type())
 	}
 }
+
+// TestStaticProvider_StopTwice pins F021: Manager.Stop and the engine can both
+// stop a provider; the second Stop must not close the events channel again.
+func TestStaticProvider_StopTwice(t *testing.T) {
+	p, err := NewStaticProvider(&ProviderConfig{
+		Type: ProviderTypeStatic,
+		Name: "static-stop-twice",
+	})
+	if err != nil {
+		t.Fatalf("NewStaticProvider error: %v", err)
+	}
+
+	if err := p.Stop(); err != nil {
+		t.Fatalf("first Stop error: %v", err)
+	}
+	if err := p.Stop(); err != nil {
+		t.Errorf("second Stop error: %v", err)
+	}
+}
