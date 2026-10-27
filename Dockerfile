@@ -1,5 +1,5 @@
 # Frontend build stage
-FROM node:20-alpine@sha256:f598378b5240225e6beab68fa9f356db1fb8efe55173e6d4d8153113bb8f333c AS frontend
+FROM node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS frontend
 
 WORKDIR /build/webui
 COPY internal/webui/package.json internal/webui/package-lock.json ./
