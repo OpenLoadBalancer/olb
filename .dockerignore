@@ -11,6 +11,9 @@ website-new/
 # CI/CD
 .github/
 
+# Dependencies (installed inside the image by npm ci)
+**/node_modules/
+
 # Build artifacts
 bin/
 dist/
