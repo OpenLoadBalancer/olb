@@ -235,7 +235,10 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 	rtr := router.NewRouter()
 
 	// Create middleware chain
-	mwChain := createMiddlewareChain(cfg, logger, metricsRegistry)
+	mwChain, err := createMiddlewareChain(cfg, logger, metricsRegistry)
+	if err != nil {
+		return nil, err
+	}
 
 	// Create proxy
 	proxyTimeout := 60 * time.Second

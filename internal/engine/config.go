@@ -190,7 +190,10 @@ func (e *Engine) applyConfigInternal(newCfg *config.Config, noRollback bool) err
 	}
 
 	// 5. Rebuild middleware chain from new config
-	newMiddlewareChain := createMiddlewareChain(newCfg, e.logger, e.metrics)
+	newMiddlewareChain, err := createMiddlewareChain(newCfg, e.logger, e.metrics)
+	if err != nil {
+		return err
+	}
 
 	// 6. Atomic swap - replace router and pools
 	e.mu.Lock()
