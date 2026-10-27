@@ -663,11 +663,36 @@ func registerCircuitBreakerMiddleware(ctx *middlewareRegistrationContext) {
 	if ctx.cfg.Middleware == nil || ctx.cfg.Middleware.CircuitBreaker == nil || !ctx.cfg.Middleware.CircuitBreaker.Enabled {
 		return
 	}
-	cbCfg := middleware.DefaultCircuitBreakerConfig()
-	if ctx.cfg.Middleware.CircuitBreaker.ErrorThreshold > 0 {
-		cbCfg.ErrorThreshold = ctx.cfg.Middleware.CircuitBreaker.ErrorThreshold
+	cbCfg, err := circuitBreakerConfigFrom(ctx.cfg.Middleware.CircuitBreaker)
+	if err != nil {
+		ctx.fail("circuit_breaker", err)
+		return
 	}
 	ctx.chain.Use(middleware.NewCircuitBreaker(cbCfg))
+}
+
+// circuitBreakerConfigFrom maps the config section onto the middleware
+// config. Only error_threshold used to be applied; error_rate_threshold and
+// open_duration were accepted and ignored.
+func circuitBreakerConfigFrom(c *config.CircuitBreakerConfig) (middleware.CircuitBreakerConfig, error) {
+	cfg := middleware.DefaultCircuitBreakerConfig()
+	if c.ErrorThreshold > 0 {
+		cfg.ErrorThreshold = c.ErrorThreshold
+	}
+	if c.ErrorRateThreshold != 0 {
+		if c.ErrorRateThreshold < 0 || c.ErrorRateThreshold > 1 {
+			return cfg, fmt.Errorf("error_rate_threshold %v out of range (0.0-1.0)", c.ErrorRateThreshold)
+		}
+		cfg.ErrorRateThreshold = c.ErrorRateThreshold
+	}
+	if c.OpenDuration != "" {
+		d, err := time.ParseDuration(c.OpenDuration)
+		if err != nil || d <= 0 {
+			return cfg, fmt.Errorf("invalid open_duration %q", c.OpenDuration)
+		}
+		cfg.OpenDuration = d
+	}
+	return cfg, nil
 }
 
 func registerCORSMiddleware(ctx *middlewareRegistrationContext) {
@@ -782,11 +807,20 @@ func registerRetryMiddleware(ctx *middlewareRegistrationContext) {
 	if ctx.cfg.Middleware == nil || ctx.cfg.Middleware.Retry == nil || !ctx.cfg.Middleware.Retry.Enabled {
 		return
 	}
-	retryCfg := middleware.DefaultRetryConfig()
-	if ctx.cfg.Middleware.Retry.MaxRetries > 0 {
-		retryCfg.MaxRetries = ctx.cfg.Middleware.Retry.MaxRetries
+	ctx.chain.Use(middleware.NewRetryMiddleware(retryConfigFrom(ctx.cfg.Middleware.Retry)))
+}
+
+// retryConfigFrom maps the config section onto the middleware config.
+// retry_on used to be accepted and ignored.
+func retryConfigFrom(c *config.RetryConfig) middleware.RetryConfig {
+	cfg := middleware.DefaultRetryConfig()
+	if c.MaxRetries > 0 {
+		cfg.MaxRetries = c.MaxRetries
 	}
-	ctx.chain.Use(middleware.NewRetryMiddleware(retryCfg))
+	if len(c.RetryOn) > 0 {
+		cfg.RetryOn = c.RetryOn
+	}
+	return cfg
 }
 
 func registerSecureHeadersMiddleware(ctx *middlewareRegistrationContext) {
