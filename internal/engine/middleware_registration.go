@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -39,10 +40,31 @@ type middlewareRegistrationContext struct {
 	logger   *logging.Logger
 	registry *metrics.Registry
 	chain    *middleware.Chain
+
+	// errs collects construction failures of enabled middleware. Dropping an
+	// enabled middleware from the chain would fail open (no auth, no WAF), so
+	// any error here rejects the whole config.
+	errs []error
+}
+
+// orDefault returns v, or def when v is empty. Config docs promise defaults
+// for some auth fields (hash: sha256, JWT algorithm/header/prefix) that the middleware
+// constructors do not apply themselves.
+func orDefault(v, def string) string {
+	if v == "" {
+		return def
+	}
+	return v
+}
+
+// fail records that an enabled middleware could not be built.
+func (ctx *middlewareRegistrationContext) fail(name string, err error) {
+	ctx.errs = append(ctx.errs, fmt.Errorf("middleware %s: %w", name, err))
 }
 
 // createMiddlewareChain creates the middleware chain based on configuration.
-func createMiddlewareChain(cfg *config.Config, logger *logging.Logger, registry *metrics.Registry) *middleware.Chain {
+// It returns an error if any enabled middleware fails to build.
+func createMiddlewareChain(cfg *config.Config, logger *logging.Logger, registry *metrics.Registry) (*middleware.Chain, error) {
 	ctx := &middlewareRegistrationContext{
 		cfg:      cfg,
 		logger:   logger,
@@ -97,7 +119,10 @@ func createMiddlewareChain(cfg *config.Config, logger *logging.Logger, registry 
 	// Access Log (priority 1000) — always enabled
 	ctx.chain.Use(middleware.NewAccessLogMiddleware(middleware.AccessLogConfig{Logger: logger}))
 
-	return ctx.chain
+	if len(ctx.errs) > 0 {
+		return nil, errors.Join(ctx.errs...)
+	}
+	return ctx.chain, nil
 }
 
 func registerTraceMiddleware(ctx *middlewareRegistrationContext) {
@@ -213,9 +238,11 @@ func registerIPFilterMiddleware(ctx *middlewareRegistrationContext) {
 	ipFilter, err := middleware.NewIPFilterMiddleware(middleware.IPFilterConfig{
 		AllowList: ipCfg.AllowList, DenyList: ipCfg.DenyList, DefaultAction: ipCfg.DefaultAction,
 	})
-	if err == nil {
-		ctx.chain.Use(ipFilter)
+	if err != nil {
+		ctx.fail("ip_filter", err)
+		return
 	}
+	ctx.chain.Use(ipFilter)
 }
 
 func registerBotDetectionMiddleware(ctx *middlewareRegistrationContext) {
@@ -319,9 +346,11 @@ func registerWAFMiddleware(ctx *middlewareRegistrationContext) {
 		Config:          ctx.cfg.WAF,
 		MetricsRegistry: ctx.registry,
 	})
-	if err == nil {
-		ctx.chain.Use(wafMW)
+	if err != nil {
+		ctx.fail("waf", err)
+		return
 	}
+	ctx.chain.Use(wafMW)
 }
 
 func registerRewriteMiddleware(ctx *middlewareRegistrationContext) {
@@ -342,9 +371,11 @@ func registerRewriteMiddleware(ctx *middlewareRegistrationContext) {
 		Rules:        rules,
 		ExcludePaths: r.ExcludePaths,
 	})
-	if err == nil {
-		ctx.chain.Use(rewriteMW)
+	if err != nil {
+		ctx.fail("rewrite", err)
+		return
 	}
+	ctx.chain.Use(rewriteMW)
 }
 
 func registerStripPrefixMiddleware(ctx *middlewareRegistrationContext) {
@@ -377,9 +408,11 @@ func registerValidatorMiddleware(ctx *middlewareRegistrationContext) {
 		RejectOnFailure:  v.RejectOnFailure,
 		LogOnly:          v.LogOnly,
 	})
-	if err == nil {
-		ctx.chain.Use(validatorMW)
+	if err != nil {
+		ctx.fail("validator", err)
+		return
 	}
+	ctx.chain.Use(validatorMW)
 }
 
 func registerCoalesceMiddleware(ctx *middlewareRegistrationContext) {
@@ -437,9 +470,9 @@ func registerJWTMiddleware(ctx *middlewareRegistrationContext) {
 		Enabled:      j.Enabled,
 		Secret:       j.Secret,
 		PublicKey:    publicKey,
-		Algorithm:    j.Algorithm,
-		Header:       j.Header,
-		Prefix:       j.Prefix,
+		Algorithm:    orDefault(j.Algorithm, "HS256"),
+		Header:       orDefault(j.Header, "Authorization"),
+		Prefix:       orDefault(j.Prefix, "Bearer "),
 		Required:     j.Required,
 		ExcludePaths: j.ExcludePaths,
 		ClaimsValidation: jwt.ClaimsValidation{
@@ -448,11 +481,7 @@ func registerJWTMiddleware(ctx *middlewareRegistrationContext) {
 		},
 	})
 	if err != nil {
-		if ctx.logger != nil {
-			ctx.logger.Error("Failed to initialize JWT middleware",
-				logging.Error(err),
-			)
-		}
+		ctx.fail("jwt", err)
 		return
 	}
 	ctx.chain.Use(jwtMW)
@@ -477,9 +506,11 @@ func registerOAuth2Middleware(ctx *middlewareRegistrationContext) {
 		IntrospectionURL: o.IntrospectionURL,
 		CacheDuration:    o.CacheDuration,
 	})
-	if err == nil {
-		ctx.chain.Use(oauth2MW)
+	if err != nil {
+		ctx.fail("oauth2", err)
+		return
 	}
+	ctx.chain.Use(oauth2MW)
 }
 
 func registerHMACMiddleware(ctx *middlewareRegistrationContext) {
@@ -499,9 +530,11 @@ func registerHMACMiddleware(ctx *middlewareRegistrationContext) {
 		TimestampHeader: h.TimestampHeader,
 		MaxAge:          h.MaxAge,
 	})
-	if err == nil {
-		ctx.chain.Use(hmacMW)
+	if err != nil {
+		ctx.fail("hmac", err)
+		return
 	}
+	ctx.chain.Use(hmacMW)
 }
 
 func registerAPIKeyMiddleware(ctx *middlewareRegistrationContext) {
@@ -514,11 +547,13 @@ func registerAPIKeyMiddleware(ctx *middlewareRegistrationContext) {
 		Keys:         a.Keys,
 		Header:       a.Header,
 		ExcludePaths: a.ExcludePaths,
-		Hash:         a.Hash,
+		Hash:         orDefault(a.Hash, "sha256"),
 	})
-	if err == nil {
-		ctx.chain.Use(apiKeyMW)
+	if err != nil {
+		ctx.fail("api_key", err)
+		return
 	}
+	ctx.chain.Use(apiKeyMW)
 }
 
 func registerBasicAuthMiddleware(ctx *middlewareRegistrationContext) {
@@ -531,11 +566,13 @@ func registerBasicAuthMiddleware(ctx *middlewareRegistrationContext) {
 		Users:        b.Users,
 		Realm:        b.Realm,
 		ExcludePaths: b.ExcludePaths,
-		Hash:         b.Hash,
+		Hash:         orDefault(b.Hash, "sha256"),
 	})
-	if err == nil {
-		ctx.chain.Use(basicMW)
+	if err != nil {
+		ctx.fail("basic_auth", err)
+		return
 	}
+	ctx.chain.Use(basicMW)
 }
 
 func registerCSRFMiddleware(ctx *middlewareRegistrationContext) {
@@ -557,9 +594,11 @@ func registerCSRFMiddleware(ctx *middlewareRegistrationContext) {
 		CookieHTTPOnly: c.CookieHTTPOnly,
 		TokenLength:    c.TokenLength,
 	})
-	if err == nil {
-		ctx.chain.Use(csrfMW)
+	if err != nil {
+		ctx.fail("csrf", err)
+		return
 	}
+	ctx.chain.Use(csrfMW)
 }
 
 func registerTimeoutMiddleware(ctx *middlewareRegistrationContext) {
@@ -583,11 +622,14 @@ func registerRateLimitMiddleware(ctx *middlewareRegistrationContext) {
 	if burst <= 0 {
 		burst = 200
 	}
-	if rateLimiter, err := middleware.NewRateLimitMiddleware(middleware.RateLimitConfig{
+	rateLimiter, err := middleware.NewRateLimitMiddleware(middleware.RateLimitConfig{
 		RequestsPerSecond: rps, BurstSize: burst,
-	}); err == nil {
-		ctx.chain.Use(rateLimiter)
+	})
+	if err != nil {
+		ctx.fail("rate_limit", err)
+		return
 	}
+	ctx.chain.Use(rateLimiter)
 }
 
 func registerCircuitBreakerMiddleware(ctx *middlewareRegistrationContext) {
@@ -619,7 +661,7 @@ func registerCORSMiddleware(ctx *middlewareRegistrationContext) {
 		AllowCredentials: c.AllowCredentials, MaxAge: time.Duration(c.MaxAge) * time.Second,
 	})
 	if err != nil {
-		ctx.logger.Error("CORS middleware disabled: " + err.Error())
+		ctx.fail("cors", err)
 		return
 	}
 	ctx.chain.Use(corsMW)
@@ -654,9 +696,11 @@ func registerCSPMiddleware(ctx *middlewareRegistrationContext) {
 		UnsafeEval:      c.UnsafeEval,
 		ExcludePaths:    c.ExcludePaths,
 	})
-	if err == nil {
-		ctx.chain.Use(cspMW)
+	if err != nil {
+		ctx.fail("csp", err)
+		return
 	}
+	ctx.chain.Use(cspMW)
 }
 
 func registerHeadersMiddleware(ctx *middlewareRegistrationContext) {
@@ -673,12 +717,15 @@ func registerCompressionMiddleware(ctx *middlewareRegistrationContext) {
 	if ctx.cfg.Middleware == nil || ctx.cfg.Middleware.Compression == nil || !ctx.cfg.Middleware.Compression.Enabled {
 		return
 	}
-	if comp, err := middleware.NewCompressionMiddleware(middleware.CompressionConfig{
+	comp, err := middleware.NewCompressionMiddleware(middleware.CompressionConfig{
 		MinSize: ctx.cfg.Middleware.Compression.MinSize,
 		Level:   ctx.cfg.Middleware.Compression.Level,
-	}); err == nil {
-		ctx.chain.Use(comp)
+	})
+	if err != nil {
+		ctx.fail("compression", err)
+		return
 	}
+	ctx.chain.Use(comp)
 }
 
 func registerTransformerMiddleware(ctx *middlewareRegistrationContext) {
@@ -697,9 +744,11 @@ func registerTransformerMiddleware(ctx *middlewareRegistrationContext) {
 		ExcludePaths:     t.ExcludePaths,
 		ExcludeMIMETypes: t.ExcludeMIMETypes,
 	})
-	if err == nil {
-		ctx.chain.Use(transformerMW)
+	if err != nil {
+		ctx.fail("transformer", err)
+		return
 	}
+	ctx.chain.Use(transformerMW)
 }
 
 func registerRetryMiddleware(ctx *middlewareRegistrationContext) {

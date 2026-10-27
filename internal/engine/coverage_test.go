@@ -747,7 +747,10 @@ func TestCov_CreateMiddlewareChain_RealIPEnabled(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain, err := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	if err != nil {
+		t.Fatalf("createMiddlewareChain() error: %v", err)
+	}
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}

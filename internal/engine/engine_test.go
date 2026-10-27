@@ -28,6 +28,7 @@ import (
 	olbListener "github.com/openloadbalancer/olb/internal/listener"
 	"github.com/openloadbalancer/olb/internal/logging"
 	"github.com/openloadbalancer/olb/internal/metrics"
+	"github.com/openloadbalancer/olb/internal/middleware"
 	"github.com/openloadbalancer/olb/internal/router"
 	"github.com/openloadbalancer/olb/internal/waf"
 )
@@ -3545,7 +3546,7 @@ func TestCreateMiddlewareChainWithTrace(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -3562,7 +3563,7 @@ func TestCreateMiddlewareChainWithRealIP(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -3584,7 +3585,7 @@ func TestCreateMiddlewareChainWithRequestLogging(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -3604,7 +3605,7 @@ func TestCreateMiddlewareChainWithForceSSL(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -3626,7 +3627,7 @@ func TestCreateMiddlewareChainWithMiddlewareMetrics(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -3645,7 +3646,7 @@ func TestCreateMiddlewareChainWithRequestID(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -3672,7 +3673,7 @@ func TestCreateMiddlewareChainWithBotDetection(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -3687,7 +3688,7 @@ func TestCreateMiddlewareChainWithMaxBodySize(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -3702,7 +3703,7 @@ func TestCreateMiddlewareChainWithMaxBodySizeDefault(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -3717,7 +3718,7 @@ func TestCreateMiddlewareChainWithCacheDefaults(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -3740,7 +3741,7 @@ func TestCreateMiddlewareChainWithCacheCustom(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -3759,7 +3760,7 @@ func TestCreateMiddlewareChainWithRewrite(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -3775,7 +3776,7 @@ func TestCreateMiddlewareChainWithStripPrefix(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -3800,7 +3801,7 @@ func TestCreateMiddlewareChainWithValidator(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -3817,7 +3818,7 @@ func TestCreateMiddlewareChainWithCoalesce(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -3832,7 +3833,7 @@ func TestCreateMiddlewareChainWithCoalesceDefaults(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -3852,7 +3853,7 @@ func TestCreateMiddlewareChainWithJWT(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -3871,9 +3872,9 @@ func TestCreateMiddlewareChainWithJWTEdDSAFile(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
-	if chain == nil {
-		t.Error("createMiddlewareChain() returned nil")
+	// An unusable key must reject the config, not drop JWT auth.
+	if _, err := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry()); err == nil {
+		t.Fatal("createMiddlewareChain() succeeded with an unusable EdDSA key")
 	}
 }
 
@@ -3889,9 +3890,9 @@ func TestCreateMiddlewareChainWithJWTEdDSABase64Invalid(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
-	if chain == nil {
-		t.Error("createMiddlewareChain() returned nil")
+	// An unusable key must reject the config, not drop JWT auth.
+	if _, err := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry()); err == nil {
+		t.Fatal("createMiddlewareChain() succeeded with an unusable EdDSA key")
 	}
 }
 
@@ -3914,7 +3915,7 @@ func TestCreateMiddlewareChainWithOAuth2(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -3937,7 +3938,7 @@ func TestCreateMiddlewareChainWithHMAC(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -3955,7 +3956,7 @@ func TestCreateMiddlewareChainWithAPIKey(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -3973,7 +3974,7 @@ func TestCreateMiddlewareChainWithBasicAuth(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -3998,7 +3999,7 @@ func TestCreateMiddlewareChainWithCSRF(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -4013,7 +4014,7 @@ func TestCreateMiddlewareChainWithTimeout(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -4048,7 +4049,7 @@ func TestCreateMiddlewareChainWithCSP(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -4077,7 +4078,7 @@ func TestCreateMiddlewareChainWithSecureHeaders(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -4098,7 +4099,7 @@ func TestCreateMiddlewareChainWithTransformer(t *testing.T) {
 		},
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -4108,7 +4109,7 @@ func TestCreateMiddlewareChainNilMiddleware(t *testing.T) {
 	cfg := createTestConfig()
 	cfg.Middleware = nil
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -4121,7 +4122,7 @@ func TestCreateMiddlewareChainWithWAFEnforce(t *testing.T) {
 		Mode:    "enforce",
 	}
 
-	chain := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	chain := mustCreateMiddlewareChain(t, cfg)
 	if chain == nil {
 		t.Error("createMiddlewareChain() returned nil")
 	}
@@ -4967,4 +4968,13 @@ func generateTestCertFiles(t *testing.T, certFile, keyFile string) {
 	if err := os.WriteFile(keyFile, keyPEM, 0600); err != nil {
 		t.Fatalf("Failed to write key file: %v", err)
 	}
+}
+
+func mustCreateMiddlewareChain(t *testing.T, cfg *config.Config) *middleware.Chain {
+	t.Helper()
+	chain, err := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+	if err != nil {
+		t.Fatalf("createMiddlewareChain() error: %v", err)
+	}
+	return chain
 }

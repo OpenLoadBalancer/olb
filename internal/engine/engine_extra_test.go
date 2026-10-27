@@ -1093,7 +1093,10 @@ func TestCreateMiddlewareChain_PanicRecovery(t *testing.T) {
 	registry := metrics.NewRegistry()
 	logger := logging.New(logging.NewJSONOutput(os.Stdout))
 
-	chain := createMiddlewareChain(cfg, logger, registry)
+	chain, err := createMiddlewareChain(cfg, logger, registry)
+	if err != nil {
+		t.Fatalf("createMiddlewareChain() error: %v", err)
+	}
 	if chain == nil {
 		t.Fatal("createMiddlewareChain() returned nil")
 	}
