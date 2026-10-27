@@ -160,8 +160,10 @@ func (p *Pool) GetBackend(id string) *Backend {
 	return p.Backends[id]
 }
 
-// GetHealthyBackends returns a slice of backends that are in a healthy state.
-// Healthy states include StateUp and StateDraining.
+// GetHealthyBackends returns a slice of backends that can receive new traffic.
+// Only StateUp backends qualify: Draining and Maintenance backends must not be
+// handed new requests (that is the point of draining), even though they may
+// still hold in-flight connections.
 // The returned slice is from a pool and should be returned via ReleaseHealthyBackends.
 func (p *Pool) GetHealthyBackends() []*Backend {
 	p.mu.RLock()
@@ -170,7 +172,7 @@ func (p *Pool) GetHealthyBackends() []*Backend {
 	healthy := healthySlicePool.Get().(*[]*Backend)
 	*healthy = (*healthy)[:0]
 	for _, backend := range p.Backends {
-		if backend.IsHealthy() {
+		if backend.IsAvailable() {
 			*healthy = append(*healthy, backend)
 		}
 	}
