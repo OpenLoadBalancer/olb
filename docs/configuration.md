@@ -528,9 +528,11 @@ middleware:
   circuit_breaker:
     enabled: true
     error_threshold: 5             # Errors to open the circuit (default 5)
+    error_rate_threshold: 0.5      # Error ratio 0.0-1.0 that opens it (default 0.5)
+    open_duration: 30s             # How long it stays open before probing (default 30s)
 ```
 
-Only `error_threshold` is applied. `error_rate_threshold` (0-1) and `open_duration` exist in the schema but are not applied yet; the breaker uses a 50% error rate, a 60s window, 30s open duration and 3 half-open probes.
+The window (60s) and the number of half-open probes (3) are fixed. An out-of-range `error_rate_threshold` or an unparsable `open_duration` makes the engine refuse to start.
 
 ### Retry
 
@@ -539,9 +541,10 @@ middleware:
   retry:
     enabled: true
     max_retries: 3
+    retry_on: [502, 503, 504]      # Status codes that trigger a retry (default 502/503/504)
 ```
 
-Only `max_retries` is applied. `retry_on` exists in the schema but is not applied yet; retries happen on 502/503/504 for GET, HEAD and OPTIONS with exponential backoff (100ms to 5s, with jitter).
+Retries apply to GET, HEAD and OPTIONS with exponential backoff (100ms to 5s, with jitter).
 
 ### Response Cache
 
