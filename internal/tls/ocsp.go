@@ -76,6 +76,7 @@ type OCSPManager struct {
 
 	httpClient *http.Client
 	stopCh     chan struct{}
+	stopOnce   sync.Once
 	wg         sync.WaitGroup
 }
 
@@ -107,9 +108,12 @@ func (m *OCSPManager) Start() error {
 	return nil
 }
 
-// Stop stops the OCSP manager.
+// Stop stops the OCSP manager. It is idempotent (safe to call multiple times),
+// matching the Manager.StopExpiryMonitor convention.
 func (m *OCSPManager) Stop() error {
-	close(m.stopCh)
+	m.stopOnce.Do(func() {
+		close(m.stopCh)
+	})
 	m.wg.Wait()
 	m.httpClient.CloseIdleConnections()
 	return nil
