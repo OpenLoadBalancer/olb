@@ -130,7 +130,6 @@ type responseWriter struct {
 	request  *http.Request
 	buffer   *bytes.Buffer
 	status   int
-	written  bool
 }
 
 // WriteHeader captures the status code.

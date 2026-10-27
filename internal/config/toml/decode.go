@@ -15,7 +15,7 @@ func decodeValue(src any, dst reflect.Value) error {
 	}
 
 	// Handle pointers
-	for dst.Kind() == reflect.Ptr {
+	for dst.Kind() == reflect.Pointer {
 		if dst.IsNil() {
 			dst.Set(reflect.New(dst.Type().Elem()))
 		}
@@ -180,9 +180,9 @@ func decodeSlice(src []any, dst reflect.Value) error {
 // decodeScalar decodes a string into a scalar Go type.
 func decodeScalar(s string, dst reflect.Value) error {
 	// Handle TextUnmarshaler
-	if dst.Kind() == reflect.Struct || (dst.Kind() == reflect.Ptr && dst.Type().Elem().Kind() == reflect.Struct) {
+	if dst.Kind() == reflect.Struct || (dst.Kind() == reflect.Pointer && dst.Type().Elem().Kind() == reflect.Struct) {
 		target := dst
-		if target.Kind() == reflect.Ptr {
+		if target.Kind() == reflect.Pointer {
 			if target.IsNil() {
 				target.Set(reflect.New(target.Type().Elem()))
 			}

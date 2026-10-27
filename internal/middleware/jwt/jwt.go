@@ -14,7 +14,6 @@ import (
 	"hash"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"golang.org/x/crypto/ed25519"
@@ -58,7 +57,6 @@ func DefaultConfig() Config {
 type Middleware struct {
 	config    Config
 	publicKey ed25519.PublicKey
-	mu        sync.RWMutex
 }
 
 // allowedAlgorithms is the set of JWT algorithms accepted by this middleware.

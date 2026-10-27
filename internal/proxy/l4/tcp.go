@@ -64,7 +64,6 @@ type TCPProxy struct {
 	// Lifecycle
 	ctx    context.Context
 	cancel context.CancelFunc
-	mu     sync.RWMutex
 }
 
 // Balancer selects a backend from a pool.

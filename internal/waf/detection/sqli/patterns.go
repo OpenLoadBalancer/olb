@@ -38,9 +38,3 @@ var dangerousFunctions = map[string]int{
 	"EXTRACTVALUE": 80,
 	"UPDATEXML":    80,
 }
-
-// dangerousPatterns maps token sequence patterns to scores.
-type dangerousPattern struct {
-	name  string
-	score int
-}

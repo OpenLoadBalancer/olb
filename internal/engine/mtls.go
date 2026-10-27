@@ -68,7 +68,6 @@ type mtlsHTTPSListener struct {
 	handler    http.Handler
 	tlsConfig  *tls.Config
 	server     *http.Server
-	ln         interface{ Addr() fmt.Stringer }
 	running    bool
 	mu         sync.RWMutex
 	actualAddr string

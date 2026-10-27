@@ -26,7 +26,7 @@ func NewDecoder(node *Node) *Decoder {
 // Decode decodes the node into the target value.
 func (d *Decoder) Decode(v any) error {
 	rv := reflect.ValueOf(v)
-	if rv.Kind() != reflect.Ptr || rv.IsNil() {
+	if rv.Kind() != reflect.Pointer || rv.IsNil() {
 		return errors.New("decode target must be a non-nil pointer")
 	}
 
@@ -40,7 +40,7 @@ func (d *Decoder) decode(node *Node, v reflect.Value) error {
 	}
 
 	// Handle pointers
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			v.Set(reflect.New(v.Type().Elem()))
 		}
@@ -376,7 +376,7 @@ func (d *Decoder) decodeScalar(s string, v reflect.Value) error {
 		}
 		return nil
 
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if v.IsNil() {
 			v.Set(reflect.New(v.Type().Elem()))
 		}

@@ -389,15 +389,11 @@ func TestBotDetection_CaseInsensitive(t *testing.T) {
 	}
 
 	// Test case insensitivity for good bot detection
-	handler2 := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-
 	config2 := DefaultConfig()
 	config2.Enabled = true
 	config2.AllowVerified = true
 	mw2 := New(config2)
-	handler2 = mw2.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler2 := mw2.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 

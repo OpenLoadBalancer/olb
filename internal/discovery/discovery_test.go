@@ -1293,7 +1293,6 @@ func TestConsulProvider_WatchCatalog_HandlesGetServicesError(t *testing.T) {
 type failAfterFirstHandler struct {
 	mu                sync.Mutex
 	servicesCallCount int
-	failAfterCount    int // start failing after this many successful catalog/services calls
 	services          map[string][]string
 	serviceEntries    map[string][]consulServiceEntry
 }

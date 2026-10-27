@@ -1953,10 +1953,6 @@ func TestDecoder_DecodeStructFieldError(t *testing.T) {
 }
 
 func TestDecoder_TextUnmarshaler(t *testing.T) {
-	type CustomTime struct {
-		Time time.Time
-	}
-
 	// time.Time implements encoding.TextUnmarshaler
 	decoder := NewDecoder(&Node{Type: NodeScalar, Value: "2024-01-15T10:30:00Z"})
 	var result time.Time
