@@ -3089,7 +3089,7 @@ func TestInitializePoolsAllAlgorithms(t *testing.T) {
 		{"wrandom shorthand", "wrandom"},
 		{"ring_hash", "ring_hash"},
 		{"ringhash shorthand", "ringhash"},
-		{"unknown defaults to round_robin", "some_unknown_algo"},
+		{"empty defaults to round_robin", ""},
 	}
 
 	for _, tt := range algorithms {

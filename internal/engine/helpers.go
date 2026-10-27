@@ -238,3 +238,49 @@ func isMWEnabled(mw *config.MiddlewareConfig, id string) bool {
 		return false
 	}
 }
+
+// proxySettings are the L7 proxy knobs taken from the server section.
+type proxySettings struct {
+	proxyTimeout        time.Duration
+	dialTimeout         time.Duration
+	maxRetries          int
+	maxIdleConns        int
+	maxIdleConnsPerHost int
+	idleConnTimeout     time.Duration
+}
+
+// proxySettingsFromConfig reads server.* proxy settings with their defaults.
+// Both New and reload use it; reload used to hard-code the defaults and drop
+// whatever the config said.
+func proxySettingsFromConfig(cfg *config.Config) proxySettings {
+	ps := proxySettings{
+		proxyTimeout:        60 * time.Second,
+		dialTimeout:         10 * time.Second,
+		maxRetries:          3,
+		maxIdleConns:        100,
+		maxIdleConnsPerHost: 10,
+	}
+	srv := cfg.Server
+	if srv == nil {
+		return ps
+	}
+	if d, err := time.ParseDuration(srv.ProxyTimeout); err == nil && srv.ProxyTimeout != "" {
+		ps.proxyTimeout = d
+	}
+	if d, err := time.ParseDuration(srv.DialTimeout); err == nil && srv.DialTimeout != "" {
+		ps.dialTimeout = d
+	}
+	if srv.MaxRetries > 0 {
+		ps.maxRetries = srv.MaxRetries
+	}
+	if srv.MaxIdleConns > 0 {
+		ps.maxIdleConns = srv.MaxIdleConns
+	}
+	if srv.MaxIdleConnsPerHost > 0 {
+		ps.maxIdleConnsPerHost = srv.MaxIdleConnsPerHost
+	}
+	if d, err := time.ParseDuration(srv.IdleConnTimeout); err == nil && srv.IdleConnTimeout != "" {
+		ps.idleConnTimeout = d
+	}
+	return ps
+}
