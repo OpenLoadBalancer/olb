@@ -33,9 +33,11 @@ jobs:
           fi
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v1.64.8
+          # v1.x binaries are built with Go 1.24 and refuse to load a config
+          # targeting Go 1.26, so the old step never actually linted.
+          version: v2.14.0
           args: --timeout=5m
           # Gate new code now; existing findings are being burned down
           # separately (see .golangci.yml).
