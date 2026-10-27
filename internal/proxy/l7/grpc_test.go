@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -521,7 +522,12 @@ func TestGRPCHandler_HandleGRPC_FullRoundTrip(t *testing.T) {
 		w.Header().Set("Grpc-Message", "OK")
 		w.Header().Add(http.TrailerPrefix+"Grpc-Status", "0")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("grpc response body"))
+		// Real gRPC responses are length-prefixed frames.
+		payload := []byte("grpc response body")
+		frame := make([]byte, 5+len(payload))
+		binary.BigEndian.PutUint32(frame[1:5], uint32(len(payload)))
+		copy(frame[5:], payload)
+		w.Write(frame)
 	}))
 	defer backendServer.Close()
 
@@ -547,8 +553,9 @@ func TestGRPCHandler_HandleGRPC_FullRoundTrip(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	if body != "grpc response body" {
-		t.Errorf("Body = %q, want %q", body, "grpc response body")
+	// The relayed stream is the length-prefixed frame: 5-byte header + payload.
+	if len(body) < 5 || body[5:] != "grpc response body" {
+		t.Errorf("Body = %q, want framed %q", body, "grpc response body")
 	}
 }
 
@@ -613,7 +620,8 @@ func TestGRPCHandler_HandleGRPC_WithTrailers(t *testing.T) {
 		w.Header().Set("Content-Type", "application/grpc")
 		w.Header().Set("Trailer", "Grpc-Status, Grpc-Message")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("body"))
+		// Framed payload (5-byte header + "body").
+		w.Write([]byte{0x00, 0x00, 0x00, 0x00, 0x04, 'b', 'o', 'd', 'y'})
 		// Note: httptest doesn't support trailers well, but this tests the path
 	}))
 	defer backendServer.Close()
@@ -1228,5 +1236,90 @@ func TestPrepareGRPCWebRequest_InvalidBackendAddress(t *testing.T) {
 	}
 	if outReq == nil {
 		t.Error("request should not be nil when no parse error")
+	}
+}
+
+// TestGRPCHandler_HandleGRPC_MultiFrameRelay pins F024: a 200 response with
+// MULTIPLE length-prefixed frames is relayed intact — the old io.LimitReader
+// capped the TOTAL stream at one message's max size and silently truncated
+// every frame after the first. Each frame here stays under the per-message
+// limit, but their combined size exceeds it: reverting the relay to a single
+// io.LimitReader truncates the stream and fails this test's assertions.
+func TestGRPCHandler_HandleGRPC_MultiFrameRelay(t *testing.T) {
+	payloads := [][]byte{[]byte("msg-one"), []byte("msg-two")}
+	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/grpc")
+		w.WriteHeader(http.StatusOK)
+		for _, p := range payloads {
+			frame := make([]byte, 5+len(p))
+			binary.BigEndian.PutUint32(frame[1:5], uint32(len(p)))
+			copy(frame[5:], p)
+			w.Write(frame)
+		}
+	}))
+	defer backendServer.Close()
+
+	// Each 7-byte frame is under the 8-byte per-message limit, but the two
+	// frames together (24 bytes) exceed it — the exact configuration under
+	// which a total-stream limit truncates the second frame.
+	handler := NewGRPCHandler(&GRPCConfig{EnableGRPC: true, MaxMessageSize: 8})
+	be := backend.NewBackend("grpc-multi", backendServer.Listener.Addr().String())
+	be.SetState(backend.StateUp)
+
+	req := httptest.NewRequest("POST", "/svc/Method", bytes.NewReader([]byte("req")))
+	req.Header.Set("Content-Type", "application/grpc")
+	req.Host = "example.com"
+
+	rec := httptest.NewRecorder()
+	if err := handler.HandleGRPC(rec, req, be); err != nil {
+		t.Fatalf("HandleGRPC() error = %v", err)
+	}
+
+	// Both payloads must appear, in order, in the relayed frame stream.
+	body := rec.Body.String()
+	if got := strings.Count(body, "msg-one"); got != 1 {
+		t.Errorf("first message relayed %d times, want 1 (body %q)", got, body)
+	}
+	if got := strings.Count(body, "msg-two"); got != 1 {
+		t.Errorf("second message relayed %d times, want 1 (body %q)", got, body)
+	}
+	if strings.Index(body, "msg-one") > strings.Index(body, "msg-two") {
+		t.Error("frames relayed out of order")
+	}
+}
+
+// TestGRPCHandler_HandleGRPC_OversizedFrameRejected pins the per-message
+// limit: a 200 frame exceeding the configured MaxMessageSize must be rejected
+// (not silently truncated) with the response marked committed.
+func TestGRPCHandler_HandleGRPC_OversizedFrameRejected(t *testing.T) {
+	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/grpc")
+		w.WriteHeader(http.StatusOK)
+		payload := make([]byte, 64)
+		frame := make([]byte, 5+len(payload))
+		binary.BigEndian.PutUint32(frame[1:5], uint32(len(payload)))
+		copy(frame[5:], payload)
+		w.Write(frame)
+	}))
+	defer backendServer.Close()
+
+	handler := NewGRPCHandler(&GRPCConfig{
+		EnableGRPC:     true,
+		MaxMessageSize: 8,
+	})
+	be := backend.NewBackend("grpc-big", backendServer.Listener.Addr().String())
+	be.SetState(backend.StateUp)
+
+	req := httptest.NewRequest("POST", "/svc/Method", bytes.NewReader([]byte("req")))
+	req.Header.Set("Content-Type", "application/grpc")
+	req.Host = "example.com"
+
+	rec := httptest.NewRecorder()
+	err := handler.HandleGRPC(rec, req, be)
+	if err == nil {
+		t.Fatal("expected error for oversized frame")
+	}
+	if !errors.Is(err, errResponseCommitted) {
+		t.Errorf("oversized frame after commit must be terminal (errResponseCommitted), got: %v", err)
 	}
 }

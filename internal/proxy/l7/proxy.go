@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -31,6 +32,11 @@ type requestState struct {
 	reqCtx     *middleware.RequestContext
 	routeMatch *router.RouteMatch
 }
+
+// errResponseCommitted marks an error that occurred after the response status
+// was already written to the client. The request can no longer be retried on
+// another backend: that would splice a second response onto the partial one.
+var errResponseCommitted = errors.New("response already committed to client")
 
 // Hop-by-hop headers that should be stripped from requests and responses.
 var hopByHopHeaders = []string{
@@ -386,6 +392,12 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request, reqCtx 
 			err = p.sseHandler.HandleSSE(w, r, selectedBackend)
 		}
 		if err != nil {
+			// Committed-response errors are terminal: the status was already
+			// sent to the client, so the error handler cannot write a response
+			// and the failure is not a backend health signal.
+			if errors.Is(err, errResponseCommitted) {
+				return
+			}
 			selectedBackend.RecordError()
 			if p.passiveChecker != nil {
 				p.passiveChecker.RecordFailure(selectedBackend.Address)
@@ -454,6 +466,14 @@ func (p *HTTPProxy) proxyHandler(w http.ResponseWriter, r *http.Request, reqCtx 
 		}
 
 		lastErr = err
+
+		// Committed-response errors are terminal: the stream broke after the
+		// status was sent (often a client abort) — not a backend health
+		// signal. Do not record a failure and never retry.
+		if errors.Is(err, errResponseCommitted) {
+			return
+		}
+
 		selectedBackend.RecordError()
 		if p.passiveChecker != nil {
 			p.passiveChecker.RecordFailure(selectedBackend.Address)
@@ -531,7 +551,20 @@ func (p *HTTPProxy) proxyRequest(w http.ResponseWriter, r *http.Request, reqCtx 
 	bytesOut, err := io.CopyBuffer(w, resp.Body, buf)
 	if err != nil {
 		io.Copy(io.Discard, resp.Body)
-		return err
+		// The status (and possibly part of the body) already reached the
+		// client: the request can never be retried on another backend.
+		b.RecordRequest(latency, bytesOut)
+		if r.Context().Err() != nil {
+			// Client went away mid-body — terminal and not the backend's fault.
+			return fmt.Errorf("%w: %w", errResponseCommitted, err)
+		}
+		// Backend-side failure: still committed (no retry), but the passive
+		// checker must see it or a response-truncating backend stays healthy.
+		b.RecordError()
+		if p.passiveChecker != nil {
+			p.passiveChecker.RecordFailure(b.Address)
+		}
+		return fmt.Errorf("%w: %w", errResponseCommitted, err)
 	}
 
 	// Record metrics

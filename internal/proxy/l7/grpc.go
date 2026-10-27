@@ -142,14 +142,38 @@ func (gh *GRPCHandler) HandleGRPC(w http.ResponseWriter, r *http.Request, b *bac
 	// Write status code
 	w.WriteHeader(resp.StatusCode)
 
-	// Copy response body (bounded to prevent DoS from unbounded backend response)
+	// Relay length-prefixed gRPC frames, enforcing the per-message size limit.
+	// (The previous io.LimitReader capped the TOTAL stream at one message's
+	// max size, silently truncating multi-message responses.)
 	maxRespSize := int64(gh.config.MaxMessageSize)
 	if maxRespSize <= 0 {
 		maxRespSize = 4 * 1024 * 1024 // 4MB default
 	}
-	_, err = io.Copy(w, io.LimitReader(resp.Body, maxRespSize))
-	if err != nil {
-		return err
+	if resp.StatusCode != http.StatusOK {
+		// Per the gRPC HTTP/2 spec, non-200 responses carry a plain
+		// (unframed) body: relay it, still bounded against runaway backends.
+		n, err := io.Copy(w, io.LimitReader(resp.Body, maxRespSize+1))
+		if err != nil {
+			return fmt.Errorf("%w: %w", errResponseCommitted, err)
+		}
+		if n > maxRespSize {
+			return fmt.Errorf("%w: non-200 gRPC body exceeds max response size %d", errResponseCommitted, maxRespSize)
+		}
+	} else {
+		for {
+			frame, err := parseGRPCFrameMax(resp.Body, maxRespSize)
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				// Parse failures (including config-limited oversized frames)
+				// happen after the status was written: terminal.
+				return fmt.Errorf("%w: %w", errResponseCommitted, err)
+			}
+			if err := writeGRPCFrame(w, frame); err != nil {
+				return fmt.Errorf("%w: %w", errResponseCommitted, err)
+			}
+		}
 	}
 
 	// Copy trailers if present
@@ -598,6 +622,12 @@ type gRPCFrame struct {
 
 // parseGRPCFrame parses a gRPC frame from the reader.
 func parseGRPCFrame(r io.Reader) (*gRPCFrame, error) {
+	return parseGRPCFrameMax(r, 0)
+}
+
+// parseGRPCFrameMax parses a gRPC frame from the reader, enforcing
+// maxMessageSize as the per-message limit (0 = protocol default 4MB).
+func parseGRPCFrameMax(r io.Reader, maxMessageSize int64) (*gRPCFrame, error) {
 	// gRPC frame format:
 	// 1 byte: flags (compressed flag)
 	// 4 bytes: message length (big-endian)
@@ -615,10 +645,14 @@ func parseGRPCFrame(r io.Reader) (*gRPCFrame, error) {
 	length := binary.BigEndian.Uint32(buf[1:5])
 
 	// Guard against unbounded allocation from malicious frame headers.
-	// gRPC's default max receive size is 4MB; we enforce the same cap.
-	const maxGRPCFrameSize = 4 * 1024 * 1024
-	if length > maxGRPCFrameSize {
-		return nil, fmt.Errorf("grpc frame length %d exceeds maximum allowed size %d", length, maxGRPCFrameSize)
+	// The configured per-message limit applies when set; the protocol default
+	// (matching gRPC's own default max receive size) is 4MB.
+	limit := maxMessageSize
+	if limit <= 0 {
+		limit = 4 * 1024 * 1024
+	}
+	if int64(length) > limit {
+		return nil, fmt.Errorf("grpc frame length %d exceeds maximum allowed size %d", length, limit)
 	}
 
 	data := make([]byte, length)
