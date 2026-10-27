@@ -57,7 +57,7 @@ func (bf *BloomFilter) Add(data []byte) {
 	h1, h2 := bf.hash(data)
 
 	for i := uint32(0); i < bf.k; i++ {
-		idx := (h1 + uint32(i)*h2) % bf.m
+		idx := (h1 + i*h2) % bf.m
 		bf.bits[idx/64] |= 1 << (idx % 64)
 	}
 
@@ -76,7 +76,7 @@ func (bf *BloomFilter) Contains(data []byte) bool {
 	h1, h2 := bf.hash(data)
 
 	for i := uint32(0); i < bf.k; i++ {
-		idx := (h1 + uint32(i)*h2) % bf.m
+		idx := (h1 + i*h2) % bf.m
 		if bf.bits[idx/64]&(1<<(idx%64)) == 0 {
 			return false
 		}

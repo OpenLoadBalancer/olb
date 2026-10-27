@@ -20,9 +20,7 @@ type mockDockerServer struct {
 	server     *http.Server
 	mu         sync.Mutex
 	containers []dockerContainer
-	events     []dockerEvent
 	eventCh    chan dockerEvent
-	socketPath string
 }
 
 // newMockDockerServer creates a mock Docker server listening on a temporary Unix socket.
@@ -141,11 +139,6 @@ func (m *mockDockerServer) setContainers(containers []dockerContainer) {
 	m.mu.Lock()
 	m.containers = containers
 	m.mu.Unlock()
-}
-
-// sendEvent sends a Docker event to any listening clients.
-func (m *mockDockerServer) sendEvent(event dockerEvent) {
-	m.eventCh <- event
 }
 
 // close shuts down the mock server.

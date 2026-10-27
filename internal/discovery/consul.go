@@ -104,30 +104,6 @@ func (p *ConsulProvider) Stop() error {
 	return p.baseProvider.Stop()
 }
 
-// consulService represents a Consul service response.
-type consulService struct {
-	ID                string
-	Service           string
-	Tags              []string
-	Address           string
-	Port              int
-	Meta              map[string]string
-	Datacenter        string
-	Checks            []consulHealthCheck
-	EnableTagOverride bool
-}
-
-// consulHealthCheck represents a Consul health check.
-type consulHealthCheck struct {
-	Node        string
-	CheckID     string
-	Name        string
-	Status      string
-	ServiceID   string
-	ServiceName string
-	Output      string
-}
-
 // consulServiceEntry represents a service returned by the catalog API.
 type consulServiceEntry struct {
 	ServiceAddress string

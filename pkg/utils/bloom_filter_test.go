@@ -478,7 +478,7 @@ func TestOptimalBloomFilter_EdgeCases(t *testing.T) {
 	}
 
 	// Very large k should be capped at 30
-	m, k = OptimalBloomFilter(1000000, 0.00001)
+	_, k = OptimalBloomFilter(1000000, 0.00001)
 	if k > 30 {
 		t.Errorf("k = %d, should be capped at 30", k)
 	}

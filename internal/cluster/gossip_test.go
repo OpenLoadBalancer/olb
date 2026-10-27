@@ -3285,7 +3285,7 @@ func TestHandleDead_SelfRefutation(t *testing.T) {
 	initialInc := g.localNode.Incarnation
 	// Build the inner payload (without the message type header).
 	innerPayload := make([]byte, 4+2+len("local-node"))
-	binary.BigEndian.PutUint32(innerPayload[0:4], uint32(initialInc))
+	binary.BigEndian.PutUint32(innerPayload[0:4], initialInc)
 	binary.BigEndian.PutUint16(innerPayload[4:6], uint16(len("local-node")))
 	copy(innerPayload[6:], "local-node")
 	g.handleDead(innerPayload)

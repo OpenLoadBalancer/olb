@@ -48,10 +48,9 @@ func DefaultSNIRouterConfig() *SNIRouterConfig {
 
 // SNIRouter routes TCP connections based on TLS SNI.
 type SNIRouter struct {
-	config  *SNIRouterConfig
-	routes  map[string]*backend.Backend
-	mu      sync.RWMutex
-	running atomic.Bool
+	config *SNIRouterConfig
+	routes map[string]*backend.Backend
+	mu     sync.RWMutex
 }
 
 // NewSNIRouter creates a new SNI router.

@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/openloadbalancer/olb/pkg/utils"
-	"sync"
 	"time"
 
 	"github.com/openloadbalancer/olb/internal/logging"
@@ -392,11 +391,4 @@ func escapeJSON(s string) string {
 // extractIP extracts the IP address from a host:port string.
 func extractIP(addr string) string {
 	return utils.ExtractIP(addr)
-}
-
-// logBufferPool is a pool for log entry buffers.
-var logBufferPool = sync.Pool{
-	New: func() any {
-		return make([]byte, 0, 512)
-	},
 }

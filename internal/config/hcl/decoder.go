@@ -17,7 +17,7 @@ import (
 // decodeMap decodes a map[string]any into a Go value via reflection.
 func decodeMap(m map[string]any, v any) error {
 	rv := reflect.ValueOf(v)
-	if rv.Kind() != reflect.Ptr || rv.IsNil() {
+	if rv.Kind() != reflect.Pointer || rv.IsNil() {
 		return errors.New("decode target must be a non-nil pointer")
 	}
 	return decodeValue(reflect.ValueOf(m), rv.Elem())
@@ -36,7 +36,7 @@ func decodeValue(src reflect.Value, dst reflect.Value) error {
 	}
 
 	// Handle pointer destination
-	if dst.Kind() == reflect.Ptr {
+	if dst.Kind() == reflect.Pointer {
 		if dst.IsNil() {
 			dst.Set(reflect.New(dst.Type().Elem()))
 		}

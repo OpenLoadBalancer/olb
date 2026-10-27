@@ -530,19 +530,6 @@ func signRSA(key *rsa.PrivateKey, hash crypto.Hash) func([]byte) ([]byte, string
 	}
 }
 
-func signECDSA(key *ecdsa.PrivateKey) func([]byte) ([]byte, string) {
-	return func(input []byte) ([]byte, string) {
-		h := crypto.SHA256.New()
-		h.Write(input)
-		r, s, _ := ecdsa.Sign(rand.Reader, key, h.Sum(nil))
-		keyBytes := (key.Curve.Params().N.BitLen() + 7) / 8
-		sig := make([]byte, 2*keyBytes)
-		r.FillBytes(sig[:keyBytes])
-		s.FillBytes(sig[keyBytes:])
-		return sig, ""
-	}
-}
-
 // jwksHandler creates an httptest handler serving JWKS from the given RSA key.
 func jwksHandler(rsaKey *rsa.PublicKey, kid string) http.HandlerFunc {
 	n := base64urlEncode(rsaKey.N.Bytes())

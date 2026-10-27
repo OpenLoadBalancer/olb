@@ -122,7 +122,7 @@ func getTerminalSizePlatform() (int, int) {
 
 	_, _, errno := syscall.Syscall(
 		syscall.SYS_IOCTL,
-		uintptr(os.Stdout.Fd()),
+		os.Stdout.Fd(),
 		uintptr(syscall.TIOCGWINSZ),
 		uintptr(unsafe.Pointer(ws)),
 	)

@@ -732,10 +732,6 @@ admin {
   enabled = true
 }
 `
-	type Admin struct {
-		Address string `hcl:"address"`
-		Enabled bool   `hcl:"enabled"`
-	}
 	type Config struct {
 		Version string `hcl:"version"`
 		Admin   []any  `hcl:"admin"`
