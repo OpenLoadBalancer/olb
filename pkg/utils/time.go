@@ -33,7 +33,8 @@ func parseCustomDuration(s string) (time.Duration, error) {
 	var total time.Duration
 	var numStr strings.Builder
 
-	for i := range len(s) {
+	// Index loop, not range: the "ms"/"us" cases advance i past the 's'.
+	for i := 0; i < len(s); i++ {
 		c := s[i]
 
 		if unicode.IsDigit(rune(c)) || c == '.' {

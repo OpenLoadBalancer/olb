@@ -1,15 +1,12 @@
+version: "2"
+
 run:
-  timeout: 5m
-  go: '1.26'
+  go: "1.26"
 
 linters:
+  # The v2 "standard" set (errcheck, govet, ineffassign, staticcheck,
+  # unused) plus:
   enable:
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
     - bodyclose
     - contextcheck
     - gocritic
@@ -17,19 +14,46 @@ linters:
     - misspell
     - prealloc
     - unconvert
+  settings:
+    errcheck:
+      # An explicit `_ = f()` is a deliberate discard; only flag silently
+      # dropped errors.
+      check-blank: false
+    gosec:
+      excludes:
+        - G104 # Audit errors not checked
+  exclusions:
+    generated: lax
+    # Equivalent of golangci-lint v1's default exclusions.
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Tests may ignore errors from cleanup/setup helpers and use fixed
+      # credentials, weak randomness and the like.
+      - path: _test\.go
+        linters:
+          - bodyclose
+          - errcheck
+          - gosec
+      # Nil-check-then-dereference is a common, intended pattern in tests.
+      - path: _test\.go
+        linters:
+          - staticcheck
+        text: SA5011
+    paths:
+      # Go sources shipped inside npm packages.
+      - internal/webui/node_modules
+      - third_party$
+      - builtin$
+      - examples$
 
-linters-settings:
-  gosec:
-    excludes:
-      - G104  # Audit errors not checked
-  errcheck:
-    check-blank: true
-
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - gosec
-        - errcheck
-        - staticcheck
-      text: "SA5011"
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

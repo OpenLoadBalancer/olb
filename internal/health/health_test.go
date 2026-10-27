@@ -202,8 +202,9 @@ func TestChecker_checkHTTP(t *testing.T) {
 	checker := NewChecker()
 	defer checker.Stop()
 
-	// Start a test HTTP server on 127.0.0.2 to avoid SSRF protection
-	// (127.0.0.1 is blocked by isInternalAddress).
+	// Loopback is an allowed health check target (isInternalAddress only
+	// blocks metadata/link-local), and 127.0.0.1 is the only loopback address
+	// macOS configures by default.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -215,11 +216,11 @@ func TestChecker_checkHTTP(t *testing.T) {
 	})
 
 	server := &http.Server{
-		Addr:    "127.0.0.2:0",
+		Addr:    "127.0.0.1:0",
 		Handler: mux,
 	}
 
-	listener, err := net.Listen("tcp", "127.0.0.2:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Failed to create test server: %v", err)
 	}
@@ -283,7 +284,7 @@ func TestChecker_checkHTTP_WithHeaders(t *testing.T) {
 
 	var receivedHeader string
 
-	// Start a test HTTP server on 127.0.0.2 to avoid SSRF protection
+	// Start a test HTTP server on loopback.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		receivedHeader = r.Header.Get("X-Custom-Header")
@@ -291,11 +292,11 @@ func TestChecker_checkHTTP_WithHeaders(t *testing.T) {
 	})
 
 	server := &http.Server{
-		Addr:    "127.0.0.2:0",
+		Addr:    "127.0.0.1:0",
 		Handler: mux,
 	}
 
-	listener, err := net.Listen("tcp", "127.0.0.2:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Failed to create test server: %v", err)
 	}
@@ -474,18 +475,18 @@ func BenchmarkChecker_checkHTTP(b *testing.B) {
 	checker := NewChecker()
 	defer checker.Stop()
 
-	// Start a test HTTP server on 127.0.0.2 to avoid SSRF protection
+	// Start a test HTTP server on loopback.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
 	server := &http.Server{
-		Addr:    "127.0.0.2:0",
+		Addr:    "127.0.0.1:0",
 		Handler: mux,
 	}
 
-	listener, err := net.Listen("tcp", "127.0.0.2:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		b.Fatalf("Failed to create test server: %v", err)
 	}
@@ -632,10 +633,10 @@ func TestChecker_checkHTTP_HTTPS(t *testing.T) {
 	checker := NewChecker()
 	defer checker.Stop()
 
-	// Start a plain TCP listener on 127.0.0.2 (no TLS). The HTTPS check will
+	// Start a plain TCP listener on loopback (no TLS). The HTTPS check will
 	// fail to complete a TLS handshake, but we still exercise the url-building
 	// branch that produces an "https://" scheme.
-	listener, err := net.Listen("tcp", "127.0.0.2:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Failed to create listener: %v", err)
 	}
@@ -678,7 +679,7 @@ func TestChecker_checkHTTP_Non2xxStatus(t *testing.T) {
 	})
 
 	server := &http.Server{Handler: mux}
-	listener, err := net.Listen("tcp", "127.0.0.2:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Failed to create listener: %v", err)
 	}

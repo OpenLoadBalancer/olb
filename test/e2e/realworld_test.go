@@ -255,7 +255,7 @@ pools:
 		t.Errorf("FAIL: Error rate %.1f%% exceeds 1%% threshold", errorRate)
 	}
 
-	if avgLatency > 50*time.Millisecond {
+	if avgLatency > 50*time.Millisecond && !raceEnabled {
 		t.Errorf("FAIL: Avg latency %v exceeds 50ms threshold", avgLatency)
 	}
 

@@ -3,6 +3,7 @@ package cluster
 import (
 	"encoding/binary"
 	"fmt"
+	"math/rand/v2"
 	"net"
 	"runtime"
 	"sync"
@@ -2809,21 +2810,20 @@ func getClosedPort(t *testing.T) int {
 
 func getFreePort(t *testing.T) int {
 	t.Helper()
+	// Pick from 20000-29999, below every OS's ephemeral range (Linux 32768+,
+	// macOS/Windows 49152+). Kernel-assigned ports come from the ephemeral
+	// range, which outgoing connections of other tests also draw from, so a
+	// port probed free there could be taken again before gossip binds it.
 	for attempt := 0; attempt < 200; attempt++ {
+		port := 20000 + rand.IntN(10000)
+
 		// Probe on 0.0.0.0, the default gossip BindAddr: a port free on
 		// 127.0.0.1 can still be taken on another interface.
 		// Bind UDP first (more restrictive on Windows)
-		udpAddr, err := net.ResolveUDPAddr("udp", "0.0.0.0:0")
+		udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: port})
 		if err != nil {
 			continue
 		}
-		udpConn, err := net.ListenUDP("udp", udpAddr)
-		if err != nil {
-			continue
-		}
-		port := udpConn.LocalAddr().(*net.UDPAddr).Port
-
-		// Verify TCP is also available on the same port
 		tcpL, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
 		if err != nil {
 			udpConn.Close()

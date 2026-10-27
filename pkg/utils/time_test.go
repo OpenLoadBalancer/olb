@@ -304,3 +304,26 @@ func TestFormatByteSize_EdgeCases(t *testing.T) {
 		}
 	}
 }
+
+// TestParseDuration_SubSecondUnitsWithDays pins the "ms"/"us" handling in the
+// custom parser: the unit's trailing 's' must not be read as a second unit.
+func TestParseDuration_SubSecondUnitsWithDays(t *testing.T) {
+	tests := []struct {
+		in   string
+		want time.Duration
+	}{
+		{"1d500ms", 24*time.Hour + 500*time.Millisecond},
+		{"1d10us", 24*time.Hour + 10*time.Microsecond},
+		{"1w2d3h", 9*24*time.Hour + 3*time.Hour},
+	}
+	for _, tt := range tests {
+		got, err := ParseDuration(tt.in)
+		if err != nil {
+			t.Errorf("ParseDuration(%q) error: %v", tt.in, err)
+			continue
+		}
+		if got != tt.want {
+			t.Errorf("ParseDuration(%q) = %v, want %v", tt.in, got, tt.want)
+		}
+	}
+}
