@@ -3,6 +3,7 @@ package rewrite
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -481,5 +482,47 @@ func TestRewrite_EmptyRules(t *testing.T) {
 
 	if !called {
 		t.Error("Handler should have been called")
+	}
+}
+
+// A path-capturing redirect rule must not turn "//host" or "/\host" into a
+// protocol-relative Location, which browsers follow to another origin.
+func TestRewrite_RedirectDoesNotLeaveOrigin(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		rule Rule
+		path string
+	}{
+		{"remove_trailing_slash preset", CommonRewriteRules["remove_trailing_slash"], "//evil.example/"},
+		{"trailing_slash preset", CommonRewriteRules["trailing_slash"], "//evil.example"},
+		{"capture group", Rule{Pattern: "^/go/(.*)$", Replacement: "/$1", Flag: "redirect"}, "/go//evil.example"},
+		{"backslash", Rule{Pattern: "^/go/(.*)$", Replacement: "/$1", Flag: "redirect"}, `/go/\evil.example`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			config := DefaultConfig()
+			config.Enabled = true
+			config.Rules = []Rule{tc.rule}
+			mw, err := New(config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+
+			req := httptest.NewRequest("GET", "/", nil)
+			req.URL.Path = tc.path
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			loc := rec.Header().Get("Location")
+			if loc == "" {
+				t.Fatalf("expected a redirect, got status %d", rec.Code)
+			}
+			if strings.HasPrefix(loc, "//") || strings.HasPrefix(loc, `/\`) {
+				t.Errorf("Location = %q, redirects off-origin", loc)
+			}
+			if !strings.HasPrefix(loc, "/") {
+				t.Errorf("Location = %q, want a same-origin path", loc)
+			}
+		})
 	}
 }

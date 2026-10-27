@@ -101,10 +101,10 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 			if matched {
 				switch rule.flag {
 				case "redirect", "temp":
-					http.Redirect(w, r, newPath, http.StatusFound)
+					http.Redirect(w, r, sameOriginPath(newPath), http.StatusFound) //nolint:gosec // sameOriginPath keeps path targets on-origin
 					return
 				case "permanent":
-					http.Redirect(w, r, newPath, http.StatusMovedPermanently)
+					http.Redirect(w, r, sameOriginPath(newPath), http.StatusMovedPermanently) //nolint:gosec // sameOriginPath keeps path targets on-origin
 					return
 				case "break":
 					// Rewrite and stop processing, but don't change URL visible to client
@@ -150,6 +150,17 @@ func (m *Middleware) applyRule(path string, rule compiledRule) (string, bool) {
 	result := rule.pattern.ReplaceAllString(path, rule.replacement)
 
 	return result, true
+}
+
+// sameOriginPath collapses leading slashes and backslashes in a path-style
+// redirect target. Rules capture parts of the request path, so "//host" or
+// "/\host" would otherwise become a protocol-relative Location that browsers
+// follow to another origin. Absolute URLs from the rule config are kept.
+func sameOriginPath(target string) string {
+	if target == "" || (target[0] != '/' && target[0] != '\\') {
+		return target
+	}
+	return "/" + strings.TrimLeft(target, "/\\")
 }
 
 // CommonRewriteRules provides commonly used rewrite rules.
