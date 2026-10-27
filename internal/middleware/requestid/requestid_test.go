@@ -325,14 +325,14 @@ func TestFallbackID(t *testing.T) {
 	}
 
 	// The fallback must produce distinct IDs: when crypto/rand is unavailable a
-	// constant ID would collide on every request. Collect a batch and require at
-	// least two distinct values (robust even on coarse clocks).
+	// constant ID would collide on every request. Back-to-back calls usually
+	// share one clock tick on Windows, so every call must still differ.
 	seen := map[string]struct{}{id: {}}
 	for i := 0; i < 16; i++ {
 		seen[fallbackID()] = struct{}{}
 	}
-	if len(seen) < 2 {
-		t.Error("fallbackID should produce distinct IDs across calls")
+	if len(seen) != 17 {
+		t.Errorf("fallbackID produced %d distinct IDs in 17 calls, want 17", len(seen))
 	}
 }
 

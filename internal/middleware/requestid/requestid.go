@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -112,15 +113,21 @@ func generateID(length int) string {
 	return hex.EncodeToString(b)
 }
 
+// fallbackSeq distinguishes fallback IDs generated within one clock tick.
+var fallbackSeq atomic.Uint64
+
 // fallbackID returns a simple fallback ID when crypto/rand fails.
-// It mixes in the current time to provide some uniqueness, though
-// this is not cryptographically strong.
+// It combines the current time with a process-wide counter, so IDs stay
+// distinct even on coarse clocks (Windows), though this is not
+// cryptographically strong.
 func fallbackID() string {
 	log.Println("[requestid] WARNING: crypto/rand unavailable, using fallback ID generation")
 	b := make([]byte, 16)
-	now := time.Now().UnixNano()
-	for i := range b {
-		b[i] = byte(i*7) ^ byte(now>>(i*8)) // Mix deterministic pattern with time
+	now := uint64(time.Now().UnixNano())
+	seq := fallbackSeq.Add(1)
+	for i := 0; i < 8; i++ {
+		b[i] = byte(now >> (i * 8))
+		b[8+i] = byte(seq >> (i * 8))
 	}
 	return hex.EncodeToString(b)
 }
