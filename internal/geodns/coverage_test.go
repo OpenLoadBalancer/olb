@@ -390,9 +390,9 @@ func TestCov_DecodeFieldDepth_Int32Type(t *testing.T) {
 	// For int32: typeNum = 8, so data[1] + 7 = 8, data[1] = 1
 	// sizeValue = data[1] & 0x1F = 1, payload = 1 byte
 	buf := []byte{
-		0x00,       // extended marker
-		0x01,       // typeNum=1+7=8 (int32), sizeValue=1
-		0xFF,       // 1-byte int32 payload
+		0x00, // extended marker
+		0x01, // typeNum=1+7=8 (int32), sizeValue=1
+		0xFF, // 1-byte int32 payload
 	}
 	r := &mmdbReader{data: buf}
 	res, _ := r.decodeField(0)
@@ -954,5 +954,3 @@ func buildTestMMDBWithRootData(t *testing.T, rootData []byte, recordSize uint16)
 
 	return path
 }
-
-

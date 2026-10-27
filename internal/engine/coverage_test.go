@@ -287,12 +287,12 @@ func TestCov_RegisterCORSMiddleware_Enabled(t *testing.T) {
 		cfg: &config.Config{
 			Middleware: &config.MiddlewareConfig{
 				CORS: &config.CORSConfig{
-					Enabled:             true,
-					AllowedOrigins:      []string{"https://example.com"},
-					AllowedMethods:      []string{"GET", "POST"},
-					AllowedHeaders:      []string{"Content-Type"},
-					AllowCredentials:    true,
-					MaxAge:              3600,
+					Enabled:          true,
+					AllowedOrigins:   []string{"https://example.com"},
+					AllowedMethods:   []string{"GET", "POST"},
+					AllowedHeaders:   []string{"Content-Type"},
+					AllowCredentials: true,
+					MaxAge:           3600,
 				},
 			},
 		},
@@ -478,7 +478,7 @@ func TestCov_StartTCPListener_NoRoutesNoPool(t *testing.T) {
 		Name:     "tcp-nopool",
 		Address:  "127.0.0.1:0",
 		Protocol: "tcp",
-		Pool:     "", // empty
+		Pool:     "",  // empty
 		Routes:   nil, // no routes
 	}
 
@@ -506,7 +506,7 @@ func TestCov_StartUDPListener_NoRoutesNoPool(t *testing.T) {
 		Name:     "udp-nopool",
 		Address:  "127.0.0.1:0",
 		Protocol: "udp",
-		Pool:     "", // empty
+		Pool:     "",  // empty
 		Routes:   nil, // no routes
 	}
 

@@ -12,10 +12,10 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"runtime"
 	"testing"
 	"time"
 

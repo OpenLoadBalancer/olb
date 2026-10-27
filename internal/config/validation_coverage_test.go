@@ -301,7 +301,7 @@ func TestValidate_ServerNegativeMaxRetries(t *testing.T) {
 func TestValidate_HealthCheckInvalidType(t *testing.T) {
 	cfg := validBaseConfig()
 	cfg.Pools = []*Pool{{
-		Name: "pool",
+		Name:     "pool",
 		Backends: []*Backend{{Address: "10.0.0.1:8080"}},
 		HealthCheck: &HealthCheck{
 			Type: "invalid",
@@ -319,7 +319,7 @@ func TestValidate_HealthCheckInvalidType(t *testing.T) {
 func TestValidate_HealthCheckHTTPNoPath(t *testing.T) {
 	cfg := validBaseConfig()
 	cfg.Pools = []*Pool{{
-		Name: "pool",
+		Name:     "pool",
 		Backends: []*Backend{{Address: "10.0.0.1:8080"}},
 		HealthCheck: &HealthCheck{
 			Type: "http",
@@ -337,7 +337,7 @@ func TestValidate_HealthCheckHTTPNoPath(t *testing.T) {
 func TestValidate_HealthCheckInvalidInterval(t *testing.T) {
 	cfg := validBaseConfig()
 	cfg.Pools = []*Pool{{
-		Name: "pool",
+		Name:     "pool",
 		Backends: []*Backend{{Address: "10.0.0.1:8080"}},
 		HealthCheck: &HealthCheck{
 			Interval: "not-a-duration",
@@ -355,7 +355,7 @@ func TestValidate_HealthCheckInvalidInterval(t *testing.T) {
 func TestValidate_HealthCheckTimeoutGeInterval(t *testing.T) {
 	cfg := validBaseConfig()
 	cfg.Pools = []*Pool{{
-		Name: "pool",
+		Name:     "pool",
 		Backends: []*Backend{{Address: "10.0.0.1:8080"}},
 		HealthCheck: &HealthCheck{
 			Interval: "5s",
@@ -374,7 +374,7 @@ func TestValidate_HealthCheckTimeoutGeInterval(t *testing.T) {
 func TestValidate_HealthCheckTimeoutWithoutInterval(t *testing.T) {
 	cfg := validBaseConfig()
 	cfg.Pools = []*Pool{{
-		Name: "pool",
+		Name:     "pool",
 		Backends: []*Backend{{Address: "10.0.0.1:8080"}},
 		HealthCheck: &HealthCheck{
 			Timeout: "not-a-duration",
@@ -392,7 +392,7 @@ func TestValidate_HealthCheckTimeoutWithoutInterval(t *testing.T) {
 func TestValidate_HealthCheckInvalidTimeoutWithValidInterval(t *testing.T) {
 	cfg := validBaseConfig()
 	cfg.Pools = []*Pool{{
-		Name: "pool",
+		Name:     "pool",
 		Backends: []*Backend{{Address: "10.0.0.1:8080"}},
 		HealthCheck: &HealthCheck{
 			Interval: "10s",
@@ -411,7 +411,7 @@ func TestValidate_HealthCheckInvalidTimeoutWithValidInterval(t *testing.T) {
 func TestValidate_HealthCheckValidTimeoutLessThanInterval(t *testing.T) {
 	cfg := validBaseConfig()
 	cfg.Pools = []*Pool{{
-		Name: "pool",
+		Name:     "pool",
 		Backends: []*Backend{{Address: "10.0.0.1:8080"}},
 		HealthCheck: &HealthCheck{
 			Interval: "10s",
@@ -426,7 +426,7 @@ func TestValidate_HealthCheckValidTimeoutLessThanInterval(t *testing.T) {
 func TestValidate_HealthCheckValidIntervalOnly(t *testing.T) {
 	cfg := validBaseConfig()
 	cfg.Pools = []*Pool{{
-		Name: "pool",
+		Name:     "pool",
 		Backends: []*Backend{{Address: "10.0.0.1:8080"}},
 		HealthCheck: &HealthCheck{
 			Interval: "10s",
@@ -1106,8 +1106,8 @@ func TestValidate_MiddlewareCircuitBreakerBadRate(t *testing.T) {
 	cfg := validBaseConfig()
 	cfg.Middleware = &MiddlewareConfig{
 		CircuitBreaker: &CircuitBreakerConfig{
-			Enabled:             true,
-			ErrorRateThreshold:  1.5,
+			Enabled:            true,
+			ErrorRateThreshold: 1.5,
 		},
 	}
 	err := cfg.Validate()
@@ -1140,8 +1140,8 @@ func TestValidate_MiddlewareTraceNegativeSampleRate(t *testing.T) {
 	cfg := validBaseConfig()
 	cfg.Middleware = &MiddlewareConfig{
 		Trace: &TraceConfig{
-			Enabled:     true,
-			SampleRate:  -0.5,
+			Enabled:    true,
+			SampleRate: -0.5,
 		},
 	}
 	err := cfg.Validate()
