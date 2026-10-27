@@ -2,8 +2,10 @@ package csrf
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -571,5 +573,59 @@ func TestCSRF_TokenRotatedAfterValidation(t *testing.T) {
 	}
 	if newToken == token {
 		t.Error("rotated token should differ from original token")
+	}
+}
+
+// TestCSRF_FormTokenPreservesBody ensures the form-token path restores the
+// request body for downstream handlers (parsing the form used to consume it).
+func TestCSRF_FormTokenPreservesBody(t *testing.T) {
+	config := DefaultConfig()
+	config.Enabled = true
+	config.CookieSecure = false
+
+	mw, err := New(config)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	// Obtain a valid token via GET (sets the cookie).
+	getReq := httptest.NewRequest("GET", "/submit", nil)
+	getRec := httptest.NewRecorder()
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	handler.ServeHTTP(getRec, getReq)
+
+	var token string
+	for _, c := range getRec.Result().Cookies() {
+		if c.Name == "csrf_token" {
+			token = c.Value
+			break
+		}
+	}
+	if token == "" {
+		t.Fatal("no CSRF cookie set")
+	}
+
+	formData := "csrf_token=" + url.QueryEscape(token) + "&name=alice&action=delete"
+	postReq := httptest.NewRequest("POST", "/submit", strings.NewReader(formData))
+	postReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	postReq.AddCookie(&http.Cookie{Name: "csrf_token", Value: token})
+
+	// Capture the body inside the handler before it is written.
+	var downstreamBody string
+	handler = mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data, _ := io.ReadAll(r.Body)
+		downstreamBody = string(data)
+		w.WriteHeader(http.StatusOK)
+	}))
+	postRec := httptest.NewRecorder()
+	handler.ServeHTTP(postRec, postReq)
+
+	if postRec.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d", http.StatusOK, postRec.Code)
+	}
+	if downstreamBody != formData {
+		t.Errorf("downstream body was not preserved:\n got %q\nwant %q", downstreamBody, formData)
 	}
 }

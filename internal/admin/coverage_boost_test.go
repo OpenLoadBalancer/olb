@@ -1618,48 +1618,48 @@ func TestExtractBackendID_ShortPath(t *testing.T) {
 // --- Circuit breaker half-open -> closed transition ---
 
 func TestCircuitBreaker_HalfOpenToClosed(t *testing.T) {
-		cb := newAdminCircuitBreaker()
-		cb.openDuration = 50 * time.Millisecond // Shorten for test
+	cb := newAdminCircuitBreaker()
+	cb.openDuration = 50 * time.Millisecond // Shorten for test
 
-		// Force into open state via recordOutcome
-		for i := 0; i < cb.errorThreshold; i++ {
-			cb.recordOutcome(fmt.Errorf("error %d", i))
-		}
+	// Force into open state via recordOutcome
+	for i := 0; i < cb.errorThreshold; i++ {
+		cb.recordOutcome(fmt.Errorf("error %d", i))
+	}
 
-		if cb.State() != "open" {
-			t.Fatalf("expected open state, got %s", cb.State())
-		}
+	if cb.State() != "open" {
+		t.Fatalf("expected open state, got %s", cb.State())
+	}
 
-		// Wait for open duration to expire
-		time.Sleep(cb.openDuration + 20*time.Millisecond)
+	// Wait for open duration to expire
+	time.Sleep(cb.openDuration + 20*time.Millisecond)
 
-		// Now the State() method will report half-open, but internally
-		// the state is still cbOpen. We need to use Execute() which
-		// will transition it to cbHalfOpen, then record outcomes.
-		ctx := context.Background()
+	// Now the State() method will report half-open, but internally
+	// the state is still cbOpen. We need to use Execute() which
+	// will transition it to cbHalfOpen, then record outcomes.
+	ctx := context.Background()
 
-		// First Execute after expiry will transition to half-open
-		err := cb.Execute(ctx, func(ctx context.Context) error {
-			return nil // success
+	// First Execute after expiry will transition to half-open
+	err := cb.Execute(ctx, func(ctx context.Context) error {
+		return nil // success
+	})
+	if err != nil {
+		t.Fatalf("unexpected error in first half-open execute: %v", err)
+	}
+
+	// 2 more successes to reach 3 total and transition to closed
+	for i := 0; i < 2; i++ {
+		err = cb.Execute(ctx, func(ctx context.Context) error {
+			return nil
 		})
 		if err != nil {
-			t.Fatalf("unexpected error in first half-open execute: %v", err)
-		}
-
-		// 2 more successes to reach 3 total and transition to closed
-		for i := 0; i < 2; i++ {
-			err = cb.Execute(ctx, func(ctx context.Context) error {
-				return nil
-			})
-			if err != nil {
-				t.Fatalf("unexpected error in execute %d: %v", i+2, err)
-			}
-		}
-
-		if cb.State() != "closed" {
-			t.Errorf("expected closed state after 3 successes, got %s", cb.State())
+			t.Fatalf("unexpected error in execute %d: %v", i+2, err)
 		}
 	}
+
+	if cb.State() != "closed" {
+		t.Errorf("expected closed state after 3 successes, got %s", cb.State())
+	}
+}
 
 // --- addBackend weight overflow ---
 
@@ -1754,9 +1754,9 @@ type basicResponseWriter struct {
 	body   strings.Builder
 }
 
-func (w *basicResponseWriter) Header() http.Header        { return w.header }
+func (w *basicResponseWriter) Header() http.Header         { return w.header }
 func (w *basicResponseWriter) Write(b []byte) (int, error) { return w.body.Write(b) }
-func (w *basicResponseWriter) WriteHeader(code int)         { w.code = code }
+func (w *basicResponseWriter) WriteHeader(code int)        { w.code = code }
 
 // --- Rate limiter: request without port in RemoteAddr ---
 

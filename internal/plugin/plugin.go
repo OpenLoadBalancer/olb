@@ -7,6 +7,7 @@ package plugin
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -201,8 +202,19 @@ func (eb *EventBus) Publish(topic string, data any) {
 	eb.mu.RUnlock()
 
 	for _, s := range subs {
-		s.handler(event)
+		eb.safeCall(s, event)
 	}
+}
+
+// safeCall invokes a subscriber handler, containing panics: one misbehaving
+// plugin must not crash the daemon nor skip the remaining handlers.
+func (eb *EventBus) safeCall(s subscription, event Event) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[plugin] event handler panic recovered (topic=%q subscriber=%s): %v", event.Topic, s.id, r)
+		}
+	}()
+	s.handler(event)
 }
 
 // --------------------------------------------------------------------------

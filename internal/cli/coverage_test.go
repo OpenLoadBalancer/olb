@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -366,9 +365,7 @@ func TestCov_TUI_FetchData_InvalidJSON(t *testing.T) {
 }
 
 func TestCov_TUI_FetchData_PartialSuccess(t *testing.T) {
-	callCount := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
 		if r.URL.Path == "/api/v1/system/info" {
 			resp := admin.Response{
 				Success: true,
@@ -2482,9 +2479,9 @@ func TestCov_Screen_DrawBox_TooSmall(t *testing.T) {
 	s := NewScreen()
 	s.Reset(80, 24)
 	// Should not panic with small dimensions
-	s.DrawBox(0, 0, 1, 5, "title", false)  // width < 2
-	s.DrawBox(0, 0, 5, 1, "title", false)  // height < 2
-	s.DrawBox(0, 0, 0, 0, "title", false)  // both < 2
+	s.DrawBox(0, 0, 1, 5, "title", false) // width < 2
+	s.DrawBox(0, 0, 5, 1, "title", false) // height < 2
+	s.DrawBox(0, 0, 0, 0, "title", false) // both < 2
 }
 
 // ---------------------------------------------------------------------------
@@ -2858,30 +2855,7 @@ func TestCov_TableFormatter_StringSliceWithHeaders(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Terminal.restore with valid terminalState on Windows (top_windows.go:113)
-// This test exercises the restore path with a valid state object.
-// ---------------------------------------------------------------------------
 
-func TestCov_Terminal_Restore_WithValidState(t *testing.T) {
-	// Create a Terminal with a valid terminalState to test the restore path
-	state := &terminalState{
-		originalInMode:  0x0007, // default console mode
-		originalOutMode: 0x0003,
-		inHandle:        syscall.Handle(os.Stdin.Fd()),
-		outHandle:       syscall.Handle(os.Stdout.Fd()),
-	}
-	term := &Terminal{originalState: state}
-
-	// Call Restore (exported method) which delegates to restore() on Windows
-	err := term.Restore()
-	// This may or may not succeed depending on console state, but it should
-	// exercise the code path and not panic.
-	if err != nil {
-		t.Logf("Restore returned error (acceptable in test env): %v", err)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // Terminal newTerminal/getTerminalSizePlatform via NewTerminal
 // ---------------------------------------------------------------------------
 

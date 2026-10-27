@@ -97,10 +97,12 @@ type Cluster struct {
 	leaderID    atomic.Value // string
 
 	// Log management
-	log         []*LogEntry
-	logMu       sync.RWMutex
-	commitIndex atomic.Uint64
-	lastApplied atomic.Uint64
+	log           []*LogEntry
+	logMu         sync.RWMutex
+	logStartIndex uint64 // highest index covered by the snapshot (compaction watermark)
+	logStartTerm  uint64 // term at the compaction watermark (snapshot metadata)
+	commitIndex   atomic.Uint64
+	lastApplied   atomic.Uint64
 
 	// Cluster membership
 	nodes   map[string]*Node
@@ -665,18 +667,11 @@ func (c *Cluster) handleCommand(cmd *Command) {
 
 	// Wait for quorum, step-down, or timeout
 	lostLeadership := make(chan struct{}, 1)
+	done := make(chan struct{})
+	watcherDone := make(chan struct{})
 	go func() {
-		ticker := time.NewTicker(50 * time.Millisecond)
-		defer ticker.Stop()
-		for range ticker.C {
-			if c.GetState() != StateLeader {
-				select {
-				case lostLeadership <- struct{}{}:
-				default:
-				}
-				return
-			}
-		}
+		defer close(watcherDone)
+		c.watchLeadership(done, lostLeadership)
 	}()
 
 	select {
@@ -703,6 +698,33 @@ func (c *Cluster) handleCommand(cmd *Command) {
 			Error: errors.New("replication timeout: failed to reach quorum"),
 			Index: entry.Index,
 			Term:  entry.Term,
+		}
+	}
+
+	// Stop the leadership watcher: without this, one ticker goroutine would
+	// leak per proposed command on a stable leader.
+	close(done)
+	<-watcherDone
+}
+
+// watchLeadership reports loss of leadership while a command replication is in
+// flight. It returns when leadership is lost or when done is closed; the done
+// path is what prevents a per-command goroutine leak.
+func (c *Cluster) watchLeadership(done <-chan struct{}, lostLeadership chan<- struct{}) {
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			if c.GetState() != StateLeader {
+				select {
+				case lostLeadership <- struct{}{}:
+				default:
+				}
+				return
+			}
+		case <-done:
+			return
 		}
 	}
 }
@@ -996,17 +1018,44 @@ func (c *Cluster) HandleAppendEntries(req *AppendEntries) *AppendEntriesResponse
 	// Log consistency check: verify PrevLogIndex/PrevLogTerm match
 	if req.PrevLogIndex > 0 {
 		c.logMu.RLock()
-		if req.PrevLogIndex > uint64(len(c.log)) {
-			// Our log is too short — report conflict
+		// Entries at or below the compaction watermark are covered by the
+		// snapshot: the consistency check for that prefix succeeds trivially,
+		// except at the watermark boundary itself where the snapshot term is
+		// authoritative.
+		if req.PrevLogIndex <= c.logStartIndex {
+			if req.PrevLogIndex == c.logStartIndex && req.PrevLogTerm != c.logStartTerm {
+				// Snapshot-boundary term mismatch — real conflict.
+				c.logMu.RUnlock()
+				return &AppendEntriesResponse{
+					Term:          c.GetTerm(),
+					Success:       false,
+					ConflictIndex: c.logStartIndex,
+					ConflictTerm:  c.logStartTerm,
+				}
+			}
+			c.logMu.RUnlock()
+		} else if req.PrevLogIndex > c.getLastLogIndexLocked() {
+			// Our log is too short — report conflict at our last known index.
+			conflictIndex := c.getLastLogIndexLocked()
 			c.logMu.RUnlock()
 			return &AppendEntriesResponse{
 				Term:          c.GetTerm(),
 				Success:       false,
-				ConflictIndex: uint64(len(c.log)),
+				ConflictIndex: conflictIndex,
 			}
-		}
-		slot := c.findLogSlotLocked(req.PrevLogIndex)
-		if slot >= 0 {
+		} else {
+			slot := c.findLogSlotLocked(req.PrevLogIndex)
+			if slot < 0 {
+				// Index within range but missing (gap): report conflict at our
+				// last known index.
+				conflictIndex := c.getLastLogIndexLocked()
+				c.logMu.RUnlock()
+				return &AppendEntriesResponse{
+					Term:          c.GetTerm(),
+					Success:       false,
+					ConflictIndex: conflictIndex,
+				}
+			}
 			prevEntry := c.log[slot]
 			if prevEntry.Term != req.PrevLogTerm {
 				// Term mismatch at PrevLogIndex — report conflict
@@ -1019,14 +1068,20 @@ func (c *Cluster) HandleAppendEntries(req *AppendEntries) *AppendEntriesResponse
 					ConflictTerm:  conflictTerm,
 				}
 			}
+			c.logMu.RUnlock()
 		}
-		c.logMu.RUnlock()
 	}
 
 	// Append new entries (overwrite conflicting entries if any)
 	if len(req.Entries) > 0 {
 		c.logMu.Lock()
 		for _, entry := range req.Entries {
+			if entry.Index <= c.logStartIndex {
+				// Snapshot-covered entries must never re-enter the in-memory
+				// log: the watermark invariant (log holds only indices >
+				// logStartIndex) is what ShouldSendSnapshot relies on.
+				continue
+			}
 			slot := c.findLogSlotLocked(entry.Index)
 			if slot >= 0 {
 				// Overwrite existing entry if term differs
@@ -1055,8 +1110,18 @@ func (c *Cluster) HandleAppendEntries(req *AppendEntries) *AppendEntriesResponse
 		commitIdx := c.commitIndex.Load()
 		toApply := make([][]byte, 0, commitIdx-c.lastApplied.Load())
 		c.logMu.RLock()
-		for i := startIdx; i <= commitIdx && i <= uint64(len(c.log)); i++ {
-			toApply = append(toApply, c.log[i-1].Command)
+		// Index by absolute log index (binary search): after compaction,
+		// c.log[0] is no longer entry 1, so position math would silently
+		// apply nothing (or the wrong command).
+		for i := startIdx; i <= commitIdx; i++ {
+			slot := c.findLogSlotLocked(i)
+			if slot < 0 {
+				// Entry compacted away or missing: application must stay
+				// contiguous — apply what we have; the snapshot covers the
+				// missing prefix.
+				break
+			}
+			toApply = append(toApply, c.log[slot].Command)
 		}
 		c.logMu.RUnlock()
 

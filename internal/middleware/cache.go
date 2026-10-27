@@ -287,6 +287,14 @@ func CacheKey(r *http.Request) string {
 		}
 	}
 
+	// Distinguish credentials so different users never share a cache entry
+	// when CacheAuthenticatedRequests is enabled. The suffix sits at a fixed
+	// position (after the query stream, which always ends with "&") and NUL is
+	// not valid in header values, keeping the segment unambiguous.
+	if auth := r.Header.Get("Authorization"); auth != "" {
+		h.Write([]byte("\x00auth=" + auth))
+	}
+
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -408,6 +416,11 @@ func (c *CacheMiddleware) maybeCacheResponse(key string, _ *http.Request, rec *r
 	}
 
 	// Build the cached response.
+	// Never cache responses that set cookies (RFC 9111 §3.5): a shared cache
+	// would replay one user's session cookie to every other user.
+	if len(rec.Header().Values("Set-Cookie")) > 0 {
+		return
+	}
 	headers := make(http.Header, len(rec.Header()))
 	for k, vals := range rec.Header() {
 		headers[k] = append([]string(nil), vals...)

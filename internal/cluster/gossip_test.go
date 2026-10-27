@@ -2810,8 +2810,10 @@ func getClosedPort(t *testing.T) int {
 func getFreePort(t *testing.T) int {
 	t.Helper()
 	for attempt := 0; attempt < 200; attempt++ {
+		// Probe on 0.0.0.0, the default gossip BindAddr: a port free on
+		// 127.0.0.1 can still be taken on another interface.
 		// Bind UDP first (more restrictive on Windows)
-		udpAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:0")
+		udpAddr, err := net.ResolveUDPAddr("udp", "0.0.0.0:0")
 		if err != nil {
 			continue
 		}
@@ -2822,7 +2824,7 @@ func getFreePort(t *testing.T) int {
 		port := udpConn.LocalAddr().(*net.UDPAddr).Port
 
 		// Verify TCP is also available on the same port
-		tcpL, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		tcpL, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
 		if err != nil {
 			udpConn.Close()
 			continue

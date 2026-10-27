@@ -106,6 +106,25 @@ func (t *TCPTransport) Start() error {
 	return nil
 }
 
+// StartWithWrapper binds and starts accepting, passing the raw listener
+// through wrap (e.g. authentication middleware) BEFORE the accept loop is
+// spawned. This both avoids the data race of wrapping after Start (the accept
+// goroutine reads the listener concurrently) and closes the window where the
+// raw, unauthenticated listener briefly accepted connections.
+func (t *TCPTransport) StartWithWrapper(wrap func(net.Listener) net.Listener) error {
+	ln, err := net.Listen("tcp", t.bindAddr)
+	if err != nil {
+		return fmt.Errorf("tcp listen: %w", err)
+	}
+	if wrap != nil {
+		ln = wrap(ln)
+	}
+	t.listener = ln
+
+	go t.acceptLoop()
+	return nil
+}
+
 // Stop shuts down the transport and closes all pooled connections.
 func (t *TCPTransport) Stop() error {
 	close(t.stopCh)

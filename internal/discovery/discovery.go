@@ -124,6 +124,7 @@ type baseProvider struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
+	stopOnce     sync.Once
 }
 
 // newBaseProvider creates a new base provider.
@@ -217,13 +218,16 @@ func (p *baseProvider) removeService(id string) {
 	}
 }
 
-// Stop stops the provider.
+// Stop stops the provider. It is idempotent: repeated Stops (e.g. via
+// Manager.RemoveProvider followed by an engine-level Stop) do not panic.
 func (p *baseProvider) Stop() error {
 	if p.cancel != nil {
 		p.cancel()
 	}
 	p.wg.Wait()
-	close(p.events)
+	p.stopOnce.Do(func() {
+		close(p.events)
+	})
 	return nil
 }
 
@@ -263,8 +267,11 @@ func (m *Manager) RemoveProvider(name string) error {
 		return fmt.Errorf("provider %q not found", name)
 	}
 
-	provider.Stop()
+	err := provider.Stop()
 	delete(m.providers, name)
+	if err != nil {
+		return fmt.Errorf("failed to stop provider %q: %w", name, err)
+	}
 	return nil
 }
 

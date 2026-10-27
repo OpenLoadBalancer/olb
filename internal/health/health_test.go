@@ -1109,3 +1109,53 @@ func ExampleChecker_Register() {
 	fmt.Println("Backend registered for health checks")
 	// Output: Backend registered for health checks
 }
+
+// TestChecker_DoesNotResurrectDrainingBackend pins F015: a successful health
+// check must not force a Draining backend back to Up — the state machine
+// forbids Draining→Up, and admin drain must survive checker recovery.
+func TestChecker_DoesNotResurrectDrainingBackend(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := NewChecker()
+	be := backend.NewBackend("drained", srv.Listener.Addr().String())
+	be.SetState(backend.StateDraining)
+
+	st := &checkState{
+		backend: be,
+		config: &Check{
+			Type:               "http",
+			Path:               "/health",
+			Timeout:            time.Second,
+			HealthyThreshold:   1,
+			UnhealthyThreshold: 1,
+		},
+		status: StatusUnhealthy,
+		stopCh: make(chan struct{}),
+	}
+
+	c.performCheck(st)
+
+	if st.status != StatusHealthy {
+		t.Fatalf("checker status should become healthy after a 200, got %v", st.status)
+	}
+	if got := be.State(); got != backend.StateDraining {
+		t.Fatalf("draining backend was resurrected to %v; must stay Draining", got)
+	}
+
+	// Control: a Down backend recovers to Up through the same path.
+	be2 := backend.NewBackend("downed", srv.Listener.Addr().String())
+	be2.SetState(backend.StateDown)
+	st2 := &checkState{
+		backend: be2,
+		config:  st.config,
+		status:  StatusUnhealthy,
+		stopCh:  make(chan struct{}),
+	}
+	c.performCheck(st2)
+	if got := be2.State(); got != backend.StateUp {
+		t.Fatalf("Down backend should recover to Up, got %v", got)
+	}
+}

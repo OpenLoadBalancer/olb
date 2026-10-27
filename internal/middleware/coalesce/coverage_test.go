@@ -67,18 +67,11 @@ func TestCov_DefaultKeyFunc_IfModifiedSince(t *testing.T) {
 		t.Error("Key should not be empty")
 	}
 
-	// Verify the key contains the ims prefix
-	found := false
-	for _, prefix := range []string{"|ims:"} {
-		for i := 0; i+len(prefix) <= len(key); i++ {
-			if key[i:i+len(prefix)] == prefix {
-				found = true
-				break
-			}
-		}
-	}
-	if !found {
-		t.Errorf("Expected key to contain '|ims:' prefix, got %q", key)
+	// The If-Modified-Since header must influence the (hashed) key: the same
+	// request without it produces a different key.
+	reqNoIMS := httptest.NewRequest("GET", "/path", nil)
+	if key == DefaultKeyFunc(reqNoIMS) {
+		t.Error("Key should differ when If-Modified-Since is present")
 	}
 }
 
@@ -91,17 +84,23 @@ func TestCov_DefaultKeyFunc_AllHeaders(t *testing.T) {
 
 	key := DefaultKeyFunc(req)
 
-	// Verify all three header-derived segments are present
-	for _, substr := range []string{"|etag:etag-val", "|ims:", "|accept:application/json"} {
-		found := false
-		for i := 0; i+len(substr) <= len(key); i++ {
-			if key[i:i+len(substr)] == substr {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("Key missing expected substring %q, got %q", substr, key)
+	// Every header branch must influence the hashed key: removing any one of
+	// them changes the key.
+	bases := map[string]*http.Request{
+		"no-etag": httptest.NewRequest("GET", "/path?query=value", nil),
+		"no-ims":  httptest.NewRequest("GET", "/path?query=value", nil),
+		"no-acc":  httptest.NewRequest("GET", "/path?query=value", nil),
+	}
+	bases["no-etag"].Header.Set("If-Modified-Since", "Wed, 21 Oct 2015 07:28:00 GMT")
+	bases["no-etag"].Header.Set("Accept", "application/json")
+	bases["no-ims"].Header.Set("If-None-Match", "etag-val")
+	bases["no-ims"].Header.Set("Accept", "application/json")
+	bases["no-acc"].Header.Set("If-None-Match", "etag-val")
+	bases["no-acc"].Header.Set("If-Modified-Since", "Wed, 21 Oct 2015 07:28:00 GMT")
+
+	for name, other := range bases {
+		if key == DefaultKeyFunc(other) {
+			t.Errorf("Key should differ when the %s header is dropped", name)
 		}
 	}
 }

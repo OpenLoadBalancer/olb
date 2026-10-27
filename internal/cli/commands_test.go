@@ -1038,6 +1038,13 @@ func TestReloadCommand_WithSignal(t *testing.T) {
 	if err != nil {
 		t.Logf("Signal-based reload returned: %v", err)
 	}
+	// Wait for delivery: if the deferred signal.Stop ran first, the default
+	// SIGHUP action would kill the test binary.
+	select {
+	case <-sigCh:
+	case <-time.After(5 * time.Second):
+		t.Error("SIGHUP was not delivered")
+	}
 }
 
 func TestSendSignal_InvalidPID(t *testing.T) {

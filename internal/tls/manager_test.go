@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -1485,4 +1486,49 @@ func TestLoadCertificatesFromDirectory_InvalidCertContent(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for invalid certificate content")
 	}
+}
+
+// TestManager_GetCertificateCallback_ConcurrentDefaultCertSwap exercises the
+// no-SNI callback path while the default certificate is swapped concurrently
+// (hot reload). Run under -race to verify the read is synchronized
+// (manager.go GetCertificateCallback/GetCertificate vs SetDefaultCertificate).
+func TestManager_GetCertificateCallback_ConcurrentDefaultCertSwap(t *testing.T) {
+	m := NewManager()
+	m.SetDefaultCertificate(&Certificate{
+		Cert:  &tls.Certificate{},
+		Names: []string{"default.openloadbalancer.dev"},
+	})
+
+	cb := m.GetCertificateCallback()
+	hello := &tls.ClientHelloInfo{ServerName: ""}
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_, _ = cb(hello)
+			}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 5000; i++ {
+			if i%2 == 0 {
+				m.SetDefaultCertificate(nil)
+			} else {
+				m.SetDefaultCertificate(&Certificate{
+					Cert:  &tls.Certificate{},
+					Names: []string{"default.openloadbalancer.dev"},
+				})
+			}
+		}
+		close(stop)
+	}()
+	wg.Wait()
 }

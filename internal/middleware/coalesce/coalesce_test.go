@@ -387,9 +387,23 @@ func TestDefaultKeyFunc(t *testing.T) {
 		t.Error("Key should not be empty")
 	}
 
-	// Should include method and path
-	if key[:10] != "GET|/path|" {
-		t.Errorf("Key should start with 'GET|/path|', got %s", key[:10])
+	// The key is a fixed-length hash: deterministic for identical requests,
+	// distinct when identity or cache headers differ.
+	if len(key) != 64 { // sha256 hex
+		t.Errorf("Key should be a 64-char sha256 hex digest, got %d chars", len(key))
+	}
+	req2 := httptest.NewRequest("GET", "/path?query=value", nil)
+	req2.Header.Set("Accept", "application/json")
+	req2.Header.Set("If-None-Match", "abc123")
+	if key != DefaultKeyFunc(req2) {
+		t.Error("Key should be deterministic for identical requests")
+	}
+	req3 := httptest.NewRequest("GET", "/path?query=value", nil)
+	req3.Header.Set("Accept", "application/json")
+	req3.Header.Set("If-None-Match", "abc123")
+	req3.Header.Set("Cookie", "session=other-user")
+	if key == DefaultKeyFunc(req3) {
+		t.Error("Key should differ when the Cookie differs")
 	}
 }
 
@@ -552,5 +566,73 @@ func TestCoalesce_TTLOut(t *testing.T) {
 
 	if atomic.LoadInt32(&callCount) != 2 {
 		t.Errorf("Expected 2 calls after TTL, got %d", callCount)
+	}
+}
+
+// TestCoalesce_NoCrossUserResponseSharing ensures requests from different users
+// are never coalesced into one response: the key includes identity headers, so
+// BOB must not receive ALICE's body or Set-Cookie.
+func TestCoalesce_NoCrossUserResponseSharing(t *testing.T) {
+	started := make(chan string, 1)
+	release := make(chan struct{})
+	backend := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, _ := r.Cookie("session")
+		u := "none"
+		if c != nil {
+			u = c.Value
+		}
+		started <- u
+		<-release
+		w.Header().Set("Set-Cookie", "session="+u+"; Path=/")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("PAGE FOR " + u))
+	})
+	h := New(Config{Enabled: true, TTL: 5 * time.Second}).Wrap(backend)
+
+	var wg sync.WaitGroup
+	var recB *httptest.ResponseRecorder
+
+	// ALICE goes in-flight and blocks.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		req := httptest.NewRequest("GET", "http://lb/account", nil)
+		req.Header.Set("Cookie", "session=ALICE")
+		h.ServeHTTP(httptest.NewRecorder(), req)
+	}()
+	if u := <-started; u != "ALICE" {
+		t.Fatalf("backend saw %q first", u)
+	}
+
+	// BOB arrives with a different identity while ALICE is in-flight.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		req := httptest.NewRequest("GET", "http://lb/account", nil)
+		req.Header.Set("Cookie", "session=BOB")
+		recB = httptest.NewRecorder()
+		h.ServeHTTP(recB, req)
+	}()
+	// BOB only needs to register as a waiter (pure CPU, no I/O).
+	time.Sleep(200 * time.Millisecond)
+	close(release)
+	wg.Wait()
+
+	// BOB must have reached the backend himself (his own coalesce key).
+	// If the cookie component were lost from the key, BOB would have been
+	// served ALICE's in-flight response and never hit the backend.
+	select {
+	case u := <-started:
+		if u != "BOB" {
+			t.Errorf("backend saw unexpected user %q for BOB's request", u)
+		}
+	default:
+		t.Fatal("BOB never reached the backend: he was served a coalesced response")
+	}
+	if recB.Header().Get("X-Coalesced") != "false" {
+		t.Errorf("BOB must be served directly (X-Coalesced: false), got %q", recB.Header().Get("X-Coalesced"))
+	}
+	if recB.Body.String() != "PAGE FOR BOB" {
+		t.Errorf("BOB received wrong body: %q", recB.Body.String())
 	}
 }

@@ -908,3 +908,22 @@ type errorReader struct{}
 func (r *errorReader) Read(p []byte) (n int, err error) {
 	return 0, bytes.ErrTooLarge
 }
+
+// TestOCSPManager_StopIdempotent ensures Stop can be called multiple times
+// without panicking on a double channel close (parity with StopExpiryMonitor).
+func TestOCSPManager_StopIdempotent(t *testing.T) {
+	m := NewOCSPManager(nil)
+	if err := m.Stop(); err != nil {
+		t.Fatalf("first Stop returned error: %v", err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = m.Stop()
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("second Stop did not return (possible deadlock)")
+	}
+}

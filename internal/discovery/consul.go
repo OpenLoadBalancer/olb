@@ -320,7 +320,8 @@ func (p *ConsulProvider) watchCatalog() {
 		case <-ticker.C:
 			services, err := p.getServices()
 			if err != nil {
-				log.Printf("[discovery] Consul catalog fetch failed: %v", err); continue
+				log.Printf("[discovery] Consul catalog fetch failed: %v", err)
+				continue
 			}
 
 			for serviceName := range services {

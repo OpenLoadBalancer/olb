@@ -187,11 +187,11 @@ func TestCov_NextBackend_BalancerReturnsNil(t *testing.T) {
 // nilBalancer is a mock Balancer that always returns nil from Next().
 type nilBalancer struct{}
 
-func (n *nilBalancer) Name() string                              { return "nil-balancer" }
+func (n *nilBalancer) Name() string                                  { return "nil-balancer" }
 func (n *nilBalancer) Next(_ *RequestContext, _ []*Backend) *Backend { return nil }
-func (n *nilBalancer) Add(_ *Backend)                            {}
-func (n *nilBalancer) Remove(_ string)                           {}
-func (n *nilBalancer) Update(_ *Backend)                         {}
+func (n *nilBalancer) Add(_ *Backend)                                {}
+func (n *nilBalancer) Remove(_ string)                               {}
+func (n *nilBalancer) Update(_ *Backend)                             {}
 
 // ---------------------------------------------------------------------------
 // state.go coverage

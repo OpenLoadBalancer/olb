@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/openloadbalancer/olb/internal/cluster"
@@ -70,15 +71,19 @@ func (e *Engine) initCluster(clusterCfg *config.ClusterConfig, logger *logging.L
 	} else {
 		// Wrap transport listener with authentication if node_auth is configured
 		if clusterCfg.NodeAuth != nil && clusterCfg.NodeAuth.SharedSecret != "" {
-			if err := transport.Start(); err != nil {
-				logger.Warn("Failed to start cluster transport", logging.Error(err))
-			} else {
-				authListener := cluster.NewNodeAuthMiddleware(
-					transport.Listener(),
+			// Bind, wrap with auth, then accept: starting the accept loop on
+			// the raw listener first would race the wrapper swap and briefly
+			// accept unauthenticated connections.
+			err := transport.StartWithWrapper(func(raw net.Listener) net.Listener {
+				return cluster.NewNodeAuthMiddleware(
+					raw,
 					[]byte(clusterCfg.NodeAuth.SharedSecret),
 					clusterCfg.NodeAuth.AllowedNodeIDs,
 				)
-				transport.SetListener(authListener)
+			})
+			if err != nil {
+				logger.Warn("Failed to start cluster transport", logging.Error(err))
+			} else {
 				logger.Info("Cluster transport authentication enabled",
 					logging.Int("allowed_nodes", len(clusterCfg.NodeAuth.AllowedNodeIDs)),
 				)

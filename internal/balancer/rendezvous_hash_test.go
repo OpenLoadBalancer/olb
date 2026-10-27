@@ -462,3 +462,51 @@ func BenchmarkRendezvousHash_WithRealisticBackends(b *testing.B) {
 		}
 	})
 }
+
+// TestRendezvousHash_NoKeyCollapse pins F017: context-less requests (nil ctx,
+// as used by SSE/WS/TCP/UDP paths) must keep distributing evenly across
+// backends — the counter key must never collapse and the score hash must
+// avalanche (raw FNV-1a barely changes high bits when only trailing bytes
+// differ, biasing selection toward one backend).
+func TestRendezvousHash_NoKeyCollapse(t *testing.T) {
+	rh := NewRendezvousHash()
+	ids := []string{"a", "b", "c"}
+	var backends []*backend.Backend
+	for _, id := range ids {
+		be := backend.NewBackend(id, "127.0.0.1:900"+id)
+		be.SetState(backend.StateUp) // NewBackend starts in StateStarting
+		rh.Add(be)
+		backends = append(backends, be)
+	}
+
+	const total = 60000
+	counts := make(map[string]int, len(ids))
+	for i := 0; i < total; i++ {
+		be := rh.Next(nil, backends)
+		if be == nil {
+			t.Fatal("Next returned nil with healthy backends")
+		}
+		counts[be.ID]++
+	}
+	for _, id := range ids {
+		share := float64(counts[id]) / float64(total)
+		if share > 0.40 {
+			t.Errorf("backend %q received %.1f%% of context-less requests; distribution collapsed", id, share*100)
+		}
+		if share < 0.10 {
+			t.Errorf("backend %q received only %.1f%% of context-less requests", id, share*100)
+		}
+	}
+
+	// Key uniqueness across the surrogate/out-of-range rune range: decimal
+	// counter keys must never repeat (rune conversion would collapse
+	// 0xD800-0xDFFF and >=0x110000 onto U+FFFD).
+	seen := make(map[string]struct{}, 70001)
+	for i := 0; i <= 70000; i++ {
+		k := generateKey()
+		if _, dup := seen[k]; dup {
+			t.Fatalf("generateKey produced duplicate key %q within %d calls", k, len(seen))
+		}
+		seen[k] = struct{}{}
+	}
+}

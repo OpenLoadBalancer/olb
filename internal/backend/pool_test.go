@@ -94,25 +94,25 @@ func TestPoolGetHealthyBackends(t *testing.T) {
 	p.AddBackend(b3)
 
 	healthy := p.GetHealthyBackends()
-	if len(healthy) != 2 {
-		t.Errorf("GetHealthyBackends() = %v, want 2", len(healthy))
+	if len(healthy) != 1 {
+		t.Errorf("GetHealthyBackends() = %v, want 1", len(healthy))
 	}
 
-	// b1 (Up) and b3 (Draining) should be healthy
-	hasB1, hasB3 := false, false
+	// Only b1 (Up) may receive new traffic: Draining exists precisely to stop
+	// new requests while allowing in-flight ones to finish.
+	hasB1 := false
 	for _, b := range healthy {
 		if b.ID == "b1" {
 			hasB1 = true
-		}
-		if b.ID == "b3" {
-			hasB3 = true
 		}
 	}
 	if !hasB1 {
 		t.Error("GetHealthyBackends() should include b1 (Up)")
 	}
-	if !hasB3 {
-		t.Error("GetHealthyBackends() should include b3 (Draining)")
+	for _, b := range healthy {
+		if b.ID == "b3" {
+			t.Error("GetHealthyBackends() must not include b3 (Draining)")
+		}
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -3598,4 +3599,109 @@ func TestParseTrustedProxies(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestHTTPProxy_NoRetryAfterResponseCommitted pins F025: once a backend's
+// status line reached the client, a body-copy failure (here a connection
+// reset) must not be retried on another backend — that would splice the
+// second backend's response onto the first one's partial body.
+func TestHTTPProxy_NoRetryAfterResponseCommitted(t *testing.T) {
+	var current atomic.Pointer[commitSignalRecorder]
+
+	poolManager := backend.NewPoolManager()
+	routerInstance := router.NewRouter()
+	proxy := NewHTTPProxy(&Config{
+		Router:          routerInstance,
+		PoolManager:     poolManager,
+		ConnPoolManager: conn.NewPoolManager(nil),
+		HealthChecker:   health.NewChecker(),
+		MiddlewareChain: middleware.NewChain(),
+		ProxyTimeout:    5 * time.Second,
+		DialTimeout:     1 * time.Second,
+		MaxRetries:      3,
+	})
+
+	var firstCalls, secondCalls atomic.Int32
+	resetting := createTestBackend(t, func(w http.ResponseWriter, r *http.Request) {
+		firstCalls.Add(1)
+		w.Header().Set("Content-Length", "1000")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("partial-from-1"))
+		w.(http.Flusher).Flush()
+		// Reset only once the proxy has sent the status to the client, so
+		// the failure is a body-copy error, not a pre-commit one.
+		select {
+		case <-current.Load().committed:
+		case <-time.After(5 * time.Second):
+		}
+		c, _, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			return
+		}
+		if tc, ok := c.(*net.TCPConn); ok {
+			tc.SetLinger(0) // close with RST -> ECONNRESET on the proxy side
+		}
+		c.Close()
+	})
+	defer resetting.Close()
+
+	healthy := createTestBackend(t, func(w http.ResponseWriter, r *http.Request) {
+		secondCalls.Add(1)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("from-2"))
+	})
+	defer healthy.Close()
+
+	pool := backend.NewPool("commit-pool", "round_robin")
+	pool.SetBalancer(balancer.NewRoundRobin())
+	for i, addr := range []string{resetting.Listener.Addr().String(), healthy.Listener.Addr().String()} {
+		b := backend.NewBackend(fmt.Sprintf("commit-backend-%d", i+1), addr)
+		b.SetState(backend.StateUp)
+		if err := pool.AddBackend(b); err != nil {
+			t.Fatalf("failed to add backend: %v", err)
+		}
+	}
+	if err := poolManager.AddPool(pool); err != nil {
+		t.Fatalf("failed to add pool: %v", err)
+	}
+	if err := routerInstance.AddRoute(&router.Route{Name: "commit", Path: "/commit", BackendPool: "commit-pool"}); err != nil {
+		t.Fatalf("failed to add route: %v", err)
+	}
+
+	// The balancer may pick the healthy backend first; send requests until
+	// one lands on the resetting backend first.
+	for i := 0; i < 10; i++ {
+		rr := &commitSignalRecorder{ResponseRecorder: httptest.NewRecorder(), committed: make(chan struct{})}
+		current.Store(rr)
+		firstBefore, secondBefore := firstCalls.Load(), secondCalls.Load()
+
+		proxy.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/commit", nil))
+
+		if firstCalls.Load() == firstBefore {
+			continue // healthy backend served it; not the case under test
+		}
+		if !strings.HasPrefix(rr.Body.String(), "partial-from-1") {
+			t.Fatalf("first backend's partial body missing: %q", rr.Body.String())
+		}
+		if body := rr.Body.String(); strings.Contains(body, "from-2") {
+			t.Errorf("second backend's response spliced into committed body: %q", body)
+		}
+		if n := secondCalls.Load() - secondBefore; n != 0 {
+			t.Errorf("second backend called %d times after the response was committed", n)
+		}
+		return
+	}
+	t.Fatal("resetting backend was never selected first")
+}
+
+// commitSignalRecorder closes committed when the status line is written.
+type commitSignalRecorder struct {
+	*httptest.ResponseRecorder
+	committed chan struct{}
+	once      sync.Once
+}
+
+func (r *commitSignalRecorder) WriteHeader(code int) {
+	r.ResponseRecorder.WriteHeader(code)
+	r.once.Do(func() { close(r.committed) })
 }

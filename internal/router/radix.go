@@ -2,6 +2,7 @@
 package router
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 )
@@ -66,9 +67,12 @@ func NewRadixTrie() *RadixTrie {
 }
 
 // Insert adds a route to the trie with the given value.
-func (t *RadixTrie) Insert(path string, value any) {
+// Returns an error for routes that cannot coexist in the trie: conflicting
+// parameter names at the same position, or a wildcard segment that is not
+// last (segments below a wildcard would be unreachable).
+func (t *RadixTrie) Insert(path string, value any) error {
 	if path == "" {
-		return
+		return fmt.Errorf("cannot insert empty path")
 	}
 
 	// Ensure path starts with /
@@ -81,18 +85,27 @@ func (t *RadixTrie) Insert(path string, value any) {
 		path = path[:len(path)-1]
 	}
 
+	segments := splitPath(path)
+
+	// A wildcard consumes the whole remainder, so a route with segments below
+	// a wildcard could never match.
+	for i, seg := range segments {
+		if len(seg) > 0 && seg[0] == '*' && i != len(segments)-1 {
+			return fmt.Errorf("wildcard segment %q must be the last segment in path %q", seg, path)
+		}
+	}
+
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	segments := splitPath(path)
-	t.insertSegments(t.root, segments, 0, value)
+	return t.insertSegments(t.root, segments, 0, value)
 }
 
-func (t *RadixTrie) insertSegments(node *radixNode, segments []string, index int, value any) {
+func (t *RadixTrie) insertSegments(node *radixNode, segments []string, index int, value any) error {
 	if index >= len(segments) {
 		node.isEndpoint = true
 		node.value = value
-		return
+		return nil
 	}
 
 	segment := segments[index]
@@ -126,14 +139,19 @@ func (t *RadixTrie) insertSegments(node *radixNode, segments []string, index int
 			isWildcard: isWildcard,
 		}
 		node.children[key] = child
+	} else if (key == ":" || key == "*") && child.paramName != paramName {
+		// A single trie node can only capture under one parameter name; two
+		// different names at the same position would corrupt route params.
+		return fmt.Errorf("conflicting parameter name %q at position %d (route already captures as %q)", paramName, index, child.paramName)
 	}
 
 	if isLast {
 		child.isEndpoint = true
 		child.value = value
 	} else {
-		t.insertSegments(child, segments, index+1, value)
+		return t.insertSegments(child, segments, index+1, value)
 	}
+	return nil
 }
 
 // MatchResult holds the result of a path match.

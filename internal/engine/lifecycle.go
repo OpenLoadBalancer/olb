@@ -60,13 +60,13 @@ func (e *Engine) Start() error {
 		e.healthChecker.Stop()
 	}
 	e.healthChecker = health.NewChecker()
-		// Allow gRPC TLS skip verify if any pool health check requests it
-		for _, pool := range e.config.Pools {
-			if pool.HealthCheck != nil && pool.HealthCheck.GRPCTLSSkipVerify {
-				e.healthChecker.SetGRPCTLSSkipVerify(true)
-				break
-			}
+	// Allow gRPC TLS skip verify if any pool health check requests it
+	for _, pool := range e.config.Pools {
+		if pool.HealthCheck != nil && pool.HealthCheck.GRPCTLSSkipVerify {
+			e.healthChecker.SetGRPCTLSSkipVerify(true)
+			break
 		}
+	}
 
 	// 4. Initialize backend pools and register backends with health checker
 	if err := e.initializePools(); err != nil {
@@ -510,6 +510,10 @@ func (e *Engine) Reload() error {
 	}
 	e.state = StateReloading
 	e.mu.Unlock()
+
+	// Count every completed reload attempt (success or failure) so tests and
+	// tooling can wait for an in-flight reload to finish.
+	defer e.reloadCount.Add(1)
 
 	e.logger.Info("Reloading configuration...")
 

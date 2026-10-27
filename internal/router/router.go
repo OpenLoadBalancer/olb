@@ -129,7 +129,9 @@ func (r *Router) AddRoute(route *Route) error {
 	ht := r.getOrCreateHostTrie(route.Host)
 
 	// Add route to trie - use path as the key
-	ht.trie.Insert(route.Path, route.Path)
+	if err := ht.trie.Insert(route.Path, route.Path); err != nil {
+		return olbErrors.ErrInvalidArg.WithContext("route_path", route.Path).WithContext("reason", err.Error())
+	}
 
 	// Add to route entry for this path
 	entry, exists := ht.routes[route.Path]
@@ -422,7 +424,11 @@ func (r *Router) Swap(routes []*Route) error {
 		}
 
 		// Add route to trie
-		ht.trie.Insert(route.Path, route.Path)
+		if err := ht.trie.Insert(route.Path, route.Path); err != nil {
+			// Fail the whole swap: a silently-dropped route would look like a
+			// successful reload while serving 404s for that path.
+			return olbErrors.ErrInvalidArg.WithContext("route_path", route.Path).WithContext("reason", err.Error())
+		}
 
 		// Add to route entry
 		entry, exists := ht.routes[route.Path]

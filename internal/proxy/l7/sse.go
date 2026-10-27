@@ -194,13 +194,15 @@ func (sh *SSEHandler) streamSSEResponseWithContext(w http.ResponseWriter, r *htt
 		return err
 	}
 
-	// Stream events line by line
+	// Stream events line by line. maxLineSize bounds a single LINE (one event),
+	// never the whole stream: a total-stream cap would silently truncate
+	// long-lived SSE connections at MaxEventSize bytes.
 	ctx := r.Context()
 	maxLineSize := sh.config.MaxEventSize
 	if maxLineSize <= 0 {
 		maxLineSize = 1024 * 1024 // 1MB default
 	}
-	reader := bufio.NewReader(io.LimitReader(resp.Body, maxLineSize))
+	reader := bufio.NewReaderSize(resp.Body, 32*1024)
 	// Single reader goroutine — reuses one goroutine for all reads instead of
 	// spawning a new one per line, preventing unbounded goroutine growth.
 	lineCh := make(chan readLineResult, 1)
@@ -211,7 +213,38 @@ func (sh *SSEHandler) streamSSEResponseWithContext(w http.ResponseWriter, r *htt
 			}
 		}()
 		for {
-			line, err := reader.ReadBytes('\n')
+			var line []byte
+			var err error
+			// Accumulate with bounded buffering: ReadSlice returns
+			// ErrBufferFull when the buffer fills without a newline, so a
+			// hostile oversized event cannot grow memory without bound.
+			for {
+				frag, ferr := reader.ReadSlice('\n')
+				line = append(line, frag...)
+				if ferr == nil {
+					// A line that fit in the read buffer can still exceed
+					// a MaxEventSize smaller than the buffer.
+					if int64(len(line)) > maxLineSize {
+						line = append(line[:maxLineSize], '\n')
+					}
+					err = nil
+					break
+				}
+				if ferr == bufio.ErrBufferFull {
+					if int64(len(line)) > maxLineSize {
+						// Per-event limit exceeded: keep the first maxLineSize
+						// bytes, drop the rest of this line, keep streaming.
+						for ferr == bufio.ErrBufferFull {
+							_, ferr = reader.ReadSlice('\n')
+						}
+						line = append(line[:maxLineSize], '\n')
+						break
+					}
+					continue
+				}
+				err = ferr
+				break
+			}
 			lineCh <- readLineResult{line: line, err: err}
 			if err != nil {
 				return

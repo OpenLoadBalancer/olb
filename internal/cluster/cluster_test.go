@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -1004,5 +1005,186 @@ func TestConfig_Validate_InvalidBindAddr(t *testing.T) {
 				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// TestWatchLeadershipStopsOnDone pins F022: the per-command leadership watcher
+// must exit when the command completes (done closed) — otherwise one ticker
+// goroutine leaks per proposed command on a stable leader.
+func TestWatchLeadershipStopsOnDone(t *testing.T) {
+	config := &Config{
+		NodeID:        "node1",
+		BindAddr:      "127.0.0.1",
+		BindPort:      0, // never started; no listener
+		ElectionTick:  2 * time.Second,
+		HeartbeatTick: 500 * time.Millisecond,
+	}
+	c, err := New(config, newMockStateMachine())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	// Force leadership: otherwise the watcher exits via the not-leader path
+	// and the test would pass even without the done-channel fix.
+	c.state.Store(StateLeader)
+
+	done := make(chan struct{})
+	lost := make(chan struct{}, 1)
+	watcherDone := make(chan struct{})
+	go func() {
+		defer close(watcherDone)
+		c.watchLeadership(done, lost)
+	}()
+
+	close(done)
+	select {
+	case <-watcherDone:
+		// watcher exited promptly — no leak
+	case <-time.After(2 * time.Second):
+		t.Fatal("watchLeadership did not exit after done was closed (per-command goroutine leak)")
+	}
+}
+
+// TestHandleAppendEntriesAfterCompaction pins F027: log compaction must not
+// break follower replication or application. After the whole log is compacted
+// into a snapshot:
+//
+//	(a) a heartbeat whose PrevLogIndex points into the compacted prefix must
+//	    succeed (the snapshot covers that prefix),
+//	(b) the next real entry must be accepted AND applied with the correct
+//	    command (the old position-indexed apply loop read log[i-1], which
+//	    after compaction points at the wrong entry and applied nothing).
+func TestHandleAppendEntriesAfterCompaction(t *testing.T) {
+	config := &Config{
+		NodeID:        "n1",
+		BindAddr:      "127.0.0.1",
+		BindPort:      0, // never started; no listener
+		ElectionTick:  time.Second,
+		HeartbeatTick: 200 * time.Millisecond,
+	}
+	c, err := New(config, newMockStateMachine())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	sm := c.stateMachine.(*mockStateMachine)
+
+	// Fill the log with entries 1..5 and commit them.
+	entries := make([]*LogEntry, 0, 5)
+	for i := 1; i <= 5; i++ {
+		entries = append(entries, &LogEntry{
+			Index:   uint64(i),
+			Term:    1,
+			Command: []byte(fmt.Sprintf("k%d=v%d", i, i)),
+		})
+	}
+	resp := c.HandleAppendEntries(&AppendEntries{
+		Term:         1,
+		LeaderID:     "leader",
+		PrevLogIndex: 0,
+		LeaderCommit: 5,
+		Entries:      entries,
+	})
+	if !resp.Success {
+		t.Fatalf("initial append rejected: %+v", resp)
+	}
+	if sm.data["k5"] != "v5" {
+		t.Fatalf("entries not applied before compaction: %v", sm.data)
+	}
+
+	// Compact the whole log into a snapshot (as auto-compaction would).
+	if _, err := c.CreateSnapshot(); err != nil {
+		t.Fatalf("CreateSnapshot: %v", err)
+	}
+	c.logMu.RLock()
+	logLen := len(c.log)
+	c.logMu.RUnlock()
+	if logLen != 0 {
+		t.Fatalf("log should be empty after full compaction, got %d entries", logLen)
+	}
+
+	// (a) Heartbeat with PrevLogIndex inside the compacted prefix.
+	resp = c.HandleAppendEntries(&AppendEntries{
+		Term:         1,
+		LeaderID:     "leader",
+		PrevLogIndex: 3,
+		PrevLogTerm:  1,
+		LeaderCommit: 5,
+	})
+	if !resp.Success {
+		t.Fatalf("heartbeat with compacted PrevLogIndex rejected: %+v", resp)
+	}
+
+	// (b) The next real entry must be accepted and applied.
+	resp = c.HandleAppendEntries(&AppendEntries{
+		Term:         1,
+		LeaderID:     "leader",
+		PrevLogIndex: 5,
+		PrevLogTerm:  1,
+		LeaderCommit: 6,
+		Entries: []*LogEntry{
+			{Index: 6, Term: 1, Command: []byte("k6=v6")},
+		},
+	})
+	if !resp.Success {
+		t.Fatalf("append after compaction rejected: %+v", resp)
+	}
+	if sm.data["k6"] != "v6" {
+		t.Fatalf("committed entry after compaction was not applied: %v", sm.data)
+	}
+	if got := c.lastApplied.Load(); got != 6 {
+		t.Fatalf("lastApplied = %d, want 6", got)
+	}
+}
+
+// TestCompactionSnapshotMetadataAndOffer extends F027: after a FULL compaction
+// (empty log) a second snapshot must still carry the correct (term, index)
+// pair, and the leader must offer a snapshot to followers at or before the
+// watermark — otherwise a fully-compacted cluster stalls forever.
+func TestCompactionSnapshotMetadataAndOffer(t *testing.T) {
+	config := &Config{
+		NodeID:        "n1",
+		BindAddr:      "127.0.0.1",
+		BindPort:      0,
+		ElectionTick:  time.Second,
+		HeartbeatTick: 200 * time.Millisecond,
+	}
+	c, err := New(config, newMockStateMachine())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	entries := make([]*LogEntry, 0, 5)
+	for i := 1; i <= 5; i++ {
+		entries = append(entries, &LogEntry{Index: uint64(i), Term: 1, Command: []byte("cmd")})
+	}
+	if resp := c.HandleAppendEntries(&AppendEntries{Term: 1, LeaderID: "l", PrevLogIndex: 0, LeaderCommit: 5, Entries: entries}); !resp.Success {
+		t.Fatalf("initial append rejected: %+v", resp)
+	}
+	if _, err := c.CreateSnapshot(); err != nil {
+		t.Fatalf("first CreateSnapshot: %v", err)
+	}
+	if resp := c.HandleAppendEntries(&AppendEntries{Term: 1, LeaderID: "l", PrevLogIndex: 5, PrevLogTerm: 1, LeaderCommit: 6,
+		Entries: []*LogEntry{{Index: 6, Term: 1, Command: []byte("cmd6")}}}); !resp.Success {
+		t.Fatalf("append after compaction rejected: %+v", resp)
+	}
+
+	// Second snapshot over the fully compacted log must keep the term.
+	snap, err := c.CreateSnapshot()
+	if err != nil {
+		t.Fatalf("second CreateSnapshot: %v", err)
+	}
+	if snap.LastIncludedIndex != 6 {
+		t.Errorf("LastIncludedIndex = %d, want 6", snap.LastIncludedIndex)
+	}
+	if snap.LastIncludedTerm != 1 {
+		t.Errorf("LastIncludedTerm = %d, want 1 (zero term corrupts snapshot metadata)", snap.LastIncludedTerm)
+	}
+
+	// Leader must offer a snapshot to followers at/below the watermark even
+	// with an empty log.
+	if !c.ShouldSendSnapshot(6) {
+		t.Error("ShouldSendSnapshot(6) = false with fully compacted log; follower would stall")
+	}
+	if !c.ShouldSendSnapshot(3) {
+		t.Error("ShouldSendSnapshot(3) = false with fully compacted log; follower would stall")
 	}
 }

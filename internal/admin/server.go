@@ -82,14 +82,14 @@ type Server struct {
 	metrics       Metrics
 
 	// Optional components
-	clusterAdmin     ClusterAdmin // optional, nil if clustering not enabled
-	raftProposer     RaftProposer // optional, nil if clustering not enabled
+	clusterAdmin     ClusterAdmin       // optional, nil if clustering not enabled
+	raftProposer     RaftProposer       // optional, nil if clustering not enabled
 	configValidator  func([]byte) error // optional, validates config before Raft propose
-	webUI            http.Handler // optional, nil if web UI not available
-	configGetter     ConfigGetter // optional, for GET /api/v1/config
-	certLister       CertLister   // optional, for GET /api/v1/certificates
-	wafStatus        func() any   // optional WAF status provider
-	middlewareStatus func() any   // optional middleware status provider
+	webUI            http.Handler       // optional, nil if web UI not available
+	configGetter     ConfigGetter       // optional, for GET /api/v1/config
+	certLister       CertLister         // optional, for GET /api/v1/certificates
+	wafStatus        func() any         // optional WAF status provider
+	middlewareStatus func() any         // optional middleware status provider
 
 	// Callbacks
 	onReload func() error
@@ -140,9 +140,9 @@ type Config struct {
 	RaftProposer    RaftProposer       // optional, for Raft-based config changes
 	ConfigValidator func([]byte) error // optional, validates config before Raft propose
 	WebUI           http.Handler       // optional web UI handler
-	ConfigGetter ConfigGetter // optional config provider
-	CertLister   CertLister   // optional certificate lister
-	WAFStatus    func() any   // optional WAF status provider
+	ConfigGetter    ConfigGetter       // optional config provider
+	CertLister      CertLister         // optional certificate lister
+	WAFStatus       func() any         // optional WAF status provider
 
 	// TLS configuration for the admin API (optional).
 	// When both CertFile and KeyFile are set, the admin server uses HTTPS.

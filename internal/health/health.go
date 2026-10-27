@@ -318,7 +318,12 @@ func (c *Checker) performCheck(state *checkState) {
 		// Check if we should transition to healthy
 		if state.status != StatusHealthy && state.consecutiveOK >= config.HealthyThreshold {
 			state.status = StatusHealthy
-			state.backend.SetState(backend.StateUp)
+			// Respect the state machine: never resurrect a backend that was
+			// admin-drained or put into maintenance (Draining/Maintenance → Up
+			// is forbidden); Down → Up is the legitimate recovery path.
+			if state.backend.State().CanTransitionTo(backend.StateUp) {
+				state.backend.TransitionState(backend.StateUp)
+			}
 		}
 	} else {
 		state.consecutiveFail++
@@ -327,7 +332,9 @@ func (c *Checker) performCheck(state *checkState) {
 		// Check if we should transition to unhealthy
 		if state.status != StatusUnhealthy && state.consecutiveFail >= config.UnhealthyThreshold {
 			state.status = StatusUnhealthy
-			state.backend.SetState(backend.StateDown)
+			if state.backend.State().CanTransitionTo(backend.StateDown) {
+				state.backend.TransitionState(backend.StateDown)
+			}
 		}
 	}
 	state.mu.Unlock()

@@ -2,10 +2,13 @@
 package csrf
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"io"
+	"mime"
 	"net/http"
 	"strings"
 )
@@ -151,13 +154,44 @@ func (m *Middleware) extractToken(r *http.Request) string {
 
 	// Check form value
 	if r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH" {
-		if r.FormValue(m.config.FieldName) != "" {
-			return r.FormValue(m.config.FieldName)
+		if r.Body == nil {
+			return ""
 		}
+		// Only scan URL-encoded and multipart form bodies; other content types
+		// must carry the token in the header.
+		mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if err != nil || (mt != "application/x-www-form-urlencoded" && mt != "multipart/form-data") {
+			return ""
+		}
+		// Form tokens live in small bodies — bound the buffered read so a huge
+		// body cannot exhaust memory. Larger bodies must use the header.
+		bodyBytes, _ := io.ReadAll(io.LimitReader(r.Body, maxCSRFFormScanBytes+1))
+		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		if len(bodyBytes) > maxCSRFFormScanBytes {
+			return ""
+		}
+
+		var formToken string
+		switch mt {
+		case "application/x-www-form-urlencoded":
+			formToken = r.FormValue(m.config.FieldName)
+		case "multipart/form-data":
+			if err := r.ParseMultipartForm(maxCSRFFormScanBytes); err != nil {
+				return ""
+			}
+			formToken = r.FormValue(m.config.FieldName)
+		}
+		// Restore the body for downstream handlers.
+		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		return formToken
 	}
 
 	return ""
 }
+
+// maxCSRFFormScanBytes bounds how much of a form body is buffered while
+// extracting the CSRF token; larger bodies must carry the token in the header.
+const maxCSRFFormScanBytes = 1 << 20 // 1 MB
 
 // compareTokens compares two tokens using constant-time comparison.
 func (m *Middleware) compareTokens(a, b string) bool {

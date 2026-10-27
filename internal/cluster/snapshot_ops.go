@@ -62,6 +62,13 @@ func (c *Cluster) RestoreSnapshot(snapshot *Snapshot) error {
 	// Reset log.
 	c.logMu.Lock()
 	c.log = make([]*LogEntry, 0)
+	// Everything up to the snapshot's last index is now covered by it. The
+	// term is part of the watermark pair: only advance both together, or a
+	// lagging/replayed snapshot would pair an old term with a new index.
+	if snapshot.LastIncludedIndex > c.logStartIndex {
+		c.logStartIndex = snapshot.LastIncludedIndex
+		c.logStartTerm = snapshot.LastIncludedTerm
+	}
 	c.logMu.Unlock()
 
 	// Update indices.
@@ -81,6 +88,13 @@ func (c *Cluster) compactLog(compactIndex uint64) {
 	c.logMu.Lock()
 	defer c.logMu.Unlock()
 
+	// Capture the term at the watermark: a fully compacted log has no entries
+	// left, but snapshot metadata still needs a (term, index) pair.
+	var startTerm uint64
+	if slot := c.findLogSlotLocked(compactIndex); slot >= 0 {
+		startTerm = c.log[slot].Term
+	}
+
 	newLog := make([]*LogEntry, 0)
 	for _, entry := range c.log {
 		if entry.Index > compactIndex {
@@ -88,12 +102,20 @@ func (c *Cluster) compactLog(compactIndex uint64) {
 		}
 	}
 	c.log = newLog
+	// Everything up to compactIndex is now covered by the snapshot: remember
+	// the watermark so replication and application index correctly.
+	if compactIndex > c.logStartIndex {
+		c.logStartIndex = compactIndex
+		c.logStartTerm = startTerm
+	}
 }
 
 // getLastLogIndexLocked returns the last log index. Caller must hold logMu.
+// After full compaction the log is empty but indexes up to the snapshot
+// watermark exist, so the watermark is the last index then.
 func (c *Cluster) getLastLogIndexLocked() uint64 {
 	if len(c.log) == 0 {
-		return 0
+		return c.logStartIndex
 	}
 	return c.log[len(c.log)-1].Index
 }
@@ -109,7 +131,8 @@ func (c *Cluster) getLastLogTerm() uint64 {
 // hold logMu.
 func (c *Cluster) getLastLogTermLocked() uint64 {
 	if len(c.log) == 0 {
-		return 0
+		// Fully compacted: the watermark term is the last known term.
+		return c.logStartTerm
 	}
 	return c.log[len(c.log)-1].Term
 }
@@ -180,7 +203,11 @@ func (c *Cluster) ShouldSendSnapshot(followerNextIndex uint64) bool {
 	defer c.logMu.RUnlock()
 
 	if len(c.log) == 0 {
-		return false
+		// Fully compacted: the snapshot IS the log. A follower at or before
+		// the watermark can only catch up via snapshot — without this the
+		// leader has neither entries nor a snapshot to offer and the follower
+		// stalls forever.
+		return followerNextIndex <= c.logStartIndex
 	}
 
 	earliestIndex := c.log[0].Index

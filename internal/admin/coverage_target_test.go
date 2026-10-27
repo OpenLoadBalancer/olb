@@ -153,9 +153,9 @@ type failingResponseWriter struct {
 	code    int
 }
 
-func (w *failingResponseWriter) Header() http.Header        { return w.headers }
+func (w *failingResponseWriter) Header() http.Header         { return w.headers }
 func (w *failingResponseWriter) Write(b []byte) (int, error) { return 0, errors.New("write failed") }
-func (w *failingResponseWriter) WriteHeader(code int)         { w.code = code }
+func (w *failingResponseWriter) WriteHeader(code int)        { w.code = code }
 
 // --- writeError JSON encode error (80.0% -> higher) ---
 

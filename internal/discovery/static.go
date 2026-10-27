@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"github.com/openloadbalancer/olb/internal/config/yaml"
+	"log"
 	"maps"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -95,7 +97,11 @@ func (p *StaticProvider) Start(ctx context.Context) error {
 }
 
 // parsePort extracts port from address (defaults to 80).
+// A bare numeric string in the valid port range is treated as a port number.
 func parsePort(addr string) int {
+	if p, err := strconv.Atoi(strings.TrimSpace(addr)); err == nil && p > 0 && p <= 65535 {
+		return p
+	}
 	_, port := splitHostPort(addr)
 	return port
 }

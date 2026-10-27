@@ -3,6 +3,7 @@ package balancer
 import (
 	"hash"
 	"hash/fnv"
+	"strconv"
 	"sync"
 	"sync/atomic"
 
@@ -88,6 +89,16 @@ func (r *RendezvousHash) computeWeight(key, backendID string) uint64 {
 	h.Write([]byte(backendID))
 	v := h.Sum64()
 	fnvPool.Put(h)
+	// FNV-1a has no finalization step: inputs differing only in their trailing
+	// bytes (backend IDs "a"/"b"/"c" appended after the key) yield weights that
+	// differ by small multiples of the FNV prime, so the high bits — which the
+	// max comparison sees — barely change and selection is badly biased.
+	// Apply the murmur3 64-bit finalizer to avalanche the bits.
+	v ^= v >> 33
+	v *= 0xff51afd7ed558ccd
+	v ^= v >> 33
+	v *= 0xc4ceb9fe1a85ec53
+	v ^= v >> 33
 	return v
 }
 
@@ -102,7 +113,10 @@ var keyCounter uint64
 
 func generateKey() string {
 	v := atomic.AddUint64(&keyCounter, 1)
-	return string(rune(v))
+	// Decimal text, not string(rune(v)): rune conversion collapses counters in
+	// the surrogate range (0xD800-0xDFFF) and beyond 0x10FFFF to U+FFFD, making
+	// distinct requests share one key from request #55,296 onward.
+	return strconv.FormatUint(v, 10)
 }
 
 // Add registers a new backend.

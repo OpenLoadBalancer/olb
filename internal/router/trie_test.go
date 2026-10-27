@@ -4,6 +4,48 @@ import (
 	"testing"
 )
 
+// TestRadixInsert_RejectsConflictingParamNames pins F018: two different
+// parameter names at the same trie position must be rejected (the node can
+// only capture under one name).
+func TestRadixInsert_RejectsConflictingParamNames(t *testing.T) {
+	trie := NewRadixTrie()
+	if err := trie.Insert("/users/:id", 1); err != nil {
+		t.Fatalf("insert /users/:id: %v", err)
+	}
+	if err := trie.Insert("/users/:name/profile", 2); err == nil {
+		t.Error("expected error for conflicting param name at same position")
+	}
+	// Re-inserting with the SAME param name is fine.
+	if err := trie.Insert("/users/:id/profile", 3); err != nil {
+		t.Errorf("same-name param insert should succeed: %v", err)
+	}
+	// Wildcards are subject to the same rule.
+	t2 := NewRadixTrie()
+	if err := t2.Insert("/p/*a", 1); err != nil {
+		t.Fatalf("insert /p/*a: %v", err)
+	}
+	if err := t2.Insert("/p/*b", 2); err == nil {
+		t.Error("expected error for conflicting wildcard name at same position")
+	}
+}
+
+// TestRadixInsert_RejectsWildcardNotLast pins F019: a route with segments
+// below a wildcard can never match and must be rejected at insert.
+func TestRadixInsert_RejectsWildcardNotLast(t *testing.T) {
+	trie := NewRadixTrie()
+	if err := trie.Insert("/files/*path/sub", 1); err == nil {
+		t.Error("expected error for wildcard segment that is not last")
+	}
+	// A valid wildcard still captures the remainder.
+	if err := trie.Insert("/files/*path", 2); err != nil {
+		t.Fatalf("insert /files/*path: %v", err)
+	}
+	res, ok := trie.Match("/files/a/b")
+	if !ok || res.Params["path"] != "a/b" {
+		t.Errorf("wildcard capture broken: ok=%v params=%v", ok, res.Params)
+	}
+}
+
 func TestNewTrie(t *testing.T) {
 	trie := NewTrie()
 	if trie == nil {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/openloadbalancer/olb/internal/acme"
@@ -105,6 +106,7 @@ type Engine struct {
 
 	// Config file watcher
 	configWatcher *config.Watcher
+	reloadCount   atomic.Uint64 // completed Reload() calls (success or failure)
 
 	// Config rollback support
 	rollbackMu      sync.Mutex
@@ -352,9 +354,10 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 		adminCfg.RateLimitWindow = cfg.Admin.RateLimitWindow
 		if cfg.Admin.Username != "" || cfg.Admin.BearerToken != "" {
 			authCfg := &admin.AuthConfig{
-				Username:     cfg.Admin.Username,
-				Password:     cfg.Admin.Password,
-				BearerTokens: []string{},
+				Username:          cfg.Admin.Username,
+				Password:          cfg.Admin.Password,
+				BearerTokens:      []string{},
+				TrustProxyHeaders: cfg.Admin.TrustProxyHeaders,
 			}
 			if cfg.Admin.BearerToken != "" {
 				authCfg.BearerTokens = append(authCfg.BearerTokens, cfg.Admin.BearerToken)
@@ -393,35 +396,35 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 	}
 
 	e := &Engine{
-		config:                 cfg,
-		configPath:             configPath,
-		logger:                 logger,
-		logFileOutput:          logFileOutput,
-		metrics:                metricsRegistry,
-		tlsManager:             tlsMgr,
-		mtlsManager:            mtlsMgr,
-		ocspManager:            ocspMgr,
-		poolManager:            poolMgr,
-		healthChecker:          healthChecker,
-		passiveChecker:         passiveChecker,
-		router:                 rtr,
-		proxy:                  proxy,
-		connManager:            connMgr,
-		connPoolMgr:            connPoolMgr,
-		middlewareChain:        mwChain,
-		pluginMgr:              pluginMgr,
-		discoveryMgr:           discoveryMgr,
-		webUIHandler:           webUIH,
-		geoDNS:                 geoDNSMgr,
-		shadowMgr:              shadowManager,
-		sysMetrics:             sysMetrics,
-		sysMetricsStop:         make(chan struct{}),
-		state:                  StateStopped,
-		stopCh:                 make(chan struct{}),
-		shutdownTimeout:        shutdownTimeout,
-		listenerStopTimeout:    listenerStopTimeout,
-		proxyDrainWindow:       proxyDrainWindowVal,
-		rollbackCheckInterval:  rollbackCheckInterval,
+		config:                  cfg,
+		configPath:              configPath,
+		logger:                  logger,
+		logFileOutput:           logFileOutput,
+		metrics:                 metricsRegistry,
+		tlsManager:              tlsMgr,
+		mtlsManager:             mtlsMgr,
+		ocspManager:             ocspMgr,
+		poolManager:             poolMgr,
+		healthChecker:           healthChecker,
+		passiveChecker:          passiveChecker,
+		router:                  rtr,
+		proxy:                   proxy,
+		connManager:             connMgr,
+		connPoolMgr:             connPoolMgr,
+		middlewareChain:         mwChain,
+		pluginMgr:               pluginMgr,
+		discoveryMgr:            discoveryMgr,
+		webUIHandler:            webUIH,
+		geoDNS:                  geoDNSMgr,
+		shadowMgr:               shadowManager,
+		sysMetrics:              sysMetrics,
+		sysMetricsStop:          make(chan struct{}),
+		state:                   StateStopped,
+		stopCh:                  make(chan struct{}),
+		shutdownTimeout:         shutdownTimeout,
+		listenerStopTimeout:     listenerStopTimeout,
+		proxyDrainWindow:        proxyDrainWindowVal,
+		rollbackCheckInterval:   rollbackCheckInterval,
 		rollbackMonitorDuration: rollbackMonitorDuration,
 	}
 

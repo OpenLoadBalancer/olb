@@ -1407,3 +1407,46 @@ func TestSSEHandler_HandleSSE_WithRealSSEBackend(t *testing.T) {
 		t.Errorf("Status = %d, want %d", rec.Code, http.StatusOK)
 	}
 }
+
+// TestSSEHandler_streamSSEResponseWithContext_StreamLongerThanEventLimit pins
+// F023: MaxEventSize bounds a single event, not the whole stream. A stream
+// whose total size exceeds it must be relayed in full, and an oversized event
+// must not end the stream.
+func TestSSEHandler_streamSSEResponseWithContext_StreamLongerThanEventLimit(t *testing.T) {
+	handler := NewSSEHandler(&SSEConfig{
+		EnableSSE:    true,
+		IdleTimeout:  5 * time.Second,
+		MaxEventSize: 64,
+	})
+
+	var sb strings.Builder
+	for i := 0; i < 50; i++ {
+		fmt.Fprintf(&sb, "data: event-%02d\n\n", i)
+	}
+	sb.WriteString("data: " + strings.Repeat("x", 200) + "\n\n")
+	sb.WriteString("data: after-oversized\n\n")
+
+	resp := &http.Response{
+		StatusCode: 200,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(sb.String())),
+	}
+	rec := &mockFlusher{ResponseRecorder: httptest.NewRecorder()}
+	be := backend.NewBackend("sse-backend-long", "127.0.0.1:8080")
+	req := httptest.NewRequest("GET", "/events", nil)
+
+	if err := handler.streamSSEResponseWithContext(rec, req, resp, be); err != nil {
+		t.Fatalf("streamSSEResponseWithContext error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "data: event-49") {
+		t.Errorf("stream truncated: last regular event missing (body %d bytes)", len(body))
+	}
+	if !strings.Contains(body, "data: after-oversized") {
+		t.Error("stream ended at the oversized event; later events missing")
+	}
+	if strings.Contains(body, strings.Repeat("x", 200)) {
+		t.Error("oversized event relayed in full; want it truncated to MaxEventSize")
+	}
+}

@@ -59,6 +59,19 @@ func New(config Config) *Middleware {
 	// Parse trusted proxy CIDRs
 	nets := make([]*net.IPNet, 0)
 
+	if len(config.TrustedProxies) == 0 && len(config.DefaultTrusted) == 0 {
+		// Nothing configured: fall back to the standard private ranges so that
+		// legitimate on-net proxies keep working and public peers stay untrusted.
+		config.DefaultTrusted = []string{
+			"10.0.0.0/8",
+			"172.16.0.0/12",
+			"192.168.0.0/16",
+			"127.0.0.0/8",
+			"fc00::/7", // IPv6 private
+			"::1/128",  // IPv6 loopback
+		}
+	}
+
 	// Add default trusted ranges if using them
 	if len(config.TrustedProxies) == 0 {
 		for _, cidr := range config.DefaultTrusted {
@@ -97,24 +110,41 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check if request comes from trusted proxy
-		if !m.isTrustedProxy(r.RemoteAddr) && m.config.RejectUntrusted {
+		trusted := m.isTrustedProxy(r.RemoteAddr)
+		if !trusted && m.config.RejectUntrusted {
 			http.Error(w, "Untrusted proxy", http.StatusForbidden)
 			return
 		}
 
-		// Extract real IP from headers
-		realIP := m.extractRealIP(r)
-		if realIP != "" {
-			// Store original RemoteAddr
-			r = r.WithContext(contextWithOriginalIP(r.Context(), r.RemoteAddr))
-			// Update RemoteAddr (preserve port if possible)
-			if _, port, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-				r.RemoteAddr = net.JoinHostPort(realIP, port)
-			} else {
-				r.RemoteAddr = realIP
+		// Only honor forwarded headers from trusted proxies; any direct client
+		// could otherwise spoof its source IP.
+		if trusted {
+			// Extract real IP from headers
+			realIP := m.extractRealIP(r)
+			if realIP != "" {
+				// Store original RemoteAddr
+				r = r.WithContext(contextWithOriginalIP(r.Context(), r.RemoteAddr))
+				// Update RemoteAddr (preserve port if possible)
+				if _, port, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+					r.RemoteAddr = net.JoinHostPort(realIP, port)
+				} else {
+					r.RemoteAddr = realIP
+				}
+				// Also set X-Real-IP header for downstream
+				r.Header.Set("X-Real-IP", realIP)
 			}
-			// Also set X-Real-IP header for downstream
-			r.Header.Set("X-Real-IP", realIP)
+		} else {
+			// Neutralize client-supplied identity headers from untrusted peers:
+			// downstream consumers must not observe a forged X-Real-IP or
+			// forwarding chain injected by a direct client.
+			host := r.RemoteAddr
+			if h, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+				host = h
+			}
+			for _, header := range m.config.Headers {
+				r.Header.Del(header)
+			}
+			r.Header.Set("X-Real-IP", host)
 		}
 
 		next.ServeHTTP(w, r)
@@ -123,10 +153,10 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 
 // isTrustedProxy checks if the remote address is from a trusted proxy.
 func (m *Middleware) isTrustedProxy(remoteAddr string) bool {
-	// If no trusted proxies specified, trust all (use default behavior)
-	if len(m.config.TrustedProxies) == 0 && !m.config.RejectUntrusted {
-		return true
-	}
+	// Every peer is checked against the trusted networks: user-configured
+	// TrustedProxies when set, otherwise the DefaultTrusted private ranges.
+	// Forwarded headers from any other peer must not be honored, or any
+	// direct client could spoof its source IP.
 
 	// Extract IP from RemoteAddr
 	host, _, err := net.SplitHostPort(remoteAddr)

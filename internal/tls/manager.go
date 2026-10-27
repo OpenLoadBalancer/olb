@@ -246,9 +246,13 @@ func (m *Manager) GetCertificate(sni string) *Certificate {
 func (m *Manager) GetCertificateCallback() func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 	return func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 		if hello.ServerName == "" {
-			// No SNI, return default certificate
-			if m.defaultCert != nil {
-				return m.defaultCert.Cert, nil
+			// No SNI, return default certificate.
+			// Read under the lock: hot reload swaps defaultCert concurrently.
+			m.mu.RLock()
+			def := m.defaultCert
+			m.mu.RUnlock()
+			if def != nil {
+				return def.Cert, nil
 			}
 			return nil, fmt.Errorf("no SNI provided and no default certificate configured")
 		}

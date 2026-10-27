@@ -318,11 +318,21 @@ func TestFallbackID(t *testing.T) {
 	if len(id) != 32 {
 		t.Errorf("fallbackID should return 32 char hex string, got %d chars", len(id))
 	}
+	for _, c := range id {
+		if !strings.ContainsRune("0123456789abcdef", c) {
+			t.Errorf("fallbackID returned non-hex character: %c", c)
+		}
+	}
 
-	// Should be deterministic
-	id2 := fallbackID()
-	if id != id2 {
-		t.Error("fallbackID should be deterministic")
+	// The fallback must produce distinct IDs: when crypto/rand is unavailable a
+	// constant ID would collide on every request. Back-to-back calls usually
+	// share one clock tick on Windows, so every call must still differ.
+	seen := map[string]struct{}{id: {}}
+	for i := 0; i < 16; i++ {
+		seen[fallbackID()] = struct{}{}
+	}
+	if len(seen) != 17 {
+		t.Errorf("fallbackID produced %d distinct IDs in 17 calls, want 17", len(seen))
 	}
 }
 

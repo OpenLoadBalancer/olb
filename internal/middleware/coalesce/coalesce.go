@@ -3,6 +3,8 @@ package coalesce
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"log"
 	"net/http"
@@ -30,6 +32,15 @@ func DefaultKeyFunc(r *http.Request) string {
 	// Key includes method, path, and query string
 	key := r.Method + "|" + r.URL.Path + "|" + r.URL.RawQuery
 
+	// Include identity headers so different users never share an entry (and
+	// never receive another user's coalesced response).
+	if cookie := r.Header.Get("Cookie"); cookie != "" {
+		key += "|cookie:" + cookie
+	}
+	if auth := r.Header.Get("Authorization"); auth != "" {
+		key += "|auth:" + auth
+	}
+
 	// Include relevant cache-related headers
 	if etag := r.Header.Get("If-None-Match"); etag != "" {
 		key += "|etag:" + etag
@@ -41,7 +52,10 @@ func DefaultKeyFunc(r *http.Request) string {
 		key += "|accept:" + accept
 	}
 
-	return key
+	// Hash the key: identity headers (Cookie/Authorization) and long query
+	// strings would otherwise make in-flight map keys unbounded.
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:])
 }
 
 // DefaultConfig returns default coalescing configuration.
@@ -238,8 +252,12 @@ func (m *Middleware) serveFromInflight(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 
-	// Copy headers
+	// Copy headers, except Set-Cookie: waiters must never adopt the leader's
+	// session cookies.
 	for key, values := range response.Header {
+		if strings.EqualFold(key, "Set-Cookie") {
+			continue
+		}
 		for _, value := range values {
 			w.Header().Add(key, value)
 		}

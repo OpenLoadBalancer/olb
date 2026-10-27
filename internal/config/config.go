@@ -711,15 +711,15 @@ type Backend struct {
 
 // HealthCheck represents health check configuration.
 type HealthCheck struct {
-	Type                string   `yaml:"type" json:"type"`
-	Path                string   `yaml:"path" json:"path"`
-	Interval            string   `yaml:"interval" json:"interval"`
-	Timeout             string   `yaml:"timeout" json:"timeout"`
-	Command             string   `yaml:"command" json:"command"`
-	Args                []string `yaml:"args" json:"args"`
-	GRPCTLSSkipVerify   bool     `yaml:"grpc_tls_skip_verify" json:"grpc_tls_skip_verify"`
-	HealthyThreshold    int      `yaml:"healthy_threshold" json:"healthy_threshold"`
-	UnhealthyThreshold  int      `yaml:"unhealthy_threshold" json:"unhealthy_threshold"`
+	Type               string   `yaml:"type" json:"type"`
+	Path               string   `yaml:"path" json:"path"`
+	Interval           string   `yaml:"interval" json:"interval"`
+	Timeout            string   `yaml:"timeout" json:"timeout"`
+	Command            string   `yaml:"command" json:"command"`
+	Args               []string `yaml:"args" json:"args"`
+	GRPCTLSSkipVerify  bool     `yaml:"grpc_tls_skip_verify" json:"grpc_tls_skip_verify"`
+	HealthyThreshold   int      `yaml:"healthy_threshold" json:"healthy_threshold"`
+	UnhealthyThreshold int      `yaml:"unhealthy_threshold" json:"unhealthy_threshold"`
 }
 
 // TLSConfig represents TLS configuration.
@@ -748,6 +748,10 @@ type Admin struct {
 	Username             string `yaml:"username" json:"-"`
 	Password             string `yaml:"password" json:"-"`
 	BearerToken          string `yaml:"bearer_token" json:"-"`
+	// TrustProxyHeaders honors the rightmost X-Forwarded-For entry for admin
+	// auth lockout keying. Only enable when the admin API is behind a trusted
+	// reverse proxy; default false (use the real peer address).
+	TrustProxyHeaders bool `yaml:"trust_proxy_headers" json:"trust_proxy_headers"`
 }
 
 // Logging represents logging configuration.
@@ -1248,7 +1252,6 @@ func (c *Config) validateServer() error {
 
 	return nil
 }
-
 
 // validateHealthCheck validates health check configuration for a pool.
 func validateHealthCheck(p *Pool) error {
