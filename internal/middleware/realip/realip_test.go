@@ -792,3 +792,61 @@ func TestRealIP_RejectUntrusted_DefaultTrusted(t *testing.T) {
 		t.Errorf("Expected 403 for public IP, got %d", rec.Code)
 	}
 }
+
+// TestRealIP_UntrustedPeerNotRewritten ensures forwarded headers from peers
+// outside the trusted ranges are never honored (client-IP spoofing guard).
+func TestRealIP_UntrustedPeerNotRewritten(t *testing.T) {
+	// Explicit TrustedProxies: a public peer's forwarded headers must be ignored.
+	config := DefaultConfig()
+	config.Enabled = true
+	config.Headers = []string{"X-Forwarded-For"}
+	config.TrustedProxies = []string{"10.0.0.0/8"}
+
+	mw := New(config)
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.RemoteAddr != "203.0.113.7:5555" {
+			t.Errorf("untrusted peer RemoteAddr rewritten: %s", r.RemoteAddr)
+		}
+		// Spoofable identity headers must be neutralized for untrusted peers.
+		if got := r.Header.Get("X-Real-IP"); got != "203.0.113.7" {
+			t.Errorf("X-Real-IP not sanitized for untrusted peer: %q", got)
+		}
+		if got := r.Header.Get("X-Forwarded-For"); got != "" {
+			t.Errorf("X-Forwarded-For not stripped for untrusted peer: %q", got)
+		}
+	}))
+	req := httptest.NewRequest("GET", "http://lb/", nil)
+	req.RemoteAddr = "203.0.113.7:5555"
+	req.Header.Set("X-Forwarded-For", "10.0.0.1")
+	req.Header.Set("X-Real-IP", "1.2.3.4")
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	// Engine wiring path (no TrustedProxies, no DefaultTrusted): the fallback
+	// private ranges apply, so a public peer is still untrusted.
+	fallback := New(Config{Enabled: true, Headers: []string{"X-Forwarded-For"}})
+	handler2 := fallback.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.RemoteAddr != "203.0.113.7:5555" {
+			t.Errorf("untrusted peer RemoteAddr rewritten with default trust: %s", r.RemoteAddr)
+		}
+	}))
+	req2 := httptest.NewRequest("GET", "http://lb/", nil)
+	req2.RemoteAddr = "203.0.113.7:5555"
+	req2.Header.Set("X-Forwarded-For", "10.0.0.1")
+	handler2.ServeHTTP(httptest.NewRecorder(), req2)
+
+	// Control: a trusted proxy peer is still honored.
+	trusted := New(Config{
+		Enabled:        true,
+		Headers:        []string{"X-Forwarded-For"},
+		TrustedProxies: []string{"10.0.0.0/8"},
+	})
+	handler3 := trusted.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.RemoteAddr != "198.51.100.9:1000" {
+			t.Errorf("trusted proxy peer not rewritten: %s", r.RemoteAddr)
+		}
+	}))
+	req3 := httptest.NewRequest("GET", "http://lb/", nil)
+	req3.RemoteAddr = "10.0.0.5:1000"
+	req3.Header.Set("X-Forwarded-For", "198.51.100.9")
+	handler3.ServeHTTP(httptest.NewRecorder(), req3)
+}
