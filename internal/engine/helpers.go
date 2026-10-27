@@ -70,7 +70,8 @@ func getAdminAddress(cfg *config.Config) string {
 	if cfg.Admin != nil && cfg.Admin.Address != "" {
 		return cfg.Admin.Address
 	}
-	return ":8080"
+	// Loopback: the admin API has no auth unless configured.
+	return "127.0.0.1:8080"
 }
 
 // parseDuration parses a duration string with a default value.

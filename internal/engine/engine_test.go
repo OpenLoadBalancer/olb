@@ -1483,7 +1483,7 @@ func TestGetAdminAddress(t *testing.T) {
 		{
 			name: "default address",
 			cfg:  &config.Config{},
-			want: ":8080",
+			want: "127.0.0.1:8080",
 		},
 		{
 			name: "custom address",
@@ -1499,7 +1499,7 @@ func TestGetAdminAddress(t *testing.T) {
 			cfg: &config.Config{
 				Admin: nil,
 			},
-			want: ":8080",
+			want: "127.0.0.1:8080",
 		},
 		{
 			name: "empty address",
@@ -1508,7 +1508,7 @@ func TestGetAdminAddress(t *testing.T) {
 					Address: "",
 				},
 			},
-			want: ":8080",
+			want: "127.0.0.1:8080",
 		},
 	}
 
@@ -2433,7 +2433,7 @@ func TestGetMCPAddress(t *testing.T) {
 		{
 			name:     "nil admin config uses default :8080",
 			cfg:      &config.Config{},
-			expected: ":8081",
+			expected: "127.0.0.1:8081",
 		},
 	}
 
@@ -4732,7 +4732,7 @@ func TestGetMCPAddress_Explicit(t *testing.T) {
 		{
 			name:     "nil admin config",
 			cfg:      &config.Config{},
-			expected: ":8081",
+			expected: "127.0.0.1:8081",
 		},
 		{
 			name: "admin with port but no MCP address",
