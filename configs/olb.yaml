@@ -291,7 +291,7 @@ middleware:
       audience: ""          # Expected audience (aud claim)
   oauth2:
     enabled: false
-    issuer_url: ""          # OIDC issuer URL (e.g., "https://accounts.google.com")
+    issuer_url: ""          # OIDC issuer URL (e.g., "https://auth.openloadbalancer.dev")
     client_id: ""           # OAuth2 client ID
     client_secret: ""       # OAuth2 client secret (for token introspection)
     jwks_url: ""            # JWKS endpoint URL (optional, discovered from issuer)
@@ -368,7 +368,7 @@ middleware:
       - X-Powered-By
       - Server
     rewrite_body:           # Regex patterns to rewrite in body
-      old-domain.com: new-domain.com
+      old.openloadbalancer.dev: new.openloadbalancer.dev
     exclude_paths:          # Paths to exclude from transformation
       - /health
       - /metrics
@@ -567,11 +567,9 @@ cluster:
       - "node-2"
       - "node-3"
 
-# Service Discovery (optional)
-discovery:
-  enabled: false
-  type: "dns"                        # "static", "dns", "consul", "docker", "file"
-  refresh_interval: "30s"
+# Service discovery (DNS/Consul/Docker/File) exists as a library but is not
+# wired into pools yet, so there is no config section for it. List backends
+# under pools[].backends.
 
 # Listeners
 listeners:

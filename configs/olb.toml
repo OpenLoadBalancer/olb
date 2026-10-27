@@ -5,41 +5,15 @@
 version = 1
 
 # ---------------------------------------------------------------------------
-# Global settings
-# ---------------------------------------------------------------------------
-[global]
-
-  # Worker settings
-  [global.workers]
-  count = "auto"  # "auto" = number of CPUs
-
-  # Connection limits
-  [global.limits]
-  max_connections            = 10000
-  max_connections_per_source = 100
-  max_connections_per_backend = 1000
-
-  # Timeouts (duration strings)
-  [global.timeouts]
-  read   = "30s"
-  write  = "30s"
-  idle   = "120s"
-  header = "10s"
-  drain  = "30s"
-
-# ---------------------------------------------------------------------------
 # Admin API configuration
 # ---------------------------------------------------------------------------
 [admin]
 enabled = true
 address = "127.0.0.1:8081"
-
-  [admin.auth]
-  type     = "basic"
-  username = "admin"
-  # IMPORTANT: Change this password before deploying!
-  # Generate a bcrypt hash: go run -mod=mod github.com/tyler-smith/go-bcrypt-cli <password>
-  password = "$2a$10$CHANGEME_REPLACE_WITH_YOUR_OWN_BCRYPT_HASH"
+# Admin API basic auth. IMPORTANT: change this before deploying!
+# Generate a bcrypt hash, e.g.: htpasswd -nbBC 10 admin <password> | cut -d: -f2
+username = "admin"
+password = "$2a$10$CHANGEME_REPLACE_WITH_YOUR_OWN_BCRYPT_HASH"
 
 # ---------------------------------------------------------------------------
 # Metrics configuration
@@ -61,7 +35,7 @@ address  = ":8080"
   # API routes with specific backend
   [[listeners.routes]]
   name    = "api"
-  host    = "api.example.com"
+  host    = "api.openloadbalancer.dev"
   path    = "/api/"
   methods = ["GET", "POST", "PUT", "DELETE"]
   pool    = "api-backend"
@@ -69,7 +43,7 @@ address  = ":8080"
   # Static file serving (direct backend)
   [[listeners.routes]]
   name = "static"
-  host = "static.example.com"
+  host = "static.openloadbalancer.dev"
   path = "/files/"
   pool = "static-backend"
 
@@ -143,7 +117,6 @@ algorithm = "weighted_round_robin"
   path            = "/api/health"
   interval        = "5s"
   timeout         = "3s"
-  expected_status = 200
 
   [[pools.backends]]
   id      = "api-1"
@@ -173,67 +146,49 @@ algorithm = "round_robin"
 # Middleware configuration
 # ---------------------------------------------------------------------------
 
+# Each middleware is its own table under [middleware] and is off unless
+# enabled = true.
+
 # Request ID injection
-[[middleware]]
-name    = "request_id"
-enabled = true
+[middleware.request_id]
+enabled  = true
+header   = "X-Request-ID"
+generate = true
 
-  [middleware.config]
-  header_name    = "X-Request-ID"
-  trust_incoming = false
-
-# Real IP extraction
-[[middleware]]
-name    = "real_ip"
-enabled = true
-
-  [middleware.config]
-  trusted_proxies = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+# Real IP extraction (only trust X-Forwarded-For from these proxies)
+[middleware.real_ip]
+enabled         = true
+trusted_proxies = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
 
 # CORS handling
-[[middleware]]
-name    = "cors"
+[middleware.cors]
+enabled         = true
+allowed_origins = ["*"]
+allowed_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+allowed_headers = ["Content-Type", "Authorization", "X-Request-ID"]
+max_age         = 3600
+
+# Extra response headers
+[middleware.headers]
 enabled = true
 
-  [middleware.config]
-  allowed_origins = ["*"]
-  allowed_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-  allowed_headers = ["Content-Type", "Authorization", "X-Request-ID"]
-  max_age         = 3600
-
-# Security headers
-[[middleware]]
-name    = "headers"
-enabled = true
-
-  [middleware.config]
-  security_preset = "strict"
-
-    [middleware.config.response_set]
-    X-Frame-Options        = "DENY"
-    X-Content-Type-Options = "nosniff"
+  [middleware.headers.response_add]
+  X-Frame-Options        = "DENY"
+  X-Content-Type-Options = "nosniff"
 
 # Compression
-[[middleware]]
-name    = "compression"
-enabled = true
-
-  [middleware.config]
-  min_size = 1024
-  level    = "default"  # -1 = default compression
+[middleware.compression]
+enabled  = true
+min_size = 1024
+level    = 6  # 1 (fastest) - 9 (smallest)
 
 # Access logging
-[[middleware]]
-name    = "access_log"
+[middleware.logging]
 enabled = true
-
-  [middleware.config]
-  format = "json"
-  output = "/var/log/olb/access.log"
+format  = "json"
 
 # Metrics collection
-[[middleware]]
-name    = "metrics"
+[middleware.metrics]
 enabled = true
 
 # ---------------------------------------------------------------------------
