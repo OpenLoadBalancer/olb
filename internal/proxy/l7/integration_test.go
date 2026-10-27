@@ -205,8 +205,8 @@ func TestIntegration_MultipleBackends(t *testing.T) {
 
 // TestIntegration_HealthCheckIntegration tests proxy with health-checked backends.
 func TestIntegration_HealthCheckIntegration(t *testing.T) {
-	// Create backends on 127.0.0.2 to avoid SSRF protection blocking
-	// health checks to 127.0.0.1.
+	// Backends on 127.0.0.1: loopback is an allowed health check target, and
+	// the only loopback address macOS configures by default.
 
 	// Create a backend that will fail health checks
 	failingHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -217,9 +217,9 @@ func TestIntegration_HealthCheckIntegration(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("failing backend"))
 	})
-	failingLn, err := net.Listen("tcp", "127.0.0.2:0")
+	failingLn, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("failed to listen on 127.0.0.2: %v", err)
+		t.Fatalf("failed to listen on 127.0.0.1: %v", err)
 	}
 	failingBackend := httptest.NewUnstartedServer(failingHandler)
 	failingBackend.Listener = failingLn
@@ -231,9 +231,9 @@ func TestIntegration_HealthCheckIntegration(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("healthy backend"))
 	})
-	healthyLn, err := net.Listen("tcp", "127.0.0.2:0")
+	healthyLn, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("failed to listen on 127.0.0.2: %v", err)
+		t.Fatalf("failed to listen on 127.0.0.1: %v", err)
 	}
 	healthyBackend := httptest.NewUnstartedServer(healthyHandler)
 	healthyBackend.Listener = healthyLn
