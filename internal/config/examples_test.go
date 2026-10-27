@@ -3,9 +3,6 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"reflect"
-	"sort"
-	"strings"
 	"testing"
 
 	"github.com/openloadbalancer/olb/internal/config/hcl"
@@ -45,57 +42,9 @@ func TestExampleConfigs(t *testing.T) {
 				t.Fatalf("raw parse: %v", err)
 			}
 
-			var unknown []string
-			collectUnknownKeys(raw, reflect.TypeFor[Config](), "", &unknown)
-			sort.Strings(unknown)
-			for _, k := range unknown {
-				t.Errorf("unknown key %q (not a config field; it would be silently ignored)", k)
+			for _, msg := range UnknownKeys(raw) {
+				t.Errorf("%s (it would be silently ignored)", msg)
 			}
 		})
 	}
-}
-
-// collectUnknownKeys walks raw against the struct type t by yaml tag.
-func collectUnknownKeys(raw any, t reflect.Type, path string, unknown *[]string) {
-	for t.Kind() == reflect.Pointer {
-		t = t.Elem()
-	}
-	switch v := raw.(type) {
-	case []any:
-		// A list of blocks/items: each element is checked against the element
-		// type (or, for a struct field fed by a single HCL block, the struct).
-		elem := t
-		if t.Kind() == reflect.Slice {
-			elem = t.Elem()
-		}
-		for _, item := range v {
-			collectUnknownKeys(item, elem, path, unknown)
-		}
-	case map[string]any:
-		if t.Kind() != reflect.Struct {
-			return // free-form maps (users, response_add, ...) take any key
-		}
-		fields := yamlFields(t)
-		for k, sub := range v {
-			ft, ok := fields[k]
-			if !ok {
-				*unknown = append(*unknown, strings.TrimPrefix(path+"."+k, "."))
-				continue
-			}
-			collectUnknownKeys(sub, ft, path+"."+k, unknown)
-		}
-	}
-}
-
-func yamlFields(t reflect.Type) map[string]reflect.Type {
-	out := make(map[string]reflect.Type)
-	for i := range t.NumField() {
-		f := t.Field(i)
-		name := strings.Split(f.Tag.Get("yaml"), ",")[0]
-		if name == "" || name == "-" {
-			continue
-		}
-		out[name] = f.Type
-	}
-	return out
 }
