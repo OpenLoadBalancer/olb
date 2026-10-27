@@ -221,14 +221,21 @@ func (e *Engine) applyConfigInternal(newCfg *config.Config, noRollback bool) err
 		MaxIdleConnsPerHost: ps.maxIdleConnsPerHost,
 		IdleConnTimeout:     ps.idleConnTimeout,
 		PassiveChecker:      e.passiveChecker,
+		ShadowConfig:        shadowConfigFrom(newCfg),
 	}
 	newProxy := l7.NewHTTPProxy(newProxyConfig)
+	if err := attachShadowTargets(newProxy, newCfg, newPoolManager); err != nil {
+		e.mu.Unlock()
+		newProxy.Close()
+		return err
+	}
 
 	// Capture old proxy before swapping — must use local variable so the
 	// deferred close goroutine references the correct (old) proxy even if
 	// another reload happens within the drain window.
 	oldProxy := e.proxy
 	e.proxy = newProxy
+	e.shadowMgr = newProxy.ShadowManager()
 	e.mu.Unlock()
 
 	// Close old proxy after drain window (tracked so engine shutdown waits)

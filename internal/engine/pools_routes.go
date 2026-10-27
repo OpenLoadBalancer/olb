@@ -7,6 +7,7 @@ import (
 
 	"github.com/openloadbalancer/olb/internal/backend"
 	"github.com/openloadbalancer/olb/internal/balancer"
+	"github.com/openloadbalancer/olb/internal/config"
 	"github.com/openloadbalancer/olb/internal/health"
 	"github.com/openloadbalancer/olb/internal/logging"
 	"github.com/openloadbalancer/olb/internal/router"
@@ -15,6 +16,11 @@ import (
 // initializePools creates pools and registers backends with health checker.
 func (e *Engine) initializePools() error {
 	for _, poolCfg := range e.config.Pools {
+		// Configs that did not go through the file loader (programmatic,
+		// API) may have no health check; it used to panic here.
+		if poolCfg.HealthCheck == nil {
+			poolCfg.HealthCheck = config.DefaultHealthCheck()
+		}
 		pool := backend.NewPool(poolCfg.Name, poolCfg.Algorithm)
 
 		// Create balancer for the pool using the registry
