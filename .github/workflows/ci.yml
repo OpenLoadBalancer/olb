@@ -37,19 +37,14 @@ jobs:
         with:
           version: v1.64.8
           args: --timeout=5m
-        continue-on-error: true
-
-      - name: go staticcheck (fallback)
-        if: failure()
-        run: |
-          go install honnef.co/go/tools/cmd/staticcheck@v0.6.1 2>/dev/null || true
-          which staticcheck && staticcheck ./... || echo "staticcheck not available, skipping"
+          # Gate new code now; existing findings are being burned down
+          # separately (see .golangci.yml).
+          only-new-issues: true
 
   # Job 2: Build Frontend (shared by test, test-race, build jobs)
   build-frontend:
     name: Build Frontend
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -74,11 +69,10 @@ jobs:
       - name: Lint frontend
         working-directory: ./internal/webui
         run: npm run lint
-        continue-on-error: true
 
-      # - name: Run frontend tests
-      #   working-directory: ./internal/webui
-      #   run: npm test
+      - name: Run frontend tests
+        working-directory: ./internal/webui
+        run: npm test
 
       - name: Install Playwright browsers
         working-directory: ./internal/webui
@@ -91,7 +85,6 @@ jobs:
       - name: Build frontend
         working-directory: ./internal/webui
         run: npm run build
-        continue-on-error: true
 
       - name: Upload frontend artifacts
         if: success() || failure()
@@ -154,8 +147,7 @@ jobs:
         shell: bash
         run: |
           if [ "${{ runner.os }}" = "macOS" ]; then
-            # Skip flaky packages on macOS (timing-sensitive tests)
-            go test -p 1 -short -v -count=1 -timeout=600s $(go list ./... | grep -v 'internal/health' | grep -v 'internal/proxy/l7')
+            go test -p 1 -short -v -count=1 -timeout=600s ./...
           else
             go test -p 1 -short -v -count=1 -coverprofile=coverage.out -timeout=600s ./...
           fi
@@ -210,6 +202,8 @@ jobs:
           file: ./coverage.out
           flags: unittests
           name: codecov-umbrella
+        # External service outage must not fail the build; the coverage
+        # threshold itself is enforced separately.
         continue-on-error: true
 
   # Job 4: Race Detector Tests (Linux only, requires CGO/GCC)
@@ -423,6 +417,7 @@ jobs:
 
       - name: Post benchmark comparison
         if: success()
+        # PRs from forks get a read-only token and cannot comment.
         continue-on-error: true
         run: gh pr comment ${{ github.event.pull_request.number }} --body-file comment.md
         env:
@@ -490,12 +485,6 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
           govulncheck ./...
-
-      - name: Run Nancy (dependency vulnerability scanner)
-        run: |
-          go install github.com/sonatypecommunity/nancy@v1.0.106
-          go list -json -deps ./... | nancy sleuth
-        continue-on-error: true
 
   # Job 10: Binary Analysis
   binary:

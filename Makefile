@@ -16,6 +16,10 @@ LDFLAGS := -X $(MODULE)/pkg/version.Version=$(VERSION) \
 CGO_ENABLED := 0
 GOFLAGS := -trimpath
 
+# Go packages, excluding Go sources shipped inside npm packages
+# (internal/webui/node_modules) that ./... would otherwise pick up.
+PKGS = $(shell go list ./... | grep -v /node_modules/)
+
 # Default target
 all: build
 
@@ -59,7 +63,7 @@ build-freebsd:
 ## test: Run all tests
 test:
 	@echo "Running tests..."
-	go test -v -count=1 -p 4 -coverprofile=coverage.out -timeout=300s ./...
+	go test -v -count=1 -p 4 -coverprofile=coverage.out -timeout=300s $(PKGS)
 
 ## webui-deps: Install frontend dependencies
 webui-deps:
@@ -84,7 +88,7 @@ webui-build: webui-deps
 ## test-short: Run short tests only
 test-short:
 	@echo "Running short tests..."
-	go test -v -short ./...
+	go test -v -short $(PKGS)
 
 ## coverage: Generate and display coverage report
 coverage: test
@@ -176,18 +180,18 @@ lint:
 		golangci-lint run ./...; \
 	else \
 		echo "golangci-lint not installed, using go vet..."; \
-		go vet ./...; \
+		go vet $(PKGS); \
 	fi
 
 ## fmt: Format all Go files
 fmt:
 	@echo "Formatting..."
-	go fmt ./...
+	go fmt $(PKGS)
 
 ## vet: Run go vet
 vet:
 	@echo "Running go vet..."
-	go vet ./...
+	go vet $(PKGS)
 
 ## tidy: Tidy and verify module dependencies
 tidy:

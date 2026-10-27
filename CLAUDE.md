@@ -184,5 +184,5 @@ admin:
 ```
 
 ## CI Pipeline
-`.github/workflows/ci.yml` — 11 jobs: lint → build-frontend → test (3 OS matrix) → test-race → build → integration → benchmark (PR only) → docker → security (gosec + govulncheck + nancy) → binary-analysis → image-scan (Trivy).
+`.github/workflows/ci.yml` — 11 jobs: lint → build-frontend → test (3 OS matrix) → test-race → build → integration → benchmark (PR only) → docker → security (gosec + govulncheck) → binary-analysis → image-scan (Trivy).
 Release workflow: `.github/workflows/release.yml` (binaries, GitHub Release, SBOM, GHCR Docker publish).

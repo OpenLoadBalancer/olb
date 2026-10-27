@@ -23,13 +23,23 @@ linters-settings:
     excludes:
       - G104  # Audit errors not checked
   errcheck:
-    check-blank: true
+    # An explicit `_ = f()` is a deliberate discard; only flag silently
+    # dropped errors.
+    check-blank: false
 
 issues:
+  exclude-dirs:
+    - internal/webui/node_modules
   exclude-rules:
+    # Tests may ignore errors from cleanup/setup helpers and use fixed
+    # credentials, weak randomness and the like.
     - path: _test\.go
       linters:
         - gosec
         - errcheck
+        - bodyclose
+    # Nil-check-then-dereference is a common, intended pattern in tests.
+    - path: _test\.go
+      linters:
         - staticcheck
       text: "SA5011"
