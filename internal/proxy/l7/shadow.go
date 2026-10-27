@@ -165,6 +165,13 @@ func (sm *ShadowManager) ShadowRequest(req *http.Request) {
 		}
 	}
 
+	// Snapshot the request before any goroutine starts. The handler keeps
+	// using (and modifying) req after this returns, so the shadow goroutines
+	// must not read it. The clone also drops the client's cancellation: the
+	// primary request normally finishes first, and a shadow request derived
+	// from its context would be aborted.
+	req = req.Clone(context.WithoutCancel(req.Context()))
+
 	// Create shadow copies for each target
 	for _, target := range sm.targets {
 		if target.Balancer == nil {
