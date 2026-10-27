@@ -70,6 +70,11 @@ type Pool struct {
 	// Backends is a map of backend ID to Backend.
 	Backends map[string]*Backend
 
+	// order holds the backends in insertion order. Index-based balancers
+	// (round robin, ip_hash, ...) need a stable slice; map iteration order
+	// is random and would reshuffle it on every request.
+	order []*Backend
+
 	// balancer is the load balancing algorithm implementation.
 	balancer Balancer
 
@@ -123,6 +128,7 @@ func (p *Pool) AddBackend(backend *Backend) error {
 	}
 
 	p.Backends[backend.ID] = backend
+	p.order = append(p.order, backend)
 	if p.balancer != nil {
 		p.balancer.Add(backend)
 	}
@@ -145,6 +151,12 @@ func (p *Pool) RemoveBackend(id string) error {
 	}
 
 	delete(p.Backends, id)
+	for i, b := range p.order {
+		if b.ID == id {
+			p.order = append(p.order[:i:i], p.order[i+1:]...)
+			break
+		}
+	}
 	if p.balancer != nil {
 		p.balancer.Remove(id)
 	}
@@ -171,7 +183,7 @@ func (p *Pool) GetHealthyBackends() []*Backend {
 
 	healthy := healthySlicePool.Get().(*[]*Backend)
 	*healthy = (*healthy)[:0]
-	for _, backend := range p.Backends {
+	for _, backend := range p.order {
 		if backend.IsAvailable() {
 			*healthy = append(*healthy, backend)
 		}
@@ -307,10 +319,8 @@ func (p *Pool) GetAllBackends() []*Backend {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	backends := make([]*Backend, 0, len(p.Backends))
-	for _, backend := range p.Backends {
-		backends = append(backends, backend)
-	}
+	backends := make([]*Backend, len(p.order))
+	copy(backends, p.order)
 
 	return backends
 }
