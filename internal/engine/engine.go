@@ -286,6 +286,7 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 		MaxIdleConnsPerHost: maxIdleConnsPerHost,
 		IdleConnTimeout:     idleConnTimeout,
 		PassiveChecker:      passiveChecker,
+		ShadowConfig:        shadowConfigFrom(cfg),
 	}
 	proxy := l7.NewHTTPProxy(proxyConfig)
 
@@ -320,27 +321,6 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 			logging.Int("rules", len(cfg.GeoDNS.Rules)),
 			logging.Bool("mmdb_loaded", stats.DBLoaded),
 			logging.String("db_path", stats.DBPath),
-		)
-	}
-
-	// Initialize shadow manager if configured
-	var shadowManager *l7.ShadowManager
-	if cfg.Shadow != nil && cfg.Shadow.Enabled {
-		timeout := 30 * time.Second
-		if cfg.Shadow.Timeout != "" {
-			if d, err := time.ParseDuration(cfg.Shadow.Timeout); err == nil {
-				timeout = d
-			}
-		}
-		shadowManager = l7.NewShadowManager(l7.ShadowConfig{
-			Enabled:     cfg.Shadow.Enabled,
-			Percentage:  cfg.Shadow.Percentage,
-			CopyHeaders: cfg.Shadow.CopyHeaders,
-			CopyBody:    cfg.Shadow.CopyBody,
-			Timeout:     timeout,
-		})
-		logger.Info("Shadow manager initialized",
-			logging.Float64("percentage", cfg.Shadow.Percentage),
 		)
 	}
 
@@ -419,7 +399,7 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 		discoveryMgr:            discoveryMgr,
 		webUIHandler:            webUIH,
 		geoDNS:                  geoDNSMgr,
-		shadowMgr:               shadowManager,
+		shadowMgr:               proxy.ShadowManager(),
 		sysMetrics:              sysMetrics,
 		sysMetricsStop:          make(chan struct{}),
 		state:                   StateStopped,

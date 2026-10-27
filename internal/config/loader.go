@@ -107,12 +107,7 @@ func (l *Loader) applyDefaults(cfg *Config) {
 			pool.Algorithm = "round_robin"
 		}
 		if pool.HealthCheck == nil {
-			pool.HealthCheck = &HealthCheck{
-				Type:     "http",
-				Path:     "/health",
-				Interval: "10s",
-				Timeout:  "5s",
-			}
+			pool.HealthCheck = DefaultHealthCheck()
 		}
 		// Apply defaults to backends
 		for _, backend := range pool.Backends {
@@ -152,4 +147,14 @@ func (l *Loader) applyDefaults(cfg *Config) {
 func Load(path string) (*Config, error) {
 	loader := NewLoader()
 	return loader.Load(path)
+}
+
+// DefaultHealthCheck is the health check a pool gets when none is configured.
+func DefaultHealthCheck() *HealthCheck {
+	return &HealthCheck{
+		Type:     "http",
+		Path:     "/health",
+		Interval: "10s",
+		Timeout:  "5s",
+	}
 }

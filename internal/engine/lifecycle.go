@@ -73,6 +73,10 @@ func (e *Engine) Start() error {
 		e.setState(StateStopped)
 		return fmt.Errorf("failed to initialize pools: %w", err)
 	}
+	if err := attachShadowTargets(e.proxy, e.config, e.poolManager); err != nil {
+		e.setState(StateStopped)
+		return err
+	}
 
 	// 5. Add routes to router
 	if err := e.initializeRoutes(); err != nil {

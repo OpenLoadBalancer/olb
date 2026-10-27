@@ -1,13 +1,16 @@
 package engine
 
 import (
+	"fmt"
 	"os"
 	"time"
 
 	"github.com/openloadbalancer/olb/internal/admin"
+	"github.com/openloadbalancer/olb/internal/backend"
 	"github.com/openloadbalancer/olb/internal/config"
 	"github.com/openloadbalancer/olb/internal/geodns"
 	"github.com/openloadbalancer/olb/internal/logging"
+	"github.com/openloadbalancer/olb/internal/proxy/l7"
 )
 
 // setState sets the engine state (internal use only).
@@ -237,4 +240,37 @@ func isMWEnabled(mw *config.MiddlewareConfig, id string) bool {
 	default:
 		return false
 	}
+}
+
+// shadowConfigFrom builds the proxy's shadow (mirroring) config, or nil when
+// shadow traffic is off. The engine used to build a ShadowManager on the
+// side and never hand it to the proxy, so nothing was ever mirrored.
+func shadowConfigFrom(cfg *config.Config) *l7.ShadowConfig {
+	if cfg.Shadow == nil || !cfg.Shadow.Enabled {
+		return nil
+	}
+	return &l7.ShadowConfig{
+		Enabled:     true,
+		Percentage:  cfg.Shadow.Percentage,
+		CopyHeaders: cfg.Shadow.CopyHeaders,
+		CopyBody:    cfg.Shadow.CopyBody,
+		Timeout:     parseDuration(cfg.Shadow.Timeout, 30*time.Second),
+	}
+}
+
+// attachShadowTargets adds cfg.Shadow.Targets to the proxy's shadow manager.
+// It must run after pools exist and before the proxy serves traffic.
+func attachShadowTargets(p *l7.HTTPProxy, cfg *config.Config, pools *backend.PoolManager) error {
+	sm := p.ShadowManager()
+	if sm == nil || cfg.Shadow == nil {
+		return nil
+	}
+	for _, t := range cfg.Shadow.Targets {
+		pool := pools.GetPool(t.Pool)
+		if pool == nil {
+			return fmt.Errorf("shadow target pool %q not found", t.Pool)
+		}
+		sm.AddTarget(pool.GetBalancer(), pool.GetAllBackends(), t.Percentage)
+	}
+	return nil
 }
