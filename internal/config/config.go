@@ -135,6 +135,9 @@ type JWTConfig struct {
 type JWTClaimsValidation struct {
 	Issuer   string `yaml:"issuer" json:"issuer"`     // Expected issuer
 	Audience string `yaml:"audience" json:"audience"` // Expected audience
+	// RequireExpiration rejects tokens without an exp claim. Unset means
+	// true; set false only for issuers that mint non-expiring tokens.
+	RequireExpiration *bool `yaml:"require_expiration" json:"require_expiration,omitempty"`
 }
 
 // BasicAuthConfig represents Basic Authentication configuration.

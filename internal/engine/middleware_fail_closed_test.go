@@ -98,9 +98,14 @@ func TestJWTMiddleware_DefaultAlgorithmEnforcesAuth(t *testing.T) {
 
 func hs256Token(t *testing.T, secret string) string {
 	t.Helper()
+	return hs256TokenWithClaims(t, secret, map[string]any{"sub": "test", "exp": 4102444800})
+}
+
+func hs256TokenWithClaims(t *testing.T, secret string, c map[string]any) string {
+	t.Helper()
 	enc := base64.RawURLEncoding
 	header := enc.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
-	claims, err := json.Marshal(map[string]any{"sub": "test", "exp": 4102444800})
+	claims, err := json.Marshal(c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,4 +113,41 @@ func hs256Token(t *testing.T, secret string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write([]byte(header + "." + payload))
 	return header + "." + payload + "." + enc.EncodeToString(mac.Sum(nil))
+}
+
+// A token without exp used to be accepted forever because the engine never
+// passed RequireExpiration to the JWT middleware.
+func TestJWTMiddleware_RequiresExpirationByDefault(t *testing.T) {
+	secret := "0123456789abcdef0123456789abcdef"
+	noExp := hs256TokenWithClaims(t, secret, map[string]any{"sub": "test"})
+	off := false
+	for _, tc := range []struct {
+		name    string
+		require *bool
+		wantOK  bool
+	}{
+		{"default rejects missing exp", nil, false},
+		{"require_expiration false accepts it", &off, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := createTestConfig()
+			cfg.Middleware = &config.MiddlewareConfig{
+				JWT: &config.JWTConfig{
+					Enabled: true, Secret: secret, Required: true,
+					ClaimsValidation: config.JWTClaimsValidation{RequireExpiration: tc.require},
+				},
+			}
+			chain, err := createMiddlewareChain(cfg, createTestLogger(t), metrics.NewRegistry())
+			if err != nil {
+				t.Fatalf("createMiddlewareChain: %v", err)
+			}
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("Authorization", "Bearer "+noExp)
+			rec := httptest.NewRecorder()
+			chain.Then(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})).ServeHTTP(rec, req)
+			if ok := rec.Code != http.StatusUnauthorized; ok != tc.wantOK {
+				t.Errorf("status %d, accepted = %v, want %v", rec.Code, ok, tc.wantOK)
+			}
+		})
+	}
 }
