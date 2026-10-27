@@ -458,8 +458,8 @@ func TestGetAdminAddress_CustomPort(t *testing.T) {
 func TestGetAdminAddress_Nil(t *testing.T) {
 	cfg := &config.Config{}
 	addr := getAdminAddress(cfg)
-	if addr != ":8080" {
-		t.Errorf("getAdminAddress with nil admin = %q, want :8080", addr)
+	if addr != "127.0.0.1:8080" {
+		t.Errorf("getAdminAddress with nil admin = %q, want 127.0.0.1:8080", addr)
 	}
 }
 
@@ -1469,14 +1469,14 @@ func TestGetMCPAddress_Variants(t *testing.T) {
 		{
 			name:     "empty config",
 			cfg:      &config.Config{},
-			expected: ":8081",
+			expected: "127.0.0.1:8081",
 		},
 		{
 			name: "admin with empty fields",
 			cfg: &config.Config{
 				Admin: &config.Admin{},
 			},
-			expected: ":8081",
+			expected: "127.0.0.1:8081",
 		},
 		{
 			name: "explicit MCP address",
@@ -1597,14 +1597,14 @@ func TestCov_GetMCPAddress_NoColonInAddress(t *testing.T) {
 		{
 			name:     "admin nil defaults to 8080+1",
 			cfg:      &config.Config{},
-			expected: ":8081",
+			expected: "127.0.0.1:8081",
 		},
 		{
 			name: "admin empty address defaults to 8080+1",
 			cfg: &config.Config{
 				Admin: &config.Admin{Address: ""},
 			},
-			expected: ":8081",
+			expected: "127.0.0.1:8081",
 		},
 		{
 			name: "ipv4 with port",
@@ -3792,9 +3792,9 @@ func TestCov_GetMCPAddress_WithNonNumericPort(t *testing.T) {
 func TestCov_GetMCPAddress_EmptyAdmin(t *testing.T) {
 	cfg := &config.Config{}
 	addr := getMCPAddress(cfg)
-	// Default admin addr is ":8080", so MCP should be ":8081"
-	if addr != ":8081" {
-		t.Errorf("getMCPAddress() = %q, want :8081", addr)
+	// Default admin addr is "127.0.0.1:8080", so MCP should be "127.0.0.1:8081"
+	if addr != "127.0.0.1:8081" {
+		t.Errorf("getMCPAddress() = %q, want 127.0.0.1:8081", addr)
 	}
 }
 

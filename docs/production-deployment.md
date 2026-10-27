@@ -427,6 +427,8 @@ data:
     version: 1
     admin:
       address: "0.0.0.0:8081"
+      # Required: without auth the admin API refuses to listen beyond loopback.
+      bearer_token: "${OLB_ADMIN_TOKEN}"
     listeners:
       - name: http
         protocol: http
@@ -522,6 +524,8 @@ cat > /opt/olb/configs/olb.yaml << 'EOF'
 version: 1
 admin:
   address: "0.0.0.0:8081"
+  # Required: without auth the admin API refuses to listen beyond loopback.
+  bearer_token: "${OLB_ADMIN_TOKEN}"
 listeners:
   - name: http
     protocol: http
