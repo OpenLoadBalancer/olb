@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- An enabled middleware whose config is invalid now stops the engine from starting (and a reload is rejected) instead of being dropped from the chain. Previously a misconfigured auth, IP filter, WAF, rate limit, CSRF, CORS or CSP block silently disabled that protection — e.g. `basic_auth` without `hash` served the backend unauthenticated (#71)
+- Documented defaults are now applied: `basic_auth`/`api_key` `hash: sha256`, JWT `algorithm: HS256`, `header: Authorization`, `prefix: "Bearer "` — configs relying on them had authentication disabled (#71)
+- Rewrite middleware no longer produces protocol-relative `Location` headers (`//evil.example`): path-capturing redirect rules, including the built-in `remove_trailing_slash`, were open redirects (#68)
+- `olb setup` writes the generated config (which contains the admin password) as 0600; Raft state, log entries and snapshots are 0600 in 0700 directories (#68)
+- Cluster TLS checks the allowed node list in `VerifyConnection`, so it also applies to resumed sessions (#68)
+- MCP SSE logs the client session ID with `%q` (log injection) (#68)
+- MCP and profiling servers set `ReadHeaderTimeout` (Slowloris) (#62)
+- Shared cache never stores or replays `Set-Cookie` and keys on `Authorization`; request coalescing no longer shares in-flight responses across users; real IP honours forwarded headers only from trusted proxies; admin auth lockout keys on the peer address by default (#61)
+- Cluster transport authenticates before accepting a connection (#61)
+- Dependencies: x/net v0.61.0, x/text v0.43.0, x/crypto v0.58.0 (govulncheck: 0 reachable); all WebUI and website npm packages updated, zod 4 (GHSA-mrhx-c7xc-m3w5), `npm audit` clean (#61, #64)
+
+### Fixed
+- Round robin, IP hash and least-connections tie-breaking picked backends from a randomly ordered slice: round robin was effectively random and IP hash did not keep a client on one backend (#67)
+- `/metrics` stopped updating `http_*` and `waf_*` series after a config reload (#70)
+- Distributed rate limiter banned on the first violation, ignoring `AutoBanAfter`; violation maps are now bounded (#69)
+- `ParsePort` accepted out-of-range values by wrapping (`"70000"` → 4464) (#69)
+- Raft log compaction watermark and snapshot metadata after compaction (#61)
+- SSE and gRPC streams were truncated, and responses already sent to the client could be retried (#61)
+- L4 TCP accept loop stopped after one transient error such as EMFILE (#61)
+- WebSocket proxy sent the forwarded handshake without `Connection: Upgrade` (#61)
+- Router accepted conflicting parameter names and routes below a wildcard (#61)
+- Rendezvous hash key collapse and weight bias (#61)
+- Admin-drained backends were put back into rotation by the health checker (#61)
+- A panicking plugin event handler crashed `EventBus.Publish` (#61)
+- CSRF consumed the request body when reading the form token (#61)
+- SSE `MaxEventSize` was not enforced on lines shorter than the read buffer (#61)
+- Request ID fallback IDs could collide within one clock tick (#61)
+- Durations such as `1d500ms` failed to parse (#62)
+- `.dockerignore` did not exclude `node_modules`, so host-installed packages leaked into the image build (#66)
+
+### Changed
+- CI no longer ignores failures: lint (golangci-lint v2, which actually runs on Go 1.26+), frontend build and tests, and all macOS packages are enforced (#62)
+- Go toolchain 1.27.3 (minimum `go 1.26.2`), read by CI from `go.mod`; GitHub Actions, gosec, govulncheck, Node 24 and Docker base images on their latest releases; Dependabot also tracks the website and Docker images (#63, #66)
+- golangci-lint findings reduced from 569 to ~470 (#65, #69, #70)
+
 ### Added
 - Frontend test suite: 50+ tests across 10 pages (dashboard, pools, backends, settings, cluster, metrics, WAF, middleware, certificates, logs, error)
 - Frontend testing infrastructure: Vitest + React Testing Library + jsdom with path aliases and mock utilities
