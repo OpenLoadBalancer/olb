@@ -365,9 +365,7 @@ func TestCov_TUI_FetchData_InvalidJSON(t *testing.T) {
 }
 
 func TestCov_TUI_FetchData_PartialSuccess(t *testing.T) {
-	callCount := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
 		if r.URL.Path == "/api/v1/system/info" {
 			resp := admin.Response{
 				Success: true,
