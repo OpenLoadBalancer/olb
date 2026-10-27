@@ -182,3 +182,18 @@ func TestWAFMetrics_RecordMethods_NilFields(t *testing.T) {
 	m.RecordDetectorHit("xss")    // should not panic (DetectorHits is nil)
 	m.RecordLatency("layer", 1.0) // should not panic (LatencySeconds is nil)
 }
+
+// The WAF middleware is rebuilt on config reload; its metrics must keep
+// feeding the vectors already registered for /metrics.
+func TestRegisterWAFMetrics_ReloadReusesRegisteredVectors(t *testing.T) {
+	registry := metrics.NewRegistry()
+	_ = RegisterWAFMetrics(registry)
+	reloaded := RegisterWAFMetrics(registry)
+
+	reloaded.RecordRequest("blocked")
+
+	got := registry.GetCounterVec("waf_requests_total").WithLabels(map[string]string{"action": "blocked"}).Get()
+	if got != 1 {
+		t.Errorf("registered waf_requests_total{action=blocked} = %d after reload, want 1", got)
+	}
+}

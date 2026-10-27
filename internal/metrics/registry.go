@@ -98,6 +98,26 @@ func (r *Registry) GetHistogram(name string) *Histogram {
 	return nil
 }
 
+// CounterVecOrRegister registers cv, or returns the vector already
+// registered under its name. Components that are rebuilt on config reload
+// use it so they keep feeding the vectors /metrics already exports.
+func (r *Registry) CounterVecOrRegister(cv *CounterVec) *CounterVec {
+	actual, _ := r.counterVecs.LoadOrStore(cv.Name(), cv)
+	return actual.(*CounterVec)
+}
+
+// GaugeVecOrRegister is CounterVecOrRegister for gauge vectors.
+func (r *Registry) GaugeVecOrRegister(gv *GaugeVec) *GaugeVec {
+	actual, _ := r.gaugeVecs.LoadOrStore(gv.Name(), gv)
+	return actual.(*GaugeVec)
+}
+
+// HistogramVecOrRegister is CounterVecOrRegister for histogram vectors.
+func (r *Registry) HistogramVecOrRegister(hv *HistogramVec) *HistogramVec {
+	actual, _ := r.histogramVecs.LoadOrStore(hv.Name(), hv)
+	return actual.(*HistogramVec)
+}
+
 // GetCounterVec returns a registered counter vector.
 func (r *Registry) GetCounterVec(name string) *CounterVec {
 	if cv, ok := r.counterVecs.Load(name); ok {

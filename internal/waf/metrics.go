@@ -21,40 +21,35 @@ func RegisterWAFMetrics(registry *metrics.Registry) *WAFMetrics {
 
 	m := &WAFMetrics{}
 
-	m.RequestsTotal = metrics.NewCounterVec(
+	m.RequestsTotal = registry.CounterVecOrRegister(metrics.NewCounterVec(
 		"waf_requests_total",
 		"Total requests processed by WAF",
 		[]string{"action"},
-	)
-	registry.RegisterCounterVec(m.RequestsTotal)
+	))
 
-	m.BlockedTotal = metrics.NewCounterVec(
+	m.BlockedTotal = registry.CounterVecOrRegister(metrics.NewCounterVec(
 		"waf_blocked_total",
 		"Total requests blocked by WAF by layer",
 		[]string{"layer"},
-	)
-	registry.RegisterCounterVec(m.BlockedTotal)
+	))
 
-	m.DetectorHits = metrics.NewCounterVec(
+	m.DetectorHits = registry.CounterVecOrRegister(metrics.NewCounterVec(
 		"waf_detector_hits_total",
 		"Detection hits by detector type",
 		[]string{"detector"},
-	)
-	registry.RegisterCounterVec(m.DetectorHits)
+	))
 
-	m.SecurityEventsTotal = metrics.NewCounterVec(
+	m.SecurityEventsTotal = registry.CounterVecOrRegister(metrics.NewCounterVec(
 		"security_events_total",
 		"Total security events by rule type",
 		[]string{"rule"},
-	)
-	registry.RegisterCounterVec(m.SecurityEventsTotal)
+	))
 
-	m.LatencySeconds = metrics.NewHistogramVec(
+	m.LatencySeconds = registry.HistogramVecOrRegister(metrics.NewHistogramVec(
 		"waf_latency_seconds",
 		"WAF processing latency in seconds",
 		[]string{"layer"},
-	)
-	registry.RegisterHistogramVec(m.LatencySeconds)
+	))
 
 	return m
 }
