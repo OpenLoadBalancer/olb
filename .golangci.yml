@@ -19,6 +19,26 @@ linters:
       # An explicit `_ = f()` is a deliberate discard; only flag silently
       # dropped errors.
       check-blank: false
+      # Calls whose error carries no actionable signal at the call site:
+      # deadline/keepalive setters fail only on an already-closed conn (the
+      # next Read/Write reports it), and response/log writes cannot be
+      # retried once headers or bytes are out.
+      exclude-functions:
+        - (net.Conn).SetDeadline
+        - (net.Conn).SetReadDeadline
+        - (net.Conn).SetWriteDeadline
+        - (*net.TCPConn).SetKeepAlive
+        - (*net.TCPConn).SetKeepAlivePeriod
+        - (*net.UDPConn).SetReadDeadline
+        - (*net.UDPConn).SetDeadline
+        - (*net.UDPConn).SetWriteDeadline
+        - (net.PacketConn).SetReadDeadline
+        - (*encoding/json.Encoder).Encode
+        - (*bufio.Writer).WriteString
+        - (*bufio.Writer).WriteByte
+        - (*bufio.Writer).Flush
+        - (*bytes.Buffer).WriteByte
+        - (*bytes.Buffer).WriteString
     gosec:
       excludes:
         - G104 # Audit errors not checked
