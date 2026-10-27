@@ -146,7 +146,10 @@ type BasicAuthConfig struct {
 	Users        map[string]string `yaml:"users" json:"-"`                     // username -> password (hashed or plain)
 	Realm        string            `yaml:"realm" json:"realm"`                 // Auth realm (default: "Restricted")
 	ExcludePaths []string          `yaml:"exclude_paths" json:"exclude_paths"` // Paths to exclude
-	Hash         string            `yaml:"hash" json:"hash"`                   // Password hash: "sha256", "plain" (default: "sha256")
+	Hash         string            `yaml:"hash" json:"hash"`                   // Password hash: "sha256", "bcrypt", "plain" (default: "sha256")
+	// AllowPlaintext is required for hash: plain. Plaintext passwords in a
+	// config file are a last resort and stay opt-in.
+	AllowPlaintext bool `yaml:"allow_plaintext" json:"allow_plaintext"`
 }
 
 // StripPrefixConfig represents path prefix stripping configuration.
@@ -269,9 +272,9 @@ type CSPConfig struct {
 type RequestIDConfig struct {
 	Enabled      bool     `yaml:"enabled" json:"enabled"`             // Enable request ID generation
 	Header       string   `yaml:"header" json:"header"`               // Header name (default: X-Request-ID)
-	Generate     bool     `yaml:"generate" json:"generate"`           // Generate ID if not present
+	Generate     *bool    `yaml:"generate" json:"generate,omitempty"` // Generate ID if not present (default: true)
 	Length       int      `yaml:"length" json:"length"`               // ID length in bytes (default: 16)
-	Response     bool     `yaml:"response" json:"response"`           // Include ID in response headers
+	Response     *bool    `yaml:"response" json:"response,omitempty"` // Include ID in response headers (default: true)
 	ExcludePaths []string `yaml:"exclude_paths" json:"exclude_paths"` // Paths to exclude
 }
 

@@ -445,7 +445,7 @@ middleware:
 
   real_ip:
     enabled: true
-    headers:                       # Headers to read the client IP from (required)
+    headers:                       # Headers to read the client IP from (default: the common proxy headers)
       - X-Forwarded-For
       - X-Real-IP
     trusted_proxies:               # Default: private ranges + loopback
@@ -455,7 +455,7 @@ middleware:
     reject_untrusted: false
 ```
 
-`generate` and `response` default to `false` when the block is present, so set them explicitly.
+`generate` and `response` default to `true`; set one to `false` to turn it off.
 
 ### Rate Limiting
 
@@ -619,7 +619,7 @@ middleware:
       - /health
 ```
 
-With `hash: sha256` (the default for both `basic_auth` and `api_key`), the configured value is the plaintext password or key; OLB keeps only an HMAC-SHA256 of it in memory. With `hash: bcrypt`, `basic_auth` user values must be bcrypt hashes. `basic_auth` rejects `hash: plain`.
+With `hash: sha256` (the default for both `basic_auth` and `api_key`), the configured value is the plaintext password or key; OLB keeps only an HMAC-SHA256 of it in memory. With `hash: bcrypt`, `basic_auth` user values must be bcrypt hashes. `hash: plain` stores passwords as written in the config file and is refused unless `allow_plaintext: true` is also set; prefer `sha256` or `bcrypt`.
 
 Other auth middleware: `oauth2` (`issuer_url` or `jwks_url`, `client_id`, `client_secret`, `audience`, `scopes`, `introspection_url`, `cache_duration`, `header`, `prefix`, `exclude_paths`) and `hmac` (`secret`, `algorithm` sha256/sha512, `header`, `prefix`, `encoding`, `use_body`, `timestamp_header`, `max_age`, `exclude_paths`).
 
