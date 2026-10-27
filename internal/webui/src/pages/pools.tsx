@@ -46,7 +46,7 @@ import { toast } from "sonner"
 import { usePools } from "@/hooks/use-query"
 import { api } from "@/lib/api"
 import { LoadingCard } from "@/components/ui/loading"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { createPoolSchema, addBackendSchema, type CreatePoolFormValues, type AddBackendFormValues } from "@/lib/form-schemas"
 
@@ -101,6 +101,7 @@ export function PoolsPage() {
       healthCheckInterval: "10s",
     },
   })
+  const healthCheckEnabled = useWatch({ control: createPoolForm.control, name: "healthCheckEnabled" })
 
   // Add Backend Dialog State
   const [backendDialogOpen, setBackendDialogOpen] = useState(false)
@@ -285,7 +286,7 @@ export function PoolsPage() {
                     </FormItem>
                   )}
                 />
-                {createPoolForm.watch("healthCheckEnabled") && (
+                {healthCheckEnabled && (
                   <>
                     <FormField
                       control={createPoolForm.control}

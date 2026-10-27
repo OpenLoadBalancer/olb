@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Github, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
+import { Github } from "./github-icon";
 import { cn } from "@/lib/utils";
 
 const stats = [
