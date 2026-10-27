@@ -52,6 +52,12 @@ type AuthConfig struct {
 	// Options
 	RequireAuthForRead bool
 
+	// TrustProxyHeaders controls whether the rightmost X-Forwarded-For entry
+	// is honored when keying the auth-failure lockout. Only enable when the
+	// admin API is behind a trusted reverse proxy; otherwise any client can
+	// rotate the header to bypass lockout (or lock out a victim).
+	TrustProxyHeaders bool
+
 	// Auth failure rate limiter (initialized lazily)
 	failureLimiter *authFailureLimiter
 
@@ -116,22 +122,21 @@ func (l *authFailureLimiter) isLocked(ip string) bool {
 	return false
 }
 
-// getClientIP extracts the real client IP from the request, respecting
-// X-Real-Ip and X-Forwarded-For headers when the admin server is behind
-// a reverse proxy. Falls back to r.RemoteAddr.
-func getClientIP(r *http.Request) string {
-	// Check X-Real-Ip first (set by nginx and similar proxies)
-	if realIP := r.Header.Get("X-Real-Ip"); realIP != "" {
-		if ip := net.ParseIP(realIP); ip != nil {
-			return realIP
+// getClientIP extracts the client IP for lockout keying. Headers are only
+// consulted when the admin API is explicitly configured as being behind a
+// trusted reverse proxy (AuthConfig.TrustProxyHeaders), and then only the
+// rightmost X-Forwarded-For entry — the peer the closest trusted proxy
+// appended — is used. X-Real-Ip and earlier XFF entries are client-spoofable
+// behind append-style proxies and must never influence the key.
+func getClientIP(r *http.Request, trustProxy bool) string {
+	if trustProxy {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			parts := strings.Split(xff, ",")
+			candidate := strings.TrimSpace(parts[len(parts)-1])
+			if net.ParseIP(candidate) != nil {
+				return candidate
+			}
 		}
-	}
-	// Check X-Forwarded-For (set by many proxies; first entry is the client)
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if idx := strings.Index(xff, ","); idx != -1 {
-			return strings.TrimSpace(xff[:idx])
-		}
-		return strings.TrimSpace(xff)
 	}
 	// Fallback to RemoteAddr (host:port — strip port)
 	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
@@ -261,7 +266,7 @@ func AuthMiddleware(config *AuthConfig) func(http.Handler) http.Handler {
 			}
 
 			// Extract client IP for rate limiting
-			ip := getClientIP(r)
+			ip := getClientIP(r, config.TrustProxyHeaders)
 
 			// Check if IP is locked out due to too many failures
 			if config.failureLimiter.isLocked(ip) {

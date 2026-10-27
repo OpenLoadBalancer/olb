@@ -398,9 +398,11 @@ func TestGetClientIP_XRealIP(t *testing.T) {
 	req.Header.Set("X-Real-Ip", "10.0.0.1")
 	req.RemoteAddr = "192.168.1.1:1234"
 
-	ip := getClientIP(req)
-	if ip != "10.0.0.1" {
-		t.Errorf("expected 10.0.0.1, got %s", ip)
+	// X-Real-Ip is client-spoofable behind append-style proxies and is never
+	// used for lockout keying, even with TrustProxyHeaders enabled.
+	ip := getClientIP(req, true)
+	if ip != "192.168.1.1" {
+		t.Errorf("expected RemoteAddr 192.168.1.1 (X-Real-Ip ignored), got %s", ip)
 	}
 }
 
@@ -409,8 +411,8 @@ func TestGetClientIP_XRealIPInvalid(t *testing.T) {
 	req.Header.Set("X-Real-Ip", "not-an-ip")
 	req.RemoteAddr = "192.168.1.1:1234"
 
-	ip := getClientIP(req)
-	// Should fall through to X-Forwarded-For or RemoteAddr
+	ip := getClientIP(req, true)
+	// Should fall back to RemoteAddr
 	if ip == "not-an-ip" {
 		t.Error("should not return invalid X-Real-Ip")
 	}
@@ -421,7 +423,7 @@ func TestGetClientIP_XForwardedFor_Single(t *testing.T) {
 	req.Header.Set("X-Forwarded-For", "10.0.0.2")
 	req.RemoteAddr = "192.168.1.1:1234"
 
-	ip := getClientIP(req)
+	ip := getClientIP(req, true)
 	if ip != "10.0.0.2" {
 		t.Errorf("expected 10.0.0.2, got %s", ip)
 	}
@@ -432,9 +434,23 @@ func TestGetClientIP_XForwardedFor_Multiple(t *testing.T) {
 	req.Header.Set("X-Forwarded-For", "10.0.0.3, 10.0.0.4, 10.0.0.5")
 	req.RemoteAddr = "192.168.1.1:1234"
 
-	ip := getClientIP(req)
-	if ip != "10.0.0.3" {
-		t.Errorf("expected first IP 10.0.0.3, got %s", ip)
+	ip := getClientIP(req, true)
+	// The LAST entry is the peer the closest trusted proxy appended; earlier
+	// entries are attacker-controlled.
+	if ip != "10.0.0.5" {
+		t.Errorf("expected last IP 10.0.0.5, got %s", ip)
+	}
+}
+
+func TestGetClientIP_XForwardedFor_InvalidLastEntry(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("X-Forwarded-For", "10.0.0.3, garbage")
+	req.RemoteAddr = "192.168.1.1:1234"
+
+	// A non-IP last entry must not be trusted; fall back to RemoteAddr.
+	ip := getClientIP(req, true)
+	if ip != "192.168.1.1" {
+		t.Errorf("expected RemoteAddr fallback 192.168.1.1, got %s", ip)
 	}
 }
 
@@ -442,7 +458,10 @@ func TestGetClientIP_RemoteAddr(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	req.RemoteAddr = "192.168.1.1:1234"
 
-	ip := getClientIP(req)
+	// Default (no trusted proxy): headers must be ignored entirely.
+	req.Header.Set("X-Real-Ip", "10.9.9.9")
+	req.Header.Set("X-Forwarded-For", "10.8.8.8")
+	ip := getClientIP(req, false)
 	if ip != "192.168.1.1" {
 		t.Errorf("expected 192.168.1.1, got %s", ip)
 	}
@@ -452,9 +471,51 @@ func TestGetClientIP_RemoteAddrNoPort(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	req.RemoteAddr = "unix-socket" // no colon
 
-	ip := getClientIP(req)
+	ip := getClientIP(req, false)
 	if ip != "unix-socket" {
 		t.Errorf("expected unix-socket, got %s", ip)
+	}
+}
+
+// TestAuthLockout_DefaultKeysOnRemoteAddr ensures the brute-force lockout is
+// keyed on the real peer address by default: spoofable X-Real-Ip values must
+// neither create fresh lockout buckets (bypass) nor be required for lockout.
+func TestAuthLockout_DefaultKeysOnRemoteAddr(t *testing.T) {
+	hash, err := HashPassword("correct-horse")
+	if err != nil {
+		t.Fatalf("HashPassword: %v", err)
+	}
+	cfg := &AuthConfig{
+		Username: "admin",
+		Password: hash,
+	}
+	handler := AuthMiddleware(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	attempt := func(realIP string) int {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/config", nil)
+		req.RemoteAddr = "127.0.0.1:40000"
+		req.SetBasicAuth("admin", "wrong-password")
+		if realIP != "" {
+			req.Header.Set("X-Real-Ip", realIP)
+		}
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	// 5 failures claiming different fresh IPs each time — under header-trusting
+	// keying none of these would accumulate on the real address.
+	for i := 0; i < 5; i++ {
+		if c := attempt(fmt.Sprintf("10.0.%d.%d", i/256, i%256)); c != http.StatusUnauthorized {
+			t.Fatalf("failure %d: expected 401, got %d", i+1, c)
+		}
+	}
+	// 6th attempt (new spoofed IP again) must be locked: the real address
+	// accumulated all 5 failures.
+	if c := attempt("10.1.1.1"); c != http.StatusTooManyRequests {
+		t.Errorf("expected 429 lockout on real address, got %d", c)
 	}
 }
 
@@ -781,7 +842,7 @@ func TestStripSecrets_NestedMaps(t *testing.T) {
 	input := map[string]any{
 		"level1": map[string]any{
 			"level2": map[string]any{
-				"secret": "hidden-value",
+				"secret":  "hidden-value",
 				"visible": "ok",
 			},
 		},

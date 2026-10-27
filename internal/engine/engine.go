@@ -352,9 +352,10 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 		adminCfg.RateLimitWindow = cfg.Admin.RateLimitWindow
 		if cfg.Admin.Username != "" || cfg.Admin.BearerToken != "" {
 			authCfg := &admin.AuthConfig{
-				Username:     cfg.Admin.Username,
-				Password:     cfg.Admin.Password,
-				BearerTokens: []string{},
+				Username:          cfg.Admin.Username,
+				Password:          cfg.Admin.Password,
+				BearerTokens:      []string{},
+				TrustProxyHeaders: cfg.Admin.TrustProxyHeaders,
 			}
 			if cfg.Admin.BearerToken != "" {
 				authCfg.BearerTokens = append(authCfg.BearerTokens, cfg.Admin.BearerToken)
