@@ -18,6 +18,10 @@ type Loader struct {
 	// Default: true
 	ExpandEnv bool
 
+	// Warnings holds the non-fatal findings of the last Load, such as
+	// unknown config keys.
+	Warnings []string
+
 	// AllowedEnvPrefixes restricts which environment variables can be expanded.
 	// When non-empty, only variables whose names start with one of the listed
 	// prefixes (e.g. "OLB_") will be substituted; others are left as-is.
@@ -82,10 +86,43 @@ func (l *Loader) Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 
+	// Unknown keys are ignored by the decoders; surface them so a typo does
+	// not pass silently.
+	l.Warnings = unknownKeyWarnings(path, configData)
+	for _, w := range l.Warnings {
+		log.Printf("WARNING: %s: %s", path, w)
+	}
+
 	// Apply defaults
 	l.applyDefaults(&cfg)
 
 	return &cfg, nil
+}
+
+// unknownKeyWarnings re-parses the config into a generic map and reports
+// keys that are not config fields. Parse failures are not reported here:
+// the typed decode above already succeeded.
+func unknownKeyWarnings(path, data string) []string {
+	var raw map[string]any
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".toml":
+		m, err := toml.Parse([]byte(data))
+		if err != nil {
+			return nil
+		}
+		raw = m
+	case ".hcl":
+		m, err := hcl.Parse([]byte(data))
+		if err != nil {
+			return nil
+		}
+		raw = m
+	default:
+		if err := yaml.UnmarshalString(data, &raw); err != nil {
+			return nil
+		}
+	}
+	return UnknownKeys(raw)
 }
 
 // applyDefaults applies default values to the configuration.

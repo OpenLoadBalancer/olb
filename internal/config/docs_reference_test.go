@@ -2,7 +2,6 @@ package config
 
 import (
 	"os"
-	"reflect"
 	"regexp"
 	"testing"
 
@@ -30,10 +29,8 @@ func TestDocsConfigurationReference(t *testing.T) {
 			t.Errorf("yaml block %d: does not parse as a config document: %v", i, err)
 			continue
 		}
-		var unknown []string
-		collectUnknownKeys(raw, reflect.TypeFor[Config](), "", &unknown)
-		for _, k := range unknown {
-			t.Errorf("yaml block %d: unknown key %q (not a config field; it would be silently ignored)", i, k)
+		for _, msg := range UnknownKeys(raw) {
+			t.Errorf("yaml block %d: %s (it would be silently ignored)", i, msg)
 		}
 	}
 }
