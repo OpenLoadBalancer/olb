@@ -1321,3 +1321,28 @@ func TestFactory_NilConfigDoesNotPanic(t *testing.T) {
 		t.Errorf("Name() = %q, want %q", mw.Name(), "nil-mw")
 	}
 }
+
+// TestEventBus_PublishContainsHandlerPanic ensures a panicking subscriber does
+// not crash the publisher nor skip the remaining handlers.
+func TestEventBus_PublishContainsHandlerPanic(t *testing.T) {
+	eb := NewEventBus()
+
+	called := false
+	eb.Subscribe("panic.topic", func(e Event) {
+		panic("boom")
+	})
+	eb.Subscribe("panic.topic", func(e Event) {
+		called = true
+	})
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Publish let a handler panic escape: %v", r)
+		}
+	}()
+	eb.Publish("panic.topic", nil)
+
+	if !called {
+		t.Error("handlers registered after the panicking one were skipped")
+	}
+}
