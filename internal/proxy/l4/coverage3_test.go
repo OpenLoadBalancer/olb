@@ -1123,7 +1123,12 @@ func TestUDPProxy_ReceiveFromBackend_ZeroLengthRead(t *testing.T) {
 		t.Errorf("got %q, want %q", string(readBuf[:n]), string(testData))
 	}
 
-	// Verify backend stats were recorded
+	// Verify backend stats were recorded. The proxy increments the counter
+	// after WriteToUDP, so the client can see the packet first.
+	deadline := time.Now().Add(2 * time.Second)
+	for session.packetsOut.Load() < 1 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
 	if session.packetsOut.Load() < 1 {
 		t.Error("expected packetsOut >= 1")
 	}
