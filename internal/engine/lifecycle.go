@@ -37,10 +37,34 @@ func (e *Engine) Start() error {
 				return fmt.Errorf("failed to load TLS certificate: %w", err)
 			}
 			e.tlsManager.AddCertificate(cert)
+			e.tlsManager.SetDefaultCertificate(cert)
 			e.logger.Info("TLS certificate loaded",
 				logging.String("cert_file", e.config.TLS.CertFile),
 			)
 		}
+	}
+	// Per-listener certificates were validated but never loaded, so every
+	// TLS listener served the top-level certificate (or none). Add them for
+	// SNI selection; the first one is the default if no top-level cert.
+	haveDefault := e.config.TLS != nil && e.config.TLS.CertFile != ""
+	for _, l := range e.config.Listeners {
+		if !l.IsTLS() || l.TLS == nil || l.TLS.CertFile == "" || l.TLS.KeyFile == "" {
+			continue
+		}
+		cert, err := e.tlsManager.LoadCertificate(l.TLS.CertFile, l.TLS.KeyFile)
+		if err != nil {
+			e.setState(StateStopped)
+			return fmt.Errorf("listener %s: failed to load TLS certificate: %w", l.Name, err)
+		}
+		e.tlsManager.AddCertificate(cert)
+		if !haveDefault {
+			e.tlsManager.SetDefaultCertificate(cert)
+			haveDefault = true
+		}
+		e.logger.Info("TLS certificate loaded",
+			logging.String("listener", l.Name),
+			logging.String("cert_file", l.TLS.CertFile),
+		)
 	}
 
 	// 1a. Start certificate expiry monitoring

@@ -342,6 +342,11 @@ func registerWAFMiddleware(ctx *middlewareRegistrationContext) {
 	if ctx.cfg.WAF == nil || !ctx.cfg.WAF.Enabled {
 		return
 	}
+	if l := ctx.cfg.WAF.Logging; l != nil && l.LogBody && ctx.logger != nil {
+		// WAF events carry no request body; say so instead of letting
+		// operators believe bodies are being captured.
+		ctx.logger.Warn("waf.logging.log_body is not implemented and has no effect")
+	}
 	wafMW, err := waf.NewWAFMiddleware(waf.WAFMiddlewareConfig{
 		Config:          ctx.cfg.WAF,
 		MetricsRegistry: ctx.registry,

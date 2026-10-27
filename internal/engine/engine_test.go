@@ -668,11 +668,22 @@ func TestListenersChanged(t *testing.T) {
 			name: "TLS changed",
 			newCfg: &config.Config{
 				Listeners: []*config.Listener{
+					{Name: "l1", Address: ":80", Protocol: "http", TLS: &config.ListenerTLS{Enabled: true}},
+					{Name: "l2", Address: ":443", Protocol: "https", TLS: &config.ListenerTLS{Enabled: true}},
+				},
+			},
+			want: true,
+		},
+		{
+			// protocol: https is TLS with or without a tls block.
+			name: "https without tls block is not a TLS change",
+			newCfg: &config.Config{
+				Listeners: []*config.Listener{
 					{Name: "l1", Address: ":80", Protocol: "http"},
 					{Name: "l2", Address: ":443", Protocol: "https", TLS: nil},
 				},
 			},
-			want: true,
+			want: false,
 		},
 	}
 
@@ -1483,7 +1494,7 @@ func TestGetAdminAddress(t *testing.T) {
 		{
 			name: "default address",
 			cfg:  &config.Config{},
-			want: ":8080",
+			want: "127.0.0.1:8080",
 		},
 		{
 			name: "custom address",
@@ -1499,7 +1510,7 @@ func TestGetAdminAddress(t *testing.T) {
 			cfg: &config.Config{
 				Admin: nil,
 			},
-			want: ":8080",
+			want: "127.0.0.1:8080",
 		},
 		{
 			name: "empty address",
@@ -1508,7 +1519,7 @@ func TestGetAdminAddress(t *testing.T) {
 					Address: "",
 				},
 			},
-			want: ":8080",
+			want: "127.0.0.1:8080",
 		},
 	}
 
@@ -2433,7 +2444,7 @@ func TestGetMCPAddress(t *testing.T) {
 		{
 			name:     "nil admin config uses default :8080",
 			cfg:      &config.Config{},
-			expected: ":8081",
+			expected: "127.0.0.1:8081",
 		},
 	}
 
@@ -3089,7 +3100,7 @@ func TestInitializePoolsAllAlgorithms(t *testing.T) {
 		{"wrandom shorthand", "wrandom"},
 		{"ring_hash", "ring_hash"},
 		{"ringhash shorthand", "ringhash"},
-		{"unknown defaults to round_robin", "some_unknown_algo"},
+		{"empty defaults to round_robin", ""},
 	}
 
 	for _, tt := range algorithms {
@@ -4732,7 +4743,7 @@ func TestGetMCPAddress_Explicit(t *testing.T) {
 		{
 			name:     "nil admin config",
 			cfg:      &config.Config{},
-			expected: ":8081",
+			expected: "127.0.0.1:8081",
 		},
 		{
 			name: "admin with port but no MCP address",

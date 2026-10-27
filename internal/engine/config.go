@@ -207,17 +207,21 @@ func (e *Engine) applyConfigInternal(newCfg *config.Config, noRollback bool) err
 	e.middlewareChain = newMiddlewareChain
 
 	// Update proxy components
+	ps := proxySettingsFromConfig(newCfg)
 	newProxyConfig := &l7.Config{
-		Router:          newRouter,
-		PoolManager:     newPoolManager,
-		ConnPoolManager: e.connPoolMgr,
-		HealthChecker:   newHealthChecker,
-		MiddlewareChain: newMiddlewareChain,
-		ProxyTimeout:    60 * time.Second,
-		DialTimeout:     10 * time.Second,
-		MaxRetries:      3,
-		PassiveChecker:  e.passiveChecker,
-		ShadowConfig:    shadowConfigFrom(newCfg),
+		Router:              newRouter,
+		PoolManager:         newPoolManager,
+		ConnPoolManager:     e.connPoolMgr,
+		HealthChecker:       newHealthChecker,
+		MiddlewareChain:     newMiddlewareChain,
+		ProxyTimeout:        ps.proxyTimeout,
+		DialTimeout:         ps.dialTimeout,
+		MaxRetries:          ps.maxRetries,
+		MaxIdleConns:        ps.maxIdleConns,
+		MaxIdleConnsPerHost: ps.maxIdleConnsPerHost,
+		IdleConnTimeout:     ps.idleConnTimeout,
+		PassiveChecker:      e.passiveChecker,
+		ShadowConfig:        shadowConfigFrom(newCfg),
 	}
 	newProxy := l7.NewHTTPProxy(newProxyConfig)
 	if err := attachShadowTargets(newProxy, newCfg, newPoolManager); err != nil {

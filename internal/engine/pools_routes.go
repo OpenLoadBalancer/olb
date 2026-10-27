@@ -26,6 +26,11 @@ func (e *Engine) initializePools() error {
 		// Create balancer for the pool using the registry
 		bal := balancer.New(poolCfg.Algorithm)
 		if bal == nil {
+			// A typo such as "lest_connections" used to fall back to round
+			// robin silently at startup (reload already rejected it).
+			if poolCfg.Algorithm != "" {
+				return fmt.Errorf("pool %s: unknown algorithm %q", poolCfg.Name, poolCfg.Algorithm)
+			}
 			bal = balancer.NewRoundRobin()
 		}
 		pool.SetBalancer(bal)

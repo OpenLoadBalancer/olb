@@ -180,7 +180,7 @@ middleware:
     enabled: true
     requests_per_second: 100
 admin:
-  address: ":9090"
+  address: "127.0.0.1:9090"   # no auth configured → loopback only
 ```
 
 ## CI Pipeline

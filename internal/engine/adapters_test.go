@@ -222,7 +222,7 @@ func TestGetMCPAddress_Adapter(t *testing.T) {
 		{
 			name: "nil admin defaults to 8081",
 			cfg:  &config.Config{},
-			want: ":8081",
+			want: "127.0.0.1:8081",
 		},
 	}
 

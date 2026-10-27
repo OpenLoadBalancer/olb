@@ -121,7 +121,8 @@ func (l *Loader) applyDefaults(cfg *Config) {
 	if cfg.Admin == nil {
 		cfg.Admin = &Admin{
 			Enabled: true,
-			Address: ":8080",
+			// Loopback: the admin API has no auth unless configured.
+			Address: "127.0.0.1:8080",
 		}
 	}
 

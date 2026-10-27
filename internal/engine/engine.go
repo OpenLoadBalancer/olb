@@ -241,50 +241,19 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 	}
 
 	// Create proxy
-	proxyTimeout := 60 * time.Second
-	dialTimeout := 10 * time.Second
-	maxRetries := 3
-	maxIdleConns := 100
-	maxIdleConnsPerHost := 10
-	if cfg.Server != nil {
-		if cfg.Server.ProxyTimeout != "" {
-			if d, err := time.ParseDuration(cfg.Server.ProxyTimeout); err == nil {
-				proxyTimeout = d
-			}
-		}
-		if cfg.Server.DialTimeout != "" {
-			if d, err := time.ParseDuration(cfg.Server.DialTimeout); err == nil {
-				dialTimeout = d
-			}
-		}
-		if cfg.Server.MaxRetries > 0 {
-			maxRetries = cfg.Server.MaxRetries
-		}
-		if cfg.Server.MaxIdleConns > 0 {
-			maxIdleConns = cfg.Server.MaxIdleConns
-		}
-		if cfg.Server.MaxIdleConnsPerHost > 0 {
-			maxIdleConnsPerHost = cfg.Server.MaxIdleConnsPerHost
-		}
-	}
-	var idleConnTimeout time.Duration
-	if cfg.Server != nil && cfg.Server.IdleConnTimeout != "" {
-		if d, err := time.ParseDuration(cfg.Server.IdleConnTimeout); err == nil {
-			idleConnTimeout = d
-		}
-	}
+	ps := proxySettingsFromConfig(cfg)
 	proxyConfig := &l7.Config{
 		Router:              rtr,
 		PoolManager:         poolMgr,
 		ConnPoolManager:     connPoolMgr,
 		HealthChecker:       healthChecker,
 		MiddlewareChain:     mwChain,
-		ProxyTimeout:        proxyTimeout,
-		DialTimeout:         dialTimeout,
-		MaxRetries:          maxRetries,
-		MaxIdleConns:        maxIdleConns,
-		MaxIdleConnsPerHost: maxIdleConnsPerHost,
-		IdleConnTimeout:     idleConnTimeout,
+		ProxyTimeout:        ps.proxyTimeout,
+		DialTimeout:         ps.dialTimeout,
+		MaxRetries:          ps.maxRetries,
+		MaxIdleConns:        ps.maxIdleConns,
+		MaxIdleConnsPerHost: ps.maxIdleConnsPerHost,
+		IdleConnTimeout:     ps.idleConnTimeout,
 		PassiveChecker:      passiveChecker,
 		ShadowConfig:        shadowConfigFrom(cfg),
 	}

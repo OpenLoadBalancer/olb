@@ -212,8 +212,11 @@ func NewServer(config *Config) (*Server, error) {
 
 	if config.Auth == nil {
 		// Enforce localhost-only binding when no authentication is configured.
+		// An empty host (":8080") listens on every interface, so it is not
+		// loopback and needs auth like any other non-local address.
 		host, _, _ := net.SplitHostPort(config.Address)
-		if host != "" && host != "localhost" && host != "127.0.0.1" && host != "::1" {
+		ip := net.ParseIP(host)
+		if host != "localhost" && (ip == nil || !ip.IsLoopback()) {
 			return nil, fmt.Errorf("admin API at %s has no authentication configured — either configure auth or bind to localhost", config.Address)
 		}
 		log.Printf("WARNING: Admin API at %s has no authentication configured — bound to localhost only", config.Address)
