@@ -93,8 +93,14 @@ func BuildNodeTLSConfig(config *NodeAuthConfig) (*tls.Config, error) {
 			allowedSet[id] = struct{}{}
 		}
 
-		tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-			return verifyNodeCertificateWithAllowed(rawCerts, verifiedChains, allowedSet)
+		// VerifyConnection, unlike VerifyPeerCertificate, also runs on
+		// resumed sessions, so a resumed peer is checked against the list too.
+		tlsConfig.VerifyConnection = func(cs tls.ConnectionState) error {
+			rawCerts := make([][]byte, len(cs.PeerCertificates))
+			for i, c := range cs.PeerCertificates {
+				rawCerts[i] = c.Raw
+			}
+			return verifyNodeCertificateWithAllowed(rawCerts, cs.VerifiedChains, allowedSet)
 		}
 	}
 
