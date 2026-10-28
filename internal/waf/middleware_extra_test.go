@@ -347,7 +347,7 @@ func TestWAFPipeline_WithDetectionExclusions(t *testing.T) {
 			Enabled: true,
 			Mode:    "enforce",
 			Detection: &config.WAFDetectionConfig{
-				Enabled: true,
+				Enabled: boolPtr(true),
 				Mode:    "enforce",
 				Threshold: config.WAFDetectionThreshold{
 					Block: 50,

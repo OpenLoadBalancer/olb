@@ -30,7 +30,7 @@ func DefaultWAFConfig() *config.WAFConfig {
 			StripHopByHop:     boolPtr(true),
 		},
 		Detection: &config.WAFDetectionConfig{
-			Enabled: true,
+			Enabled: boolPtr(true),
 			Mode:    "enforce",
 			Threshold: config.WAFDetectionThreshold{
 				Block: 50,
