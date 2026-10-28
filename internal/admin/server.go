@@ -81,6 +81,9 @@ type Server struct {
 	healthChecker HealthChecker
 	metrics       Metrics
 
+	prometheusPath    string
+	disablePrometheus bool
+
 	// Optional components
 	clusterAdmin     ClusterAdmin       // optional, nil if clustering not enabled
 	raftProposer     RaftProposer       // optional, nil if clustering not enabled
@@ -115,6 +118,11 @@ type Config struct {
 	HealthChecker HealthChecker
 	Metrics       Metrics
 	OnReload      func() error
+
+	// PrometheusPath is where the Prometheus endpoint is served (default
+	// "/metrics"); DisablePrometheus leaves it unregistered.
+	PrometheusPath    string
+	DisablePrometheus bool
 
 	// CORS configuration
 	// AllowedOrigins restricts which origins can make cross-origin requests.
@@ -184,30 +192,32 @@ func NewServer(config *Config) (*Server, error) {
 	}
 
 	s := &Server{
-		addr:             config.Address,
-		config:           config.Auth,
-		poolManager:      config.PoolManager,
-		router:           config.Router,
-		healthChecker:    config.HealthChecker,
-		metrics:          config.Metrics,
-		onReload:         config.OnReload,
-		clusterAdmin:     config.ClusterAdmin,
-		raftProposer:     config.RaftProposer,
-		configValidator:  config.ConfigValidator,
-		webUI:            config.WebUI,
-		configGetter:     config.ConfigGetter,
-		allowedOrigins:   config.AllowedOrigins,
-		certLister:       config.CertLister,
-		wafStatus:        config.WAFStatus,
-		middlewareStatus: config.MiddlewareStatus,
-		csrfConfig:       config.CSRFConfig,
-		rateLimitMaxReqs: config.RateLimitMaxRequests,
-		rateLimitWindow:  config.RateLimitWindow,
-		tlsCertFile:      config.TLSCertFile,
-		tlsKeyFile:       config.TLSKeyFile,
-		startTime:        time.Now(),
-		circuitBreaker:   newAdminCircuitBreaker(),
-		state:            "running",
+		addr:              config.Address,
+		config:            config.Auth,
+		poolManager:       config.PoolManager,
+		router:            config.Router,
+		healthChecker:     config.HealthChecker,
+		metrics:           config.Metrics,
+		prometheusPath:    config.PrometheusPath,
+		disablePrometheus: config.DisablePrometheus,
+		onReload:          config.OnReload,
+		clusterAdmin:      config.ClusterAdmin,
+		raftProposer:      config.RaftProposer,
+		configValidator:   config.ConfigValidator,
+		webUI:             config.WebUI,
+		configGetter:      config.ConfigGetter,
+		allowedOrigins:    config.AllowedOrigins,
+		certLister:        config.CertLister,
+		wafStatus:         config.WAFStatus,
+		middlewareStatus:  config.MiddlewareStatus,
+		csrfConfig:        config.CSRFConfig,
+		rateLimitMaxReqs:  config.RateLimitMaxRequests,
+		rateLimitWindow:   config.RateLimitWindow,
+		tlsCertFile:       config.TLSCertFile,
+		tlsKeyFile:        config.TLSKeyFile,
+		startTime:         time.Now(),
+		circuitBreaker:    newAdminCircuitBreaker(),
+		state:             "running",
 	}
 
 	if config.Auth == nil {
@@ -276,7 +286,13 @@ func (s *Server) setupRoutes() {
 
 	// Metrics endpoints
 	mux.HandleFunc("/api/v1/metrics", s.getMetricsJSON)
-	mux.HandleFunc("/metrics", s.getMetricsPrometheus)
+	if !s.disablePrometheus {
+		path := s.prometheusPath
+		if path == "" || path[0] != '/' {
+			path = "/metrics"
+		}
+		mux.HandleFunc(path, s.getMetricsPrometheus)
+	}
 
 	// Config endpoint (GET to read, PUT to update via Raft when clustered)
 	mux.HandleFunc("/api/v1/config", s.handleConfig)
@@ -649,4 +665,10 @@ func adminCORS(allowedOrigins []string) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// Handler returns the server's HTTP handler, with auth and the other
+// middleware applied.
+func (s *Server) Handler() http.Handler {
+	return s.server.Handler
 }

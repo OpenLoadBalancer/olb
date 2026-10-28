@@ -143,7 +143,7 @@ Auth is enabled when `username` or `bearer_token` is set. Without auth, the admi
 
 ## Metrics
 
-Prometheus metrics are always exposed at `http://<admin-address>/metrics`, and JSON metrics at `/api/v1/metrics`. The top-level `metrics` section exists in the schema (`enabled`, `path`) but currently has no effect; metric retention and resolution are not configurable.
+Prometheus metrics are exposed by the admin server at `metrics.path` (default `/metrics`); `metrics.enabled: false` turns that endpoint off. JSON metrics are always at `/api/v1/metrics`. (`olb` CLI commands read `/metrics`, so keep the default path if you use them.) metric retention and resolution are not configurable.
 
 ```yaml
 metrics:

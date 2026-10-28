@@ -301,6 +301,10 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 		HealthChecker: healthChecker,
 		Metrics:       admin.NewDefaultMetrics(metricsRegistry),
 	}
+	if cfg.Metrics != nil {
+		adminCfg.DisablePrometheus = !cfg.Metrics.IsEnabled()
+		adminCfg.PrometheusPath = cfg.Metrics.Path
+	}
 	if cfg.Admin != nil {
 		adminCfg.RateLimitMaxRequests = cfg.Admin.RateLimitMaxRequests
 		adminCfg.RateLimitWindow = cfg.Admin.RateLimitWindow
