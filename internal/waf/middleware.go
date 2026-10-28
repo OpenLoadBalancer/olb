@@ -37,6 +37,19 @@ type WAFMiddleware struct {
 	analytics   *Analytics
 	metrics     *WAFMetrics
 	mode        string // "enforce", "monitor", "disabled"
+
+	// Per-layer mode overrides ("" = follow mode).
+	detectionMode string
+	botMode       string
+}
+
+// enforces reports whether a layer blocks (rather than only logs), given
+// the layer's own mode if it has one and the WAF-wide mode otherwise.
+func (mw *WAFMiddleware) enforces(layerMode string) bool {
+	if layerMode == "" {
+		return mw.mode == "enforce"
+	}
+	return normalizeMode(layerMode) == "enforce" && mw.mode == "enforce"
 }
 
 // WAFMiddlewareConfig holds all dependencies for creating a WAFMiddleware.
@@ -75,6 +88,12 @@ func NewWAFMiddleware(cfg WAFMiddlewareConfig) (*WAFMiddleware, error) {
 		analytics: analytics,
 		metrics:   wafMetrics,
 		mode:      normalizeMode(wafCfg.Mode),
+	}
+	if wafCfg.Detection != nil {
+		mw.detectionMode = wafCfg.Detection.Mode
+	}
+	if wafCfg.BotDetection != nil {
+		mw.botMode = wafCfg.BotDetection.Mode
 	}
 
 	// Layer 1: IP ACL
@@ -188,7 +207,9 @@ func NewWAFMiddleware(cfg WAFMiddlewareConfig) (*WAFMiddleware, error) {
 	if dc == nil || boolOr(dc.Detectors.SSRF.Enabled, true) {
 		engine.Register(ssrf.New())
 	}
-	mw.detection = engine
+	if dc.IsEnabled() {
+		mw.detection = engine
+	}
 
 	// Layer 5: Bot Detection
 	if wafCfg.BotDetection != nil && wafCfg.BotDetection.Enabled {
@@ -391,7 +412,7 @@ func (mw *WAFMiddleware) Wrap(next http.Handler) http.Handler {
 		r = ctx.SetOnRequest(r)
 
 		// Layer 4: WAF Detection (legacy regex engine)
-		if mw.legacyWAF != nil {
+		if mw.legacyWAF != nil && mw.config.Detection.IsEnabled() {
 			result, err := mw.legacyWAF.Process(r)
 			if err == nil && result != nil && result.IsBlocked() {
 				evt := &WAFEvent{
@@ -416,7 +437,7 @@ func (mw *WAFMiddleware) Wrap(next http.Handler) http.Handler {
 					})
 				}
 				mw.events.LogEvent(evt)
-				if mw.mode == "enforce" {
+				if mw.enforces(mw.detectionMode) {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusForbidden)
 					_, _ = w.Write([]byte(`{"error":"blocked by WAF","layer":"detection"}`))
@@ -443,7 +464,7 @@ func (mw *WAFMiddleware) Wrap(next http.Handler) http.Handler {
 					LatencyNS:  time.Since(start).Nanoseconds(),
 				}
 				mw.events.LogEvent(evt)
-				if mw.mode == "enforce" {
+				if mw.enforces(mw.detectionMode) {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusForbidden)
 					_, _ = w.Write([]byte(`{"error":"blocked by WAF","layer":"detection"}`))
@@ -475,7 +496,7 @@ func (mw *WAFMiddleware) Wrap(next http.Handler) http.Handler {
 					LatencyNS: time.Since(start).Nanoseconds(),
 				}
 				mw.events.LogEvent(evt)
-				if mw.mode == "enforce" {
+				if mw.enforces(mw.botMode) {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusForbidden)
 					_, _ = w.Write([]byte(`{"error":"blocked by WAF","layer":"bot"}`))

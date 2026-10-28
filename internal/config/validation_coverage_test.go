@@ -755,7 +755,7 @@ func TestValidate_WAFDetectionInvalidMode(t *testing.T) {
 		Enabled: true,
 		Mode:    "enforce",
 		Detection: &WAFDetectionConfig{
-			Enabled: true,
+			Enabled: boolPtr(true),
 			Mode:    "invalid",
 		},
 	}
@@ -825,7 +825,7 @@ func TestValidate_WAFDetectionValid(t *testing.T) {
 		Enabled: true,
 		Mode:    "enforce",
 		Detection: &WAFDetectionConfig{
-			Enabled: true,
+			Enabled: boolPtr(true),
 			Mode:    "monitor",
 		},
 	}
@@ -1336,7 +1336,7 @@ func TestValidate_FullConfig(t *testing.T) {
 			Enabled: true,
 			Mode:    "enforce",
 			Detection: &WAFDetectionConfig{
-				Enabled: true,
+				Enabled: boolPtr(true),
 				Mode:    "enforce",
 			},
 			RateLimit: &WAFRateLimitConfig{

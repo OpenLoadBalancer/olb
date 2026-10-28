@@ -384,7 +384,7 @@ func TestDefaultWAFConfig(t *testing.T) {
 	if cfg.Sanitizer == nil || !cfg.Sanitizer.Enabled {
 		t.Error("expected Sanitizer to be enabled by default")
 	}
-	if cfg.Detection == nil || !cfg.Detection.Enabled {
+	if cfg.Detection == nil || !cfg.Detection.IsEnabled() {
 		t.Error("expected Detection to be enabled by default")
 	}
 	if cfg.BotDetection == nil || !cfg.BotDetection.Enabled {

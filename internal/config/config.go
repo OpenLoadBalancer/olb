@@ -551,9 +551,15 @@ type WAFSanitizerOverride struct {
 	MaxBodySize int64  `yaml:"max_body_size" json:"max_body_size"`
 }
 
+// IsEnabled reports whether the detection layer runs; omitted means yes.
+func (d *WAFDetectionConfig) IsEnabled() bool {
+	return d == nil || d.Enabled == nil || *d.Enabled
+}
+
 // WAFDetectionConfig configures the WAF detection engine.
 type WAFDetectionConfig struct {
-	Enabled    bool                    `yaml:"enabled" json:"enabled"`
+	// Enabled is a pointer so an omitted key keeps detection on.
+	Enabled    *bool                   `yaml:"enabled" json:"enabled,omitempty"`
 	Mode       string                  `yaml:"mode" json:"mode"` // "enforce", "monitor"
 	Threshold  WAFDetectionThreshold   `yaml:"threshold" json:"threshold"`
 	Detectors  WAFDetectorsConfig      `yaml:"detectors" json:"detectors"`
@@ -1428,7 +1434,7 @@ func (c *Config) validateWAF() error {
 		return fmt.Errorf("waf: invalid mode %q (valid: enforce, blocking, block, monitor, disabled)", c.WAF.Mode)
 	}
 
-	if c.WAF.Detection != nil && c.WAF.Detection.Enabled {
+	if c.WAF.Detection != nil {
 		validDetModes := map[string]bool{"enforce": true, "monitor": true}
 		if c.WAF.Detection.Mode != "" && !validDetModes[c.WAF.Detection.Mode] {
 			return fmt.Errorf("waf.detection: invalid mode %q (valid: enforce, monitor)", c.WAF.Detection.Mode)
