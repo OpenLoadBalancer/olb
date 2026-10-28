@@ -137,7 +137,7 @@ admin:
   mcp_audit: true                 # Log every MCP tool call
 ```
 
-Auth is enabled when `username` or `bearer_token` is set. Without auth, the admin server refuses to bind to a non-loopback host; note that an address without a host (such as the default `:8080`) is not rejected and listens on all interfaces, so always set an explicit host or configure auth. The Web UI is served by the admin server and has no separate settings; admin TLS is not configurable. The `admin.enabled` field exists in the schema but the admin server always starts.
+Auth is enabled when `username` or `bearer_token` is set. Without auth, the admin server refuses to bind to a non-loopback host; note that an address without a host (such as the default `:8080`) is not rejected and listens on all interfaces, so always set an explicit host or configure auth. The Web UI is served by the admin server and has no separate settings; admin TLS is not configurable. Set `admin.enabled: false` to not start the admin server at all (default: enabled); the CLI commands and Web UI then have nothing to talk to.
 
 ---
 
