@@ -71,7 +71,7 @@ func createTestConfig() *config.Config {
 			},
 		},
 		Admin: &config.Admin{
-			Enabled: true,
+			Enabled: boolPtr(true),
 			Address: "127.0.0.1:0",
 		},
 		Logging: &config.Logging{
@@ -524,7 +524,7 @@ func TestInitializePools(t *testing.T) {
 				},
 			},
 		},
-		Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+		Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 	}
 
 	configPath := createTempConfigFile(t, cfg)
@@ -586,7 +586,7 @@ func TestInitializeRoutes(t *testing.T) {
 			{Name: "pool1", Algorithm: "round_robin"},
 			{Name: "pool2", Algorithm: "round_robin"},
 		},
-		Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+		Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 	}
 
 	configPath := createTempConfigFile(t, cfg)
@@ -773,7 +773,7 @@ func TestNewWithInvalidConfig(t *testing.T) {
 						},
 					},
 				},
-				Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+				Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 			},
 			wantErr: true,
 		},
@@ -804,7 +804,7 @@ func TestNewWithInvalidConfig(t *testing.T) {
 						},
 					},
 				},
-				Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+				Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 			},
 			wantErr: true,
 		},
@@ -1026,7 +1026,7 @@ func TestValidateConfig(t *testing.T) {
 						},
 					},
 				},
-				Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+				Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 			},
 			wantErr: true,
 		},
@@ -1057,7 +1057,7 @@ func TestValidateConfig(t *testing.T) {
 						},
 					},
 				},
-				Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+				Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 			},
 			wantErr: true,
 		},
@@ -1088,7 +1088,7 @@ func TestValidateConfig(t *testing.T) {
 						},
 					},
 				},
-				Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+				Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 			},
 			wantErr: false,
 		},
@@ -1119,7 +1119,7 @@ func TestValidateConfig(t *testing.T) {
 						},
 					},
 				},
-				Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+				Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 			},
 			wantErr: false,
 		},
@@ -1150,7 +1150,7 @@ func TestValidateConfig(t *testing.T) {
 						},
 					},
 				},
-				Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+				Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 			},
 			wantErr: false,
 		},
@@ -1181,7 +1181,7 @@ func TestValidateConfig(t *testing.T) {
 						},
 					},
 				},
-				Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+				Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 			},
 			wantErr: false,
 		},
@@ -1561,7 +1561,7 @@ func TestInitializePoolsWithErrors(t *testing.T) {
 					},
 				},
 			},
-			Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+			Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 		}
 
 		configPath := createTempConfigFile(t, cfg)
@@ -1615,7 +1615,7 @@ func TestInitializePoolsWithErrors(t *testing.T) {
 					},
 				},
 			},
-			Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+			Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 		}
 
 		configPath := createTempConfigFile(t, cfg)
@@ -1644,7 +1644,7 @@ func TestInitializeRoutesWithErrors(t *testing.T) {
 			Pools: []*config.Pool{
 				{Name: "pool1", Algorithm: "round_robin"},
 			},
-			Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+			Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 		}
 
 		configPath := createTempConfigFile(t, cfg)
@@ -1688,7 +1688,7 @@ func TestStartListenersWithErrors(t *testing.T) {
 					},
 				},
 			},
-			Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+			Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 		}
 
 		configPath := createTempConfigFile(t, cfg)
@@ -1936,7 +1936,7 @@ func TestEngineWithVariousPoolAlgorithms(t *testing.T) {
 						},
 					},
 				},
-				Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+				Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 			}
 
 			configPath := createTempConfigFile(t, cfg)
@@ -3130,7 +3130,7 @@ func TestInitializePoolsAllAlgorithms(t *testing.T) {
 						},
 					},
 				},
-				Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+				Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 			}
 
 			configPath := createTempConfigFile(t, cfg)
@@ -3182,7 +3182,7 @@ func TestInitializePoolsBackendWithoutID(t *testing.T) {
 				},
 			},
 		},
-		Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+		Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 	}
 
 	configPath := createTempConfigFile(t, cfg)
@@ -3232,7 +3232,7 @@ func TestStartListenersWithTCPAndUDP(t *testing.T) {
 				},
 			},
 		},
-		Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+		Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 	}
 
 	configPath := createTempConfigFile(t, cfg)
@@ -4169,7 +4169,7 @@ func TestStartListenersUDP(t *testing.T) {
 				},
 			},
 		},
-		Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+		Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 	}
 
 	configPath := createTempConfigFile(t, cfg)
@@ -4235,7 +4235,7 @@ func TestStartListenersMixedProtocols(t *testing.T) {
 				},
 			},
 		},
-		Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+		Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 	}
 
 	configPath := createTempConfigFile(t, cfg)
@@ -4284,7 +4284,7 @@ func TestStartListenersTCPMissingPool(t *testing.T) {
 			},
 		},
 		Pools:      []*config.Pool{},
-		Admin:      &config.Admin{Enabled: false},
+		Admin:      &config.Admin{Enabled: boolPtr(false)},
 		WAF:        &config.WAFConfig{Enabled: false},
 		Middleware: &config.MiddlewareConfig{},
 	}
@@ -4313,7 +4313,7 @@ func TestStartListenersUDPMissingPool(t *testing.T) {
 			},
 		},
 		Pools:      []*config.Pool{},
-		Admin:      &config.Admin{Enabled: false},
+		Admin:      &config.Admin{Enabled: boolPtr(false)},
 		WAF:        &config.WAFConfig{Enabled: false},
 		Middleware: &config.MiddlewareConfig{},
 	}
@@ -4820,7 +4820,7 @@ func TestValidateConfig_AllAlgorithms(t *testing.T) {
 						},
 					},
 				},
-				Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+				Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 			}
 
 			configPath := createTempConfigFile(t, cfg)

@@ -116,22 +116,25 @@ func (e *Engine) Start() error {
 
 	// 7. Start admin server
 	adminAddr := getAdminAddress(e.config)
-	e.wg.Add(1)
-	go func() {
-		defer e.wg.Done()
-		defer func() {
-			if r := recover(); r != nil {
-				e.logger.Error("Admin server panic recovered", logging.Any("panic", r))
+	if !e.config.Admin.IsEnabled() {
+		e.logger.Info("Admin server disabled by config")
+	} else {
+		e.wg.Add(1)
+		go func() {
+			defer e.wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					e.logger.Error("Admin server panic recovered", logging.Any("panic", r))
+				}
+			}()
+			e.logger.Info("Admin server starting",
+				logging.String("address", adminAddr),
+			)
+			if err := e.adminServer.Start(); err != nil && err != http.ErrServerClosed {
+				e.logger.Error("Admin server error", logging.Error(err))
 			}
 		}()
-		addr := adminAddr
-		e.logger.Info("Admin server starting",
-			logging.String("address", addr),
-		)
-		if err := e.adminServer.Start(); err != nil && err != http.ErrServerClosed {
-			e.logger.Error("Admin server error", logging.Error(err))
-		}
-	}()
+	}
 
 	// 8. Start plugin manager
 	if e.pluginMgr != nil {

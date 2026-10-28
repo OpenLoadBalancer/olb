@@ -1017,7 +1017,7 @@ func TestInitializePools_DuplicatePool(t *testing.T) {
 				},
 			},
 		},
-		Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+		Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 	}
 
 	configPath := createTempConfigFile(t, cfg)
@@ -1169,7 +1169,7 @@ func TestValidateConfig_BadPoolRef(t *testing.T) {
 				},
 			},
 		},
-		Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+		Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 	}
 
 	err = engine.validateConfig(badCfg)
@@ -1204,7 +1204,7 @@ func TestValidateConfig_EmptyAlgo(t *testing.T) {
 				},
 			},
 		},
-		Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+		Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 	}
 
 	configPath := createTempConfigFile(t, cfg)
@@ -1940,7 +1940,7 @@ func TestCov_New_WithDiscoveryManager(t *testing.T) {
 func TestCov_New_WithAdminEnabled(t *testing.T) {
 	cfg := createTestConfig()
 	cfg.Admin = &config.Admin{
-		Enabled: true,
+		Enabled: boolPtr(true),
 		Address: "127.0.0.1:0",
 	}
 
@@ -2883,7 +2883,7 @@ func TestCov_InitializePools_EmptyAlgorithm(t *testing.T) {
 				},
 			},
 		},
-		Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+		Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 	}
 
 	configPath := createTempConfigFile(t, cfg)
