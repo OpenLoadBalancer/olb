@@ -751,10 +751,16 @@ type ACME struct {
 	Domains []string `yaml:"domains" json:"domains"`
 }
 
+// IsEnabled reports whether the admin server should run; an omitted
+// "enabled" key means yes.
+func (a *Admin) IsEnabled() bool {
+	return a == nil || a.Enabled == nil || *a.Enabled
+}
+
 // Admin represents admin API configuration.
 type Admin struct {
 	Address              string `yaml:"address" json:"address"`
-	Enabled              bool   `yaml:"enabled" json:"enabled"`
+	Enabled              *bool  `yaml:"enabled" json:"enabled"`
 	MCPAddress           string `yaml:"mcp_address" json:"mcp_address"`
 	MCPToken             string `yaml:"mcp_token" json:"-"`
 	MCPAudit             bool   `yaml:"mcp_audit" json:"mcp_audit"`

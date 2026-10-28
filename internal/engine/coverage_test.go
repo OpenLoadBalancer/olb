@@ -626,7 +626,7 @@ func TestCov_InitializePools_TCPHealthCheck(t *testing.T) {
 				},
 			},
 		},
-		Admin: &config.Admin{Enabled: true, Address: "127.0.0.1:0"},
+		Admin: &config.Admin{Enabled: boolPtr(true), Address: "127.0.0.1:0"},
 	}
 
 	configPath := createTempConfigFile(t, cfg)
