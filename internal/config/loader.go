@@ -175,8 +175,9 @@ func (l *Loader) applyDefaults(cfg *Config) {
 
 	// Apply defaults to metrics
 	if cfg.Metrics == nil {
+		enabled := true
 		cfg.Metrics = &Metrics{
-			Enabled: true,
+			Enabled: &enabled,
 			Path:    "/metrics",
 		}
 	}

@@ -757,6 +757,12 @@ func (a *Admin) IsEnabled() bool {
 	return a == nil || a.Enabled == nil || *a.Enabled
 }
 
+// IsEnabled reports whether the Prometheus endpoint is served; an omitted
+// "enabled" key means yes.
+func (m *Metrics) IsEnabled() bool {
+	return m == nil || m.Enabled == nil || *m.Enabled
+}
+
 // Admin represents admin API configuration.
 type Admin struct {
 	Address              string `yaml:"address" json:"address"`
@@ -784,7 +790,7 @@ type Logging struct {
 
 // Metrics represents metrics configuration.
 type Metrics struct {
-	Enabled bool   `yaml:"enabled" json:"enabled"`
+	Enabled *bool  `yaml:"enabled" json:"enabled"`
 	Path    string `yaml:"path" json:"path"`
 }
 

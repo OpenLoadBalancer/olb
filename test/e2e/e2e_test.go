@@ -303,7 +303,7 @@ func TestE2E_HealthCheck(t *testing.T) {
 			},
 		},
 		Logging: &config.Logging{Level: "info", Format: "json", Output: "stdout"},
-		Metrics: &config.Metrics{Enabled: true, Path: "/metrics"},
+		Metrics: &config.Metrics{Enabled: boolPtr(true), Path: "/metrics"},
 	}
 
 	eng, err := engine.New(cfg, "")
@@ -2671,7 +2671,7 @@ func TestE2E_MultipleListeners(t *testing.T) {
 			},
 		},
 		Logging: &config.Logging{Level: "info", Format: "json", Output: "stdout"},
-		Metrics: &config.Metrics{Enabled: true, Path: "/metrics"},
+		Metrics: &config.Metrics{Enabled: boolPtr(true), Path: "/metrics"},
 	}
 
 	eng, err := engine.New(cfg, "")

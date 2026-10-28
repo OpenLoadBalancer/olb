@@ -80,7 +80,7 @@ func createTestConfig() *config.Config {
 			Output: "stdout",
 		},
 		Metrics: &config.Metrics{
-			Enabled: true,
+			Enabled: boolPtr(true),
 			Path:    "/metrics",
 		},
 	}
