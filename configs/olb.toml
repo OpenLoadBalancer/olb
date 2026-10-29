@@ -53,12 +53,8 @@ address  = ":8080"
   path = "/"
   pool = "web-backend"
 
-    [[listeners.routes.middleware]]
-    name = "rate_limit"
-
-      [listeners.routes.middleware.config]
-      requests_per_second = 100
-      burst_size          = 200
+  # Per-route middleware is not supported; enable rate_limit and friends in
+  # the global [middleware] section below.
 
 # HTTPS listener on port 8443
 [[listeners]]

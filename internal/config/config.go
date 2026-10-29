@@ -979,6 +979,12 @@ func (c *Config) Validate() error {
 			if route.Pool == "" {
 				return fmt.Errorf("listener %s: route %d: pool is required", l.Name, j)
 			}
+			// Per-route middleware is not implemented. Ignoring it would drop
+			// whatever it was meant to enforce (auth, rate limits), so refuse
+			// the config instead; use the global "middleware" section.
+			if len(route.Middleware) > 0 {
+				return fmt.Errorf("listener %s: route %d: per-route middleware is not supported yet; configure it in the global middleware section", l.Name, j)
+			}
 		}
 	}
 

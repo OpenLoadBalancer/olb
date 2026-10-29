@@ -291,7 +291,7 @@ pools:
       - address: "10.0.1.10:8080"
 ```
 
-`routes[].middleware` exists in the schema but is not applied; all middleware is global (see [Middleware](#middleware)).
+`routes[].middleware` is not supported: a config that sets it is rejected at load time (silently dropping an auth or rate-limit entry would fail open). All middleware is global (see [Middleware](#middleware)).
 
 ### Route Matching Fields
 

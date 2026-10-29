@@ -97,3 +97,16 @@ pools:
 		t.Errorf("Warnings = %v, want the algoritm typo", l.Warnings)
 	}
 }
+
+func TestValidate_RejectsPerRouteMiddleware(t *testing.T) {
+	cfg := &Config{
+		Listeners: []*Listener{{Name: "http", Address: ":0", Protocol: "http", Routes: []*Route{
+			{Path: "/", Pool: "p", Middleware: []map[string]any{{"name": "basic_auth"}}},
+		}}},
+		Pools: []*Pool{{Name: "p", Backends: []*Backend{{Address: "127.0.0.1:1"}}}},
+	}
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "per-route middleware") {
+		t.Fatalf("expected per-route middleware error, got %v", err)
+	}
+}
