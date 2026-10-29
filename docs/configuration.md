@@ -954,13 +954,12 @@ waf:
 
 `block_null_bytes`, `normalize_encoding` and `strip_hop_by_hop` default to `true`; omitting them keeps that default, and only an explicit `false` turns one off.
 
-`waf.detection.enabled: false` skips the detection layer (omitted = on). `waf.detection.mode` and `waf.bot_detection.mode` (`enforce` or `monitor`) set a layer to log-only; a layer never enforces more strictly than `waf.mode`, so `waf.mode: monitor` keeps everything log-only.
+`waf.detection.exclusions[].condition` is `always` (default) or `whitelist` (the exclusion applies only to whitelisted clients, which normally bypass the WAF entirely, so it rarely matters). `waf.detection.enabled: false` skips the detection layer (omitted = on). `waf.detection.mode` and `waf.bot_detection.mode` (`enforce` or `monitor`) set a layer to log-only; a layer never enforces more strictly than `waf.mode`, so `waf.mode: monitor` keeps everything log-only.
 
 Keys that exist in the schema but currently have no effect:
 - `waf.logging.log_body`, `waf.logging.level`, `waf.logging.format`
 - `waf.rate_limit.sync_interval`, `waf.rate_limit.store`, and and `rules[].action` (rate-limited requests are always rejected with 429; `throttle` is not implemented)
 - `tls_fingerprint.known_bots_action` / `unknown_action` / `mismatch_action`
-- `exclusions[].condition`
 
 ---
 

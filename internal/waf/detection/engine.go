@@ -20,6 +20,9 @@ func DefaultThreshold() Threshold {
 type Exclusion struct {
 	PathPattern string
 	Detectors   []string
+	// Condition is "always" (default) or "whitelist": apply only to requests
+	// from whitelisted clients.
+	Condition string
 }
 
 // Result holds the output of the detection engine.
@@ -70,7 +73,7 @@ func (e *Engine) Detect(ctx *RequestContext) Result {
 	var result Result
 
 	for _, d := range e.detectors {
-		if e.isExcluded(ctx.Path, d.Name()) {
+		if e.isExcluded(ctx, d.Name()) {
 			continue
 		}
 
@@ -90,8 +93,12 @@ func (e *Engine) Detect(ctx *RequestContext) Result {
 	return result
 }
 
-func (e *Engine) isExcluded(reqPath, detectorName string) bool {
+func (e *Engine) isExcluded(ctx *RequestContext, detectorName string) bool {
+	reqPath := ctx.Path
 	for _, ex := range e.exclusions {
+		if strings.EqualFold(ex.Condition, "whitelist") && !ctx.IsWhitelisted {
+			continue
+		}
 		for _, d := range ex.Detectors {
 			if !strings.EqualFold(d, detectorName) {
 				continue

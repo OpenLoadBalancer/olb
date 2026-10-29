@@ -476,7 +476,7 @@ waf:
         detectors:
           - sqli
         reason: "Third-party webhook with encoded SQL content"
-        condition: "whitelist"
+        condition: "always"
 
   # Bot detection
   bot_detection:

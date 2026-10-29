@@ -185,6 +185,7 @@ func NewWAFMiddleware(cfg WAFMiddlewareConfig) (*WAFMiddleware, error) {
 			detCfg.Exclusions = append(detCfg.Exclusions, detection.Exclusion{
 				PathPattern: ex.Path,
 				Detectors:   ex.Detectors,
+				Condition:   ex.Condition,
 			})
 		}
 	}

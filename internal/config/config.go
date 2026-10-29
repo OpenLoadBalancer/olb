@@ -1439,6 +1439,11 @@ func (c *Config) validateWAF() error {
 		if c.WAF.Detection.Mode != "" && !validDetModes[c.WAF.Detection.Mode] {
 			return fmt.Errorf("waf.detection: invalid mode %q (valid: enforce, monitor)", c.WAF.Detection.Mode)
 		}
+		for i, ex := range c.WAF.Detection.Exclusions {
+			if ex.Condition != "" && ex.Condition != "always" && ex.Condition != "whitelist" {
+				return fmt.Errorf("waf.detection.exclusions[%d]: invalid condition %q (valid: always, whitelist)", i, ex.Condition)
+			}
+		}
 	}
 
 	if c.WAF.RateLimit != nil {
