@@ -4456,9 +4456,10 @@ func TestNewWithACME(t *testing.T) {
 	cfg := createTestConfig()
 	cfg.TLS = &config.TLSConfig{
 		ACME: &config.ACME{
-			Enabled: true,
-			Email:   "admin@example.com",
-			Domains: []string{"example.com"},
+			Enabled:      true,
+			Email:        "admin@example.com",
+			Domains:      []string{"example.com"},
+			DirectoryURL: "http://127.0.0.1:1/dir", // never reach a real CA from tests
 		},
 	}
 
@@ -4470,7 +4471,7 @@ func TestNewWithACME(t *testing.T) {
 
 	// acmeClient may or may not be nil depending on whether the ACME directory is reachable
 	// The important thing is that it doesn't panic
-	_ = engine.acmeClient
+	_ = engine.acmeManager
 }
 
 func TestNewWithProfiling(t *testing.T) {

@@ -708,9 +708,11 @@ tls:
     domains:                            # At least one required when enabled
       - openloadbalancer.dev
       - www.openloadbalancer.dev
+    directory_url: ""                   # Default: Let's Encrypt production; use the staging directory while testing
+    storage_dir: ""                     # Default: "acme" next to the config file
 ```
 
-Currently `tls.acme` only initializes an ACME client at startup; certificates for `domains` are not obtained or installed automatically yet, so keep a static certificate configured. The ACME directory, challenge type, storage path and renewal window are not configurable.
+With `tls.acme` enabled, OLB obtains one certificate covering all `domains` in the background after start and installs it as the default certificate. It uses the HTTP-01 challenge only: the CA validates over plain HTTP on **port 80**, so a plain `http` listener on port 80 must be reachable from the internet for every domain. Challenge requests are answered ahead of the middleware chain (WAF, auth and redirects do not see them). The account key, certificate and private key are stored in `storage_dir` (mode 0600) and reused on restart; the certificate is renewed 30 days before expiry (checked every 12 hours, retried hourly on failure). Until the first certificate is installed, HTTPS handshakes use the static certificate if one is configured and otherwise fail. Terms of service are accepted on your behalf. Wildcard names (DNS-01) are not supported. Renewed certificates are picked up without a restart, but changing `tls.acme` itself needs a restart.
 
 ### Mutual TLS (mTLS)
 

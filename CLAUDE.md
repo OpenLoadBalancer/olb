@@ -90,7 +90,7 @@ internal/admin/           → REST API + Web UI serving (30+ endpoints)
 internal/cluster/         → Raft consensus (SWIM gossip code exists but is not wired into the engine)
 internal/mcp/             → MCP server for AI integration (SSE + HTTP + stdio, 8 tools + 9 WAF tools when WAF is on)
 internal/tls/             → TLS, mTLS, OCSP stapling
-internal/acme/            → ACME/Let's Encrypt client
+internal/acme/            → ACME/Let's Encrypt client + certificate manager (HTTP-01 issue/renew)
 internal/health/          → Active + passive health checking (HTTP, TCP, gRPC)
 internal/waf/             → WAF: 6-layer security pipeline (SQLi, XSS, CMDi, XXE, SSRF, path traversal)
 internal/security/        → Request smuggling, header injection protection

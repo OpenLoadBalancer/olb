@@ -2,6 +2,7 @@ package engine
 
 import (
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -81,5 +82,32 @@ func TestMetricsEndpointConfig(t *testing.T) {
 	}
 	if !served(nil, "/metrics") {
 		t.Error("default path not served")
+	}
+}
+
+func TestACMEChallengeBypassesProxy(t *testing.T) {
+	cfg := createTestConfig()
+	cfg.TLS = &config.TLSConfig{ACME: &config.ACME{
+		Enabled: true, Email: "ops@example.test", Domains: []string{"example.test"},
+		DirectoryURL: "http://127.0.0.1:1/dir", StorageDir: t.TempDir(),
+	}}
+	e, err := New(cfg, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.acmeManager == nil {
+		t.Fatal("ACME manager not created")
+	}
+	called := false
+	h := e.withACMEChallenge(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true }))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/.well-known/acme-challenge/unknown", nil))
+	if called || rec.Code != http.StatusNotFound {
+		t.Errorf("challenge path reached the proxy (called=%v, code=%d)", called, rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+	if !called {
+		t.Error("normal requests must reach the proxy")
 	}
 }

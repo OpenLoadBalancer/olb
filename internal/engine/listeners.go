@@ -140,7 +140,7 @@ func (e *Engine) startHTTPListener(listenerCfg *config.Listener) error {
 	opts := &listener.Options{
 		Name:           listenerCfg.Name,
 		Address:        listenerCfg.Address,
-		Handler:        e.proxy,
+		Handler:        e.withACMEChallenge(e.proxy),
 		ReadTimeout:    slp.ReadTimeout,
 		HeaderTimeout:  slp.ReadHeaderTimeout,
 		WriteTimeout:   slp.WriteTimeout,

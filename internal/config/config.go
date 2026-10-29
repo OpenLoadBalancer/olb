@@ -755,6 +755,14 @@ type ACME struct {
 	Enabled bool     `yaml:"enabled" json:"enabled"`
 	Email   string   `yaml:"email" json:"email"`
 	Domains []string `yaml:"domains" json:"domains"`
+
+	// DirectoryURL is the ACME directory; Let's Encrypt production when empty.
+	// Use https://acme-staging-v02.api.letsencrypt.org/directory while testing.
+	DirectoryURL string `yaml:"directory_url" json:"directory_url"`
+
+	// StorageDir holds the account key, certificate and private key
+	// (default: "acme" next to the config file).
+	StorageDir string `yaml:"storage_dir" json:"storage_dir"`
 }
 
 // IsEnabled reports whether the admin server should run; an omitted

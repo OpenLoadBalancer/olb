@@ -92,7 +92,7 @@ type Engine struct {
 	shadowMgr    *l7.ShadowManager // optional, nil if not configured
 
 	// ACME/Let's Encrypt client
-	acmeClient *acme.Client
+	acmeManager *acme.Manager
 
 	// Profiling cleanup function (non-nil when profiling is active)
 	profilingCleanup func()
@@ -487,20 +487,11 @@ func New(cfg *config.Config, configPath string) (*Engine, error) {
 		}
 	}
 
-	// Initialize ACME/Let's Encrypt client if configured
+	// Initialize ACME/Let's Encrypt certificate manager if configured. It does
+	// no network I/O until Start.
 	if cfg.TLS != nil && cfg.TLS.ACME != nil && cfg.TLS.ACME.Enabled {
-		acmeCfg := acme.DefaultConfig()
-		if cfg.TLS.ACME.Email != "" {
-			acmeCfg.Contact = []string{"mailto:" + cfg.TLS.ACME.Email}
-		}
-		acmeClient, err := acme.New(acmeCfg)
-		if err != nil {
-			logger.Warn("Failed to initialize ACME client", logging.Error(err))
-		} else {
-			e.acmeClient = acmeClient
-			logger.Info("ACME client initialized",
-				logging.String("directory", acmeCfg.DirectoryURL),
-			)
+		if err := e.initACME(cfg.TLS.ACME, configPath); err != nil {
+			logger.Warn("Failed to initialize ACME", logging.Error(err))
 		}
 	}
 

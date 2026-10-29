@@ -19,7 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cluster transport authenticates before accepting a connection (#61)
 - Dependencies: x/net v0.61.0, x/text v0.43.0, x/crypto v0.58.0 (govulncheck: 0 reachable); all WebUI and website npm packages updated, zod 4 (GHSA-mrhx-c7xc-m3w5), `npm audit` clean (#61, #64)
 
+### Added
+- `tls.acme` now obtains and renews certificates (ACME HTTP-01 on port 80, account/certificate storage in `tls.acme.storage_dir`, `directory_url` for staging). Previously it only created a client and never requested a certificate
+- `admin.enabled: false`, `metrics.enabled`/`metrics.path`, `waf.detection.enabled`, per-layer `waf.detection.mode`/`waf.bot_detection.mode`, `waf.detection.exclusions[].condition`, `behavior.error_rate_threshold`, `permissions_policy` and `ip_acl.auto_ban.default_ttl` are now honored
+
+### Changed
+- `routes[].middleware` is rejected at load time instead of being silently ignored
+
 ### Fixed
+- Data race between accepting TCP connections and shutting the L4 proxy down
 - Round robin, IP hash and least-connections tie-breaking picked backends from a randomly ordered slice: round robin was effectively random and IP hash did not keep a client on one backend (#67)
 - `/metrics` stopped updating `http_*` and `waf_*` series after a config reload (#70)
 - Distributed rate limiter banned on the first violation, ignoring `AutoBanAfter`; violation maps are now bounded (#69)

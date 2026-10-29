@@ -114,6 +114,7 @@ type Client struct {
 	nonce       string
 	nonceMu     sync.Mutex
 	rateTracker *RateTracker
+	contact     []string
 }
 
 // Config contains ACME client configuration.
@@ -142,6 +143,7 @@ func New(config *Config) (*Client, error) {
 		directoryURL: config.DirectoryURL,
 		httpClient:   &http.Client{Timeout: 30 * time.Second},
 		rateTracker:  NewRateTracker(config.RateLimits),
+		contact:      config.Contact,
 	}
 
 	// Generate account key if not provided
@@ -195,7 +197,7 @@ func (c *Client) Register(termsAgreed bool) (*Account, error) {
 		Contact              []string `json:"contact,omitempty"`
 	}{
 		TermsOfServiceAgreed: termsAgreed,
-		Contact:              []string{},
+		Contact:              c.contact,
 	}
 
 	resp, err := c.postJWS(c.directory.NewAccount, payload, true)

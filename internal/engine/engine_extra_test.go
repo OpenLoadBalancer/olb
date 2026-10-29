@@ -1986,9 +1986,10 @@ func TestCov_New_ACMEWithEmail(t *testing.T) {
 	cfg := createTestConfig()
 	cfg.TLS = &config.TLSConfig{
 		ACME: &config.ACME{
-			Enabled: true,
-			Email:   "test@openloadbalancer.dev",
-			Domains: []string{"example.com"},
+			Enabled:      true,
+			Email:        "test@openloadbalancer.dev",
+			Domains:      []string{"example.com"},
+			DirectoryURL: "http://127.0.0.1:1/dir", // never reach a real CA from tests
 		},
 	}
 
@@ -2005,9 +2006,10 @@ func TestCov_New_ACMEEmptyEmail(t *testing.T) {
 	cfg := createTestConfig()
 	cfg.TLS = &config.TLSConfig{
 		ACME: &config.ACME{
-			Enabled: true,
-			Email:   "",
-			Domains: []string{"example.com"},
+			Enabled:      true,
+			Email:        "",
+			Domains:      []string{"example.com"},
+			DirectoryURL: "http://127.0.0.1:1/dir", // never reach a real CA from tests
 		},
 	}
 
@@ -2971,9 +2973,10 @@ func TestCov_Shutdown_WithACME(t *testing.T) {
 	cfg := createTestConfig()
 	cfg.TLS = &config.TLSConfig{
 		ACME: &config.ACME{
-			Enabled: true,
-			Email:   "test@openloadbalancer.dev",
-			Domains: []string{"example.com"},
+			Enabled:      true,
+			Email:        "test@openloadbalancer.dev",
+			Domains:      []string{"example.com"},
+			DirectoryURL: "http://127.0.0.1:1/dir", // never reach a real CA from tests
 		},
 	}
 
@@ -2983,7 +2986,7 @@ func TestCov_Shutdown_WithACME(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	if engine.acmeClient == nil {
+	if engine.acmeManager == nil {
 		t.Skip("ACME client not initialized (network issue)")
 	}
 
@@ -3901,9 +3904,10 @@ func TestCov_New_WithACME_Email(t *testing.T) {
 	cfg := createTestConfig()
 	cfg.TLS = &config.TLSConfig{
 		ACME: &config.ACME{
-			Enabled: true,
-			Email:   "test@example.com",
-			Domains: []string{"example.com"},
+			Enabled:      true,
+			Email:        "test@example.com",
+			Domains:      []string{"example.com"},
+			DirectoryURL: "http://127.0.0.1:1/dir", // never reach a real CA from tests
 		},
 	}
 
@@ -3913,7 +3917,7 @@ func TestCov_New_WithACME_Email(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 	// ACME client might be nil if directory is unreachable, but creation should not fail
-	t.Logf("ACME client: %v", engine.acmeClient)
+	t.Logf("ACME client: %v", engine.acmeManager)
 }
 
 // TestCov_New_WithGeoDNS_Rules tests engine creation with GeoDNS rules.
@@ -4214,9 +4218,10 @@ func TestCov_Start_WithACME(t *testing.T) {
 	cfg := createTestConfig()
 	cfg.TLS = &config.TLSConfig{
 		ACME: &config.ACME{
-			Enabled: true,
-			Email:   "test@example.com",
-			Domains: []string{"example.com"},
+			Enabled:      true,
+			Email:        "test@example.com",
+			Domains:      []string{"example.com"},
+			DirectoryURL: "http://127.0.0.1:1/dir", // never reach a real CA from tests
 		},
 	}
 

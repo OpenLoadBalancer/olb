@@ -70,6 +70,13 @@ func (e *Engine) Start() error {
 	// 1a. Start certificate expiry monitoring
 	e.tlsManager.StartExpiryMonitor(1 * time.Hour)
 
+	// 1b. Obtain/renew the ACME certificate in the background. Listeners
+	// start below regardless; HTTPS serves the configured certificate (if
+	// any) until the ACME one is installed.
+	if e.acmeManager != nil {
+		e.acmeManager.Start()
+	}
+
 	// 2. Start OCSP manager for certificate stapling
 	if e.ocspManager != nil {
 		if err := e.ocspManager.Start(); err != nil {
@@ -404,9 +411,9 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 	}
 
 	// 0g. Stop ACME client
-	if e.acmeClient != nil {
-		e.acmeClient.Close()
-		e.logger.Info("ACME client stopped")
+	if e.acmeManager != nil {
+		e.acmeManager.Stop()
+		e.logger.Info("ACME manager stopped")
 	}
 
 	// 0h. Stop TLS certificate expiry monitor

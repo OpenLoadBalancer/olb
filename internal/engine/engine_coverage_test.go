@@ -1381,9 +1381,10 @@ func TestCov_New_WithACME(t *testing.T) {
 	cfg := createTestConfig()
 	cfg.TLS = &config.TLSConfig{
 		ACME: &config.ACME{
-			Enabled: true,
-			Email:   "test@example.com",
-			Domains: []string{"example.com"},
+			Enabled:      true,
+			Email:        "test@example.com",
+			Domains:      []string{"example.com"},
+			DirectoryURL: "http://127.0.0.1:1/dir", // never reach a real CA from tests
 		},
 	}
 
