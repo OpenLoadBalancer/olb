@@ -197,8 +197,11 @@ func (acl *IPAccessList) Ban(ip string, ttl time.Duration, reason string) error 
 	if ttl > acl.autoBan.MaxTTL && acl.autoBan.MaxTTL > 0 {
 		ttl = acl.autoBan.MaxTTL
 	}
-	if ttl == 0 {
+	if ttl <= 0 {
 		ttl = acl.autoBan.DefaultTTL
+	}
+	if ttl <= 0 {
+		ttl = time.Hour
 	}
 
 	cidr := ip + "/32"
