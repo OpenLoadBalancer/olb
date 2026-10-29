@@ -231,6 +231,9 @@ func NewWAFMiddleware(cfg WAFMiddlewareConfig) (*WAFMiddleware, error) {
 					bdCfg.BehaviorConfig.Window = w
 				}
 			}
+			if wafCfg.BotDetection.Behavior.ErrorRateThreshold > 0 {
+				bdCfg.BehaviorConfig.ErrorRateThreshold = float64(wafCfg.BotDetection.Behavior.ErrorRateThreshold)
+			}
 			if wafCfg.BotDetection.Behavior.RPSThreshold > 0 {
 				bdCfg.BehaviorConfig.RPSThreshold = float64(wafCfg.BotDetection.Behavior.RPSThreshold)
 			}
@@ -257,6 +260,9 @@ func NewWAFMiddleware(cfg WAFMiddlewareConfig) (*WAFMiddleware, error) {
 			}
 			if sh.ReferrerPolicy != "" {
 				rp.Headers.ReferrerPolicy = sh.ReferrerPolicy
+			}
+			if sh.PermissionsPolicy != "" {
+				rp.Headers.PermissionsPolicy = sh.PermissionsPolicy
 			}
 			if sh.ContentSecurityPolicy != "" {
 				rp.Headers.CSP = sh.ContentSecurityPolicy
