@@ -119,6 +119,15 @@ func (p *TCPProxy) Stop(ctx context.Context) error {
 
 // HandleConnection handles a single TCP connection.
 func (p *TCPProxy) HandleConnection(clientConn net.Conn) {
+	p.connWg.Add(1)
+	p.handleConnection(clientConn)
+}
+
+// handleConnection serves a connection whose slot in connWg the caller has
+// already taken. Taking it before the goroutine starts keeps Add from racing
+// with the Wait in Stop.
+func (p *TCPProxy) handleConnection(clientConn net.Conn) {
+	defer p.connWg.Done()
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("[tcp-proxy] panic recovered in HandleConnection: %v", r)
@@ -142,9 +151,6 @@ func (p *TCPProxy) HandleConnection(clientConn net.Conn) {
 		p.activeConns.Add(1)
 	}
 	defer p.activeConns.Add(-1)
-
-	p.connWg.Add(1)
-	defer p.connWg.Done()
 
 	// Check context
 	select {
@@ -427,7 +433,8 @@ func (l *TCPListener) acceptLoop() {
 		}
 
 		// Handle connection in goroutine
-		go l.proxy.HandleConnection(conn)
+		l.proxy.connWg.Add(1)
+		go l.proxy.handleConnection(conn)
 	}
 }
 

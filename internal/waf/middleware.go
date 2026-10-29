@@ -130,7 +130,9 @@ func NewWAFMiddleware(cfg WAFMiddlewareConfig) (*WAFMiddleware, error) {
 		if mw.ipACL != nil {
 			rl.OnAutoBan = func(ip string, reason string) {
 				// 0 = auto_ban.default_ttl (capped by max_ttl)
-				mw.ipACL.Ban(ip, 0, reason)
+				if err := mw.ipACL.Ban(ip, 0, reason); err != nil {
+					log.Printf("[waf] auto-ban %s failed: %v", ip, err)
+				}
 			}
 		}
 		mw.rateLimiter = rl
