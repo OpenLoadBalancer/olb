@@ -86,7 +86,7 @@ Requires Go 1.26+. Only stdlib + golang.org/x/{crypto,net,text}.
 
 **Geo-DNS Routing (experimental):** a GeoIP rule engine (country, region, city) is included and its `geodns` config is parsed, but it does not affect routing yet.
 
-**Security:** TLS termination + SNI, ACME/Let's Encrypt, mTLS, OCSP stapling, 6-layer WAF (IP ACL, rate limiting, request sanitizer, detection engine with SQLi/XSS/path traversal/CMDi/XXE/SSRF, bot detection with JA3 fingerprinting, response protection with security headers + data masking), circuit breaker
+**Security:** TLS termination + SNI, ACME/Let's Encrypt, mTLS, OCSP stapling, 6-layer WAF (IP ACL, rate limiting, request sanitizer, detection engine with SQLi/XSS/path traversal/CMDi/XXE/SSRF, bot detection (user-agent and behavior; JA3 fingerprinting is not wired yet), response protection with security headers + data masking), circuit breaker
 
 **Middleware:** 30 config-gated components plus always-on recovery and access log — trace, real IP, request logging, force SSL, metrics, request ID, IP filter, bot detection, max body size, cache, WAF (6-layer pipeline), rewrite, strip prefix, validator, request coalescing, JWT, HMAC, API key, basic auth, CSRF, timeout, rate limit, circuit breaker, CORS, CSP, headers, compression (gzip), transformer, retry, secure headers. An enabled middleware with an invalid config stops the engine from starting instead of being skipped.
 
