@@ -129,7 +129,10 @@ func NewWAFMiddleware(cfg WAFMiddlewareConfig) (*WAFMiddleware, error) {
 		// Wire auto-ban to IP ACL if both are enabled
 		if mw.ipACL != nil {
 			rl.OnAutoBan = func(ip string, reason string) {
-				mw.ipACL.Ban(ip, time.Hour, reason)
+				// 0 = auto_ban.default_ttl (capped by max_ttl)
+				if err := mw.ipACL.Ban(ip, 0, reason); err != nil {
+					log.Printf("[waf] auto-ban %s failed: %v", ip, err)
+				}
 			}
 		}
 		mw.rateLimiter = rl
@@ -231,6 +234,9 @@ func NewWAFMiddleware(cfg WAFMiddlewareConfig) (*WAFMiddleware, error) {
 					bdCfg.BehaviorConfig.Window = w
 				}
 			}
+			if wafCfg.BotDetection.Behavior.ErrorRateThreshold > 0 {
+				bdCfg.BehaviorConfig.ErrorRateThreshold = float64(wafCfg.BotDetection.Behavior.ErrorRateThreshold)
+			}
 			if wafCfg.BotDetection.Behavior.RPSThreshold > 0 {
 				bdCfg.BehaviorConfig.RPSThreshold = float64(wafCfg.BotDetection.Behavior.RPSThreshold)
 			}
@@ -257,6 +263,9 @@ func NewWAFMiddleware(cfg WAFMiddlewareConfig) (*WAFMiddleware, error) {
 			}
 			if sh.ReferrerPolicy != "" {
 				rp.Headers.ReferrerPolicy = sh.ReferrerPolicy
+			}
+			if sh.PermissionsPolicy != "" {
+				rp.Headers.PermissionsPolicy = sh.PermissionsPolicy
 			}
 			if sh.ContentSecurityPolicy != "" {
 				rp.Headers.CSP = sh.ContentSecurityPolicy
