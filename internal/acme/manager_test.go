@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -196,7 +197,7 @@ func TestManager_ObtainsStoresAndReloadsCertificate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s not stored: %v", f, err)
 		}
-		if st.Mode().Perm() != 0o600 {
+		if runtime.GOOS != "windows" && st.Mode().Perm() != 0o600 { // Windows has no Unix modes
 			t.Errorf("%s mode %v, want 0600", f, st.Mode().Perm())
 		}
 	}

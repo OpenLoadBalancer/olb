@@ -99,7 +99,7 @@ func (m *Manager) Wrap(next http.Handler) http.Handler {
 			token := strings.TrimPrefix(r.URL.Path, challengePrefix)
 			if v, ok := m.tokens.Load(token); ok {
 				w.Header().Set("Content-Type", "text/plain")
-				_, _ = w.Write([]byte(v.(string)))
+				_, _ = w.Write([]byte(v.(string))) // #nosec G705 -- text/plain; value is a stored key authorization, not request input
 				return
 			}
 			http.NotFound(w, r)
