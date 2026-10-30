@@ -192,7 +192,7 @@ func (pd *poolDiscovery) sync() {
 			continue
 		}
 		if hc != nil {
-			if err := hc.Register(b, checkFromConfig(pd.poolCfg.HealthCheck)); err != nil {
+			if err := hc.Register(b, checkFromConfig(pd.poolCfg.HealthCheck)); err != nil { // nolint:contextcheck -- the checker owns its own lifetime
 				e.logger.Warn("Discovery: registering health check failed",
 					logging.String("backend", id), logging.Error(err))
 			}
