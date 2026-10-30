@@ -116,7 +116,7 @@ func (pd *poolDiscovery) loop(ctx context.Context) {
 	t := time.NewTicker(discoverySyncInterval)
 	defer t.Stop()
 	for {
-		pd.sync()
+		pd.sync() //nolint:contextcheck // the health checker owns its own lifetime
 		select {
 		case <-ctx.Done():
 			return
@@ -192,7 +192,7 @@ func (pd *poolDiscovery) sync() {
 			continue
 		}
 		if hc != nil {
-			if err := hc.Register(b, checkFromConfig(pd.poolCfg.HealthCheck)); err != nil { // nolint:contextcheck -- the checker owns its own lifetime
+			if err := hc.Register(b, checkFromConfig(pd.poolCfg.HealthCheck)); err != nil {
 				e.logger.Warn("Discovery: registering health check failed",
 					logging.String("backend", id), logging.Error(err))
 			}
