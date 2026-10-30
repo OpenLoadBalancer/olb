@@ -127,3 +127,22 @@ func TestValidate_RejectsBotDetectionThrottle(t *testing.T) {
 		t.Errorf("block should be valid: %v", err)
 	}
 }
+
+func TestValidate_RejectsUnsupportedWAFRateLimit(t *testing.T) {
+	mk := func(rl *WAFRateLimitConfig) *Config {
+		return &Config{WAF: &WAFConfig{Enabled: true, RateLimit: rl}}
+	}
+	bad := []*WAFRateLimitConfig{
+		{Enabled: true, Rules: []WAFRateLimitRule{{ID: "a", Action: "throttle"}}},
+		{Enabled: true, Store: &RateLimitStoreConfig{Type: "redis"}},
+	}
+	for i, rl := range bad {
+		if err := mk(rl).validateWAF(); err == nil {
+			t.Errorf("case %d: expected error", i)
+		}
+	}
+	good := &WAFRateLimitConfig{Enabled: true, Store: &RateLimitStoreConfig{Type: "memory"}, Rules: []WAFRateLimitRule{{ID: "a", Action: "block"}}}
+	if err := mk(good).validateWAF(); err != nil {
+		t.Errorf("unexpected: %v", err)
+	}
+}

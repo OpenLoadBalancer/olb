@@ -413,7 +413,7 @@ waf:
         limit: 100
         window: "1m"
         burst: 150
-        action: "block"         # "block" or "throttle"
+        action: "block"
         auto_ban_after: 0       # Auto-ban after N violations (0 = disabled)
       - id: "api-endpoint"
         scope: "ip+path"
@@ -422,7 +422,7 @@ waf:
         limit: 50
         window: "1m"
         burst: 75
-        action: "throttle"
+        action: "block"
 
   # Request sanitization
   sanitizer:

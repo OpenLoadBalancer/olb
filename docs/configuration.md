@@ -960,7 +960,7 @@ waf:
 
 Keys that exist in the schema but currently have no effect:
 - `waf.logging.log_body`, `waf.logging.level`, `waf.logging.format`
-- `waf.rate_limit.sync_interval`, `waf.rate_limit.store`, and and `rules[].action` (rate-limited requests are always rejected with 429; `throttle` is not implemented)
+- `waf.rate_limit.sync_interval` (rate-limited requests are always rejected with 429; `rules[].action` other than `block` and `store.type` other than `memory` are rejected at load)
 - `tls_fingerprint` (the whole block: JA3 hashes are never computed, so `enabled` and the `*_action` keys do nothing)
 
 ---

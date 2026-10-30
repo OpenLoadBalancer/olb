@@ -526,7 +526,7 @@ type WAFRateLimitRule struct {
 	Limit        int      `yaml:"limit" json:"limit"`
 	Window       string   `yaml:"window" json:"window"` // e.g. "1m"
 	Burst        int      `yaml:"burst" json:"burst"`
-	Action       string   `yaml:"action" json:"action"` // "block", "throttle"
+	Action       string   `yaml:"action" json:"action"` // "block"
 	AutoBanAfter int      `yaml:"auto_ban_after" json:"auto_ban_after"`
 }
 
@@ -1519,9 +1519,15 @@ func (c *Config) validateWAF() error {
 	}
 
 	if c.WAF.RateLimit != nil {
+		if st := c.WAF.RateLimit.Store; st != nil && st.Type != "" && st.Type != "memory" {
+			return fmt.Errorf("waf.rate_limit.store: type %q is not supported (only memory; distributed limiting is not wired)", st.Type)
+		}
 		for i, rule := range c.WAF.RateLimit.Rules {
 			if rule.ID == "" {
 				return fmt.Errorf("waf.rate_limit: rule %d: id is required", i)
+			}
+			if rule.Action != "" && rule.Action != "block" {
+				return fmt.Errorf("waf.rate_limit: rule %s: action %q is not supported (rate-limited requests are always blocked; use \"block\")", rule.ID, rule.Action)
 			}
 			if rule.Window != "" {
 				if _, err := time.ParseDuration(rule.Window); err != nil {
