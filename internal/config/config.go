@@ -387,7 +387,7 @@ type CoalesceConfig struct {
 // BotDetectionConfig represents bot detection middleware configuration.
 type BotDetectionConfig struct {
 	Enabled              bool               `yaml:"enabled" json:"enabled"`                               // Enable bot detection
-	Action               string             `yaml:"action" json:"action"`                                 // Action: allow, block, challenge, throttle, log
+	Action               string             `yaml:"action" json:"action"`                                 // Action: allow, block, challenge, log
 	BlockKnownBots       bool               `yaml:"block_known_bots" json:"block_known_bots"`             // Block known bad bots
 	AllowVerified        bool               `yaml:"allow_verified" json:"allow_verified"`                 // Allow verified good bots (Googlebot, etc.)
 	RequestRateThreshold int                `yaml:"request_rate_threshold" json:"request_rate_threshold"` // Requests per minute threshold
@@ -401,7 +401,7 @@ type BotDetectionConfig struct {
 // BotUserAgentRule defines a rule based on User-Agent string.
 type BotUserAgentRule struct {
 	Pattern string `yaml:"pattern" json:"pattern"` // Regex pattern
-	Action  string `yaml:"action" json:"action"`   // Action: allow, block, challenge, throttle, log
+	Action  string `yaml:"action" json:"action"`   // Action: allow, block, challenge, log
 	Name    string `yaml:"name" json:"name"`       // Rule name for logging
 }
 
@@ -1080,6 +1080,10 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	if err := c.validateBotDetection(); err != nil {
+		return err
+	}
+
 	if err := c.validateLogging(); err != nil {
 		return err
 	}
@@ -1392,6 +1396,31 @@ func (c *Config) validateAdmin() error {
 }
 
 // validateLogging validates logging configuration.
+// validateBotDetection rejects the "throttle" action: the middleware only
+// tags the request and never rate limits it, so accepting it would silently
+// let bots through.
+func (c *Config) validateBotDetection() error {
+	if c.Middleware == nil || c.Middleware.BotDetection == nil {
+		return nil
+	}
+	bd := c.Middleware.BotDetection
+	const msg = "action \"throttle\" is not implemented (use block, challenge, log or allow)"
+	if bd.Action == "throttle" {
+		return fmt.Errorf("middleware.bot_detection: %s", msg)
+	}
+	for i, r := range bd.UserAgentRules {
+		if r.Action == "throttle" {
+			return fmt.Errorf("middleware.bot_detection.user_agent_rules[%d]: %s", i, msg)
+		}
+	}
+	for i, r := range bd.CustomHeaders {
+		if r.Action == "throttle" {
+			return fmt.Errorf("middleware.bot_detection.custom_headers[%d]: %s", i, msg)
+		}
+	}
+	return nil
+}
+
 func (c *Config) validateLogging() error {
 	if c.Logging == nil {
 		return nil

@@ -208,7 +208,7 @@ middleware:
       - /api/realtime
   bot_detection:
     enabled: false
-    action: "block"           # allow, block, challenge, throttle, log
+    action: "block"           # allow, block, challenge, log
     block_known_bots: true    # Block known bad bots (scrapy, curl, etc.)
     allow_verified: true      # Allow verified good bots (Googlebot, Bingbot, etc.)
     request_rate_threshold: 100  # Requests per minute threshold for rate-based detection

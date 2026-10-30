@@ -110,3 +110,20 @@ func TestValidate_RejectsPerRouteMiddleware(t *testing.T) {
 		t.Fatalf("expected per-route middleware error, got %v", err)
 	}
 }
+
+func TestValidate_RejectsBotDetectionThrottle(t *testing.T) {
+	for name, bd := range map[string]*BotDetectionConfig{
+		"global":      {Enabled: true, Action: "throttle"},
+		"user_agent":  {Enabled: true, UserAgentRules: []BotUserAgentRule{{Pattern: "x", Action: "throttle"}}},
+		"header_rule": {Enabled: true, CustomHeaders: []BotHeaderRule{{Header: "X", Pattern: "y", Action: "throttle"}}},
+	} {
+		cfg := &Config{Middleware: &MiddlewareConfig{BotDetection: bd}}
+		if err := cfg.validateBotDetection(); err == nil {
+			t.Errorf("%s: expected throttle to be rejected", name)
+		}
+	}
+	ok := &Config{Middleware: &MiddlewareConfig{BotDetection: &BotDetectionConfig{Action: "block"}}}
+	if err := ok.validateBotDetection(); err != nil {
+		t.Errorf("block should be valid: %v", err)
+	}
+}

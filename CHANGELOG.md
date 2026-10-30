@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `admin.enabled: false`, `metrics.enabled`/`metrics.path`, `waf.detection.enabled`, per-layer `waf.detection.mode`/`waf.bot_detection.mode`, `waf.detection.exclusions[].condition`, `behavior.error_rate_threshold`, `permissions_policy` and `ip_acl.auto_ban.default_ttl` are now honored
 
 ### Changed
+- Config validation rejects `middleware.bot_detection` action `throttle` (global, `user_agent_rules`, `custom_headers`); it only tagged requests and never limited them.
 - `routes[].middleware` is rejected at load time instead of being silently ignored
 
 ### Fixed
