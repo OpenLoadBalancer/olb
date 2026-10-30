@@ -233,6 +233,9 @@ func (e *Engine) Start() error {
 		}
 	}
 
+	// 11b. Start per-pool service discovery (pools[].discovery)
+	e.startPoolDiscovery(e.config)
+
 	// 12. Start config file watcher for auto-reload
 	if e.configPath != "" {
 		e.startConfigWatcher()
@@ -409,6 +412,9 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 			e.logger.Info("OCSP manager stopped")
 		}
 	}
+
+	// 0f. Stop pool discovery
+	e.stopPoolDiscovery()
 
 	// 0g. Stop ACME client
 	if e.acmeManager != nil {

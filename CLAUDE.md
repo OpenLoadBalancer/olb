@@ -96,7 +96,7 @@ internal/waf/             → WAF: 6-layer security pipeline (SQLi, XSS, CMDi, X
 internal/security/        → Request smuggling, header injection protection
 internal/webui/           → Embedded SPA (React 19 + TypeScript + Tailwind CSS + Radix UI)
 internal/plugin/          → Plugin system with event bus
-internal/discovery/       → Service discovery providers (static/DNS/file/Docker/Consul) — library only, not wired, no config
+internal/discovery/       → Service discovery providers (static/DNS/file/Docker/Consul) — wired per pool via `pools[].discovery` (engine/pool_discovery.go)
 internal/geodns/          → GeoIP rule engine — built from config but does not affect routing yet
 internal/conn/            → Connection management + pooling
 internal/logging/         → Structured JSON logging with rotating file output

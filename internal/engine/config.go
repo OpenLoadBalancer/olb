@@ -238,6 +238,10 @@ func (e *Engine) applyConfigInternal(newCfg *config.Config, noRollback bool) err
 	e.shadowMgr = newProxy.ShadowManager()
 	e.mu.Unlock()
 
+	// The swapped-in pools hold only static backends; restart discovery so it
+	// refills them and picks up discovery config changes.
+	e.restartPoolDiscovery(newCfg)
+
 	// Close old proxy after drain window (tracked so engine shutdown waits)
 	if oldProxy != nil {
 		e.wg.Add(1)

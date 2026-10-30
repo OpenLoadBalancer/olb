@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dependencies: x/net v0.61.0, x/text v0.43.0, x/crypto v0.58.0 (govulncheck: 0 reachable); all WebUI and website npm packages updated, zod 4 (GHSA-mrhx-c7xc-m3w5), `npm audit` clean (#61, #64)
 
 ### Added
+- `pools[].discovery` feeds a pool from a discovery provider (static, file, dns, consul, docker); backends are added/removed as services appear and disappear, also across config reloads
 - `tls.acme` now obtains and renews certificates (ACME HTTP-01 on port 80, account/certificate storage in `tls.acme.storage_dir`, `directory_url` for staging). Previously it only created a client and never requested a certificate
 - `admin.enabled: false`, `metrics.enabled`/`metrics.path`, `waf.detection.enabled`, per-layer `waf.detection.mode`/`waf.bot_detection.mode`, `waf.detection.exclusions[].condition`, `behavior.error_rate_threshold`, `permissions_policy` and `ip_acl.auto_ban.default_ttl` are now honored
 

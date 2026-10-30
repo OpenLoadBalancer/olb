@@ -1023,7 +1023,32 @@ The `shadow` section is validated and a shadow manager is created at startup, bu
 
 ## Service Discovery
 
-Service discovery is not configurable yet; list backends under `pools[].backends`. Backends can also be added and removed at runtime through the admin API.
+A pool can take backends from a discovery provider in addition to its static `backends`:
+
+```yaml
+pools:
+  - name: api
+    algorithm: round_robin
+    discovery:
+      provider: file            # static | file | dns | consul | docker
+      refresh: 30s              # minimum 1s
+      tags: []                  # only services carrying all of these tags
+      options:
+        path: /etc/olb/api-backends.json
+        poll_interval: 5s
+```
+
+Discovered backends get the pool's `health_check` and the pool's balancer, are added when the provider reports a healthy service and removed when it disappears; statically listed backends are never touched. The pool is reconciled with the provider every 2 seconds, and again after a config reload. A provider that fails to start is logged and the pool keeps serving its static backends. Backends can also be added and removed at runtime through the admin API (these are not managed by discovery).
+
+Provider `options` (all values are strings):
+
+| Provider | Options |
+|----------|---------|
+| `static` | `addresses`: comma-separated `host:port` list; or `file` (+ `format`) to read a list from a file |
+| `file` | `path` (required): JSON file `{"backends":[{"address":"host:port","weight":100}]}`; `poll_interval` (default 5s) |
+| `dns` | `domain` (required): SRV domain to resolve; `nameserver`. Queries are sent over plaintext DNS |
+| `consul` | `address`, `scheme`, `datacenter`, `token`, `service` (service name to watch) |
+| `docker` | `socket_path`, `host`, `label_prefix`, `network`, `poll_interval`, `tls` (`"true"`) |
 
 ---
 

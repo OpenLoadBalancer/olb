@@ -94,7 +94,9 @@ Requires Go 1.26+. Only stdlib + golang.org/x/{crypto,net,text}.
 
 **Operations:** Hot config reload (SIGHUP or API), Raft clustering, MCP server for AI integration, plugin system, 30+ CLI commands, request shadowing/mirroring
 
-**Not wired yet (experimental libraries):** SWIM gossip membership, service discovery providers (Static/DNS/Consul/Docker/File) and the distributed rate limiter exist under `internal/` with tests, but the engine does not use them and they have no config. Backends are listed statically under `pools[].backends`.
+**Service discovery:** pools can take backends from Static/File/DNS/Consul/Docker providers via `pools[].discovery`.
+
+**Not wired yet (experimental libraries):** SWIM gossip membership and the distributed rate limiter exist under `internal/` with tests, but the engine does not use them and they have no config.
 
 ## MCP Integration (AI-Powered Management)
 

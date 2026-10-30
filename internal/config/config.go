@@ -720,6 +720,22 @@ type Pool struct {
 	Algorithm   string       `yaml:"algorithm" json:"algorithm"`
 	HealthCheck *HealthCheck `yaml:"health_check" json:"health_check"`
 	Backends    []*Backend   `yaml:"backends" json:"backends"`
+
+	// Discovery adds backends from a service-discovery provider to the
+	// static ones above.
+	Discovery *PoolDiscovery `yaml:"discovery" json:"discovery"`
+}
+
+// PoolDiscovery configures dynamic backends for a pool.
+type PoolDiscovery struct {
+	// Provider is one of: static, file, dns, consul, docker.
+	Provider string `yaml:"provider" json:"provider"`
+	// Refresh is how often the provider polls its source (default 30s).
+	Refresh string `yaml:"refresh" json:"refresh"`
+	// Options are provider specific (see docs/configuration.md).
+	Options map[string]string `yaml:"options" json:"options"`
+	// Tags restrict discovery to services carrying all of these tags.
+	Tags []string `yaml:"tags" json:"tags"`
 }
 
 // Backend represents a backend server.
@@ -1017,6 +1033,19 @@ func (c *Config) Validate() error {
 			}
 			if b.Weight < 0 {
 				return fmt.Errorf("pool %s: backend %d: weight must be non-negative, got %d", p.Name, j, b.Weight)
+			}
+		}
+
+		if d := p.Discovery; d != nil {
+			switch d.Provider {
+			case "static", "file", "dns", "consul", "docker":
+			default:
+				return fmt.Errorf("pool %s: discovery: unknown provider %q (valid: static, file, dns, consul, docker)", p.Name, d.Provider)
+			}
+			if d.Refresh != "" {
+				if dur, err := time.ParseDuration(d.Refresh); err != nil || dur < time.Second {
+					return fmt.Errorf("pool %s: discovery: refresh %q must be a duration of at least 1s", p.Name, d.Refresh)
+				}
 			}
 		}
 

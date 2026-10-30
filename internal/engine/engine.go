@@ -87,6 +87,8 @@ type Engine struct {
 	raftCluster  *cluster.Cluster        // optional, nil if not configured
 	persister    *cluster.FilePersister  // optional, nil if no DataDir
 	discoveryMgr *discovery.Manager
+	discMu       sync.Mutex
+	discoveries  []*poolDiscovery // per-pool discovery syncers (guarded by discMu)
 	webUIHandler *webui.Handler
 	geoDNS       *geodns.GeoDNS    // optional, nil if not configured
 	shadowMgr    *l7.ShadowManager // optional, nil if not configured
