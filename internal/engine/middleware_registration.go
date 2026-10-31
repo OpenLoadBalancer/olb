@@ -365,6 +365,12 @@ func registerWAFMiddleware(ctx *middlewareRegistrationContext) {
 		// operators believe bodies are being captured.
 		ctx.logger.Warn("waf.logging.log_body is not implemented and has no effect")
 	}
+	if l := ctx.cfg.WAF.Logging; l != nil && (l.Level != "" || l.Format != "") && ctx.logger != nil {
+		ctx.logger.Warn("waf.logging.level and waf.logging.format are not implemented and have no effect; WAF events use the global logging settings")
+	}
+	if rl := ctx.cfg.WAF.RateLimit; rl != nil && rl.SyncInterval != "" && ctx.logger != nil {
+		ctx.logger.Warn("waf.rate_limit.sync_interval is not implemented and has no effect (the limiter is in-memory only)")
+	}
 	if b := ctx.cfg.WAF.BotDetection; b != nil && b.TLSFingerprint != nil && b.TLSFingerprint.Enabled && ctx.logger != nil {
 		ctx.logger.Warn("waf.bot_detection.tls_fingerprint is not implemented (JA3 is never computed) and has no effect")
 	}

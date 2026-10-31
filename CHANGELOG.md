@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Config validation rejects `middleware.bot_detection` action `throttle` (global, `user_agent_rules`, `custom_headers`); it only tagged requests and never limited them.
 - Config validation rejects `waf.rate_limit.rules[].action: throttle` and non-memory `waf.rate_limit.store.type`; neither was ever honored.
 - Startup logs a warning when `waf.bot_detection.tls_fingerprint.enabled` is set, since JA3 fingerprints are never computed.
+- Startup logs warnings for `waf.logging.level`/`format` and `waf.rate_limit.sync_interval`, which have no effect.
 - `routes[].middleware` is rejected at load time instead of being silently ignored
 
 ### Fixed
