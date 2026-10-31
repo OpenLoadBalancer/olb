@@ -365,6 +365,9 @@ func registerWAFMiddleware(ctx *middlewareRegistrationContext) {
 		// operators believe bodies are being captured.
 		ctx.logger.Warn("waf.logging.log_body is not implemented and has no effect")
 	}
+	if b := ctx.cfg.WAF.BotDetection; b != nil && b.TLSFingerprint != nil && b.TLSFingerprint.Enabled && ctx.logger != nil {
+		ctx.logger.Warn("waf.bot_detection.tls_fingerprint is not implemented (JA3 is never computed) and has no effect")
+	}
 	wafMW, err := waf.NewWAFMiddleware(waf.WAFMiddlewareConfig{
 		Config:          ctx.cfg.WAF,
 		MetricsRegistry: ctx.registry,
