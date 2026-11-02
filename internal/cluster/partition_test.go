@@ -5,14 +5,10 @@ import (
 	"time"
 )
 
-// TestPartition_LeaderStaysLeaderOnQuorumLoss documents the current behavior:
-// when a leader loses connectivity to all peers, it remains in StateLeader
-// but cannot commit new commands (handleCommand times out after 5s).
-//
-// This is intentional for the current version — the leader does not
-// proactively step down on sustained heartbeat failures. A future
-// improvement could add a quorum-health tracker in the heartbeat loop
-// that triggers StateFollower after consecutive failures exceed a threshold.
+// TestPartition_LeaderStaysLeaderOnQuorumLoss covers handleCommand in
+// isolation: when peers are unreachable the command times out without being
+// applied. The heartbeat loop (not handleCommand) is what steps the leader
+// down; see TestRaft_LeaderStepsDownWithoutQuorum.
 func TestPartition_LeaderStaysLeaderOnQuorumLoss(t *testing.T) {
 	sm := newKVStateMachine()
 	config := &Config{
@@ -59,7 +55,7 @@ func TestPartition_LeaderStaysLeaderOnQuorumLoss(t *testing.T) {
 		t.Fatal("handleCommand took too long")
 	}
 
-	// Key behavior: leader does NOT step down
+	// handleCommand itself never changes the node's role
 	if c.GetState() != StateLeader {
 		t.Errorf("leader state = %v, want StateLeader (leader stays leader on quorum loss)", c.GetState())
 	}

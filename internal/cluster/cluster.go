@@ -127,6 +127,11 @@ type Cluster struct {
 	onStateChange   func(State, State)
 	onLeaderElected func(string)
 
+	// peerAck records when each peer (by address) last answered a heartbeat;
+	// the leader steps down when it cannot reach a quorum (check-quorum).
+	ackMu   sync.Mutex
+	peerAck map[string]time.Time
+
 	// Membership change tracking (joint consensus)
 	memberMu   sync.RWMutex
 	membership membershipConfig
@@ -483,6 +488,20 @@ func (c *Cluster) startElection() {
 
 // becomeLeader transitions to leader state.
 func (c *Cluster) becomeLeader() {
+	// Give every peer a fresh grace period so a new leader is not judged on
+	// acknowledgements from before it took office.
+	c.ackMu.Lock()
+	c.peerAck = make(map[string]time.Time)
+	now := time.Now()
+	c.nodesMu.RLock()
+	for id, node := range c.nodes {
+		if id != c.config.NodeID {
+			c.peerAck[node.Address] = now
+		}
+	}
+	c.nodesMu.RUnlock()
+	c.ackMu.Unlock()
+
 	c.setState(StateLeader)
 	c.leaderID.Store(c.config.NodeID)
 
@@ -527,6 +546,15 @@ func (c *Cluster) sendHeartbeats() {
 	}
 	c.nodesMu.RUnlock()
 
+	if c.transport != nil && !c.hasQuorumContact(peerAddrs) {
+		// Check-quorum: a leader cut off from the majority must not keep
+		// believing it leads (clients would talk to a leader that cannot commit).
+		c.setState(StateFollower)
+		c.leaderID.Store("")
+		c.resetElectionTimer()
+		return
+	}
+
 	for _, addr := range peerAddrs {
 		go func(addr string) {
 			if c.transport != nil {
@@ -541,6 +569,11 @@ func (c *Cluster) sendHeartbeats() {
 				if err != nil {
 					return
 				}
+				c.ackMu.Lock()
+				if c.peerAck != nil {
+					c.peerAck[addr] = time.Now()
+				}
+				c.ackMu.Unlock()
 				if resp.Term > term {
 					c.currentTerm.Store(resp.Term)
 					c.setState(StateFollower)
@@ -549,6 +582,30 @@ func (c *Cluster) sendHeartbeats() {
 			}
 		}(addr)
 	}
+}
+
+// hasQuorumContact reports whether this leader heard from a majority of the
+// cluster (itself included) within the last election timeout.
+func (c *Cluster) hasQuorumContact(peerAddrs []string) bool {
+	if len(peerAddrs) == 0 {
+		return true
+	}
+	cutoff := time.Now().Add(-c.config.ElectionTick)
+	reachable := 1 // self
+	c.ackMu.Lock()
+	if c.peerAck == nil {
+		// Armed by becomeLeader; a leader installed any other way has no
+		// acknowledgement history to judge.
+		c.ackMu.Unlock()
+		return true
+	}
+	for _, addr := range peerAddrs {
+		if t, ok := c.peerAck[addr]; ok && t.After(cutoff) {
+			reachable++
+		}
+	}
+	c.ackMu.Unlock()
+	return reachable >= (len(peerAddrs)+1)/2+1
 }
 
 // handleCommand handles a command to be applied.

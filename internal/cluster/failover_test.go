@@ -151,3 +151,23 @@ func TestRaft_FollowerRejectsProposal(t *testing.T) {
 		}
 	}
 }
+
+func TestRaft_LeaderStepsDownWithoutQuorum(t *testing.T) {
+	nodes := newTestRaftCluster(t, 3)
+	leader := waitLeader(t, nodes, nil)
+
+	// Cut the leader off from both followers.
+	for _, nd := range nodes {
+		if nd != leader {
+			nd.stop()
+		}
+	}
+
+	deadline := time.Now().Add(10 * time.Second)
+	for leader.c.IsLeader() {
+		if time.Now().After(deadline) {
+			t.Fatal("leader kept leading without a quorum")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
